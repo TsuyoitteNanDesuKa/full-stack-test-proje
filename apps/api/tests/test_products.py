@@ -2,8 +2,11 @@ from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, sessionmaker
 
-from shop_api.models import User
+from shop_api.models import Product, User
 
 PRODUCT_PAYLOAD = {
     "name": "Lavanta El Kremi",
@@ -76,6 +79,103 @@ def test_admin_can_create_product_and_customer_can_list_it(
     }
 
 
+def test_product_name_is_unique_after_case_and_whitespace_normalization(
+    client: TestClient,
+    admin: User,
+) -> None:
+    headers = {"Authorization": f"Bearer {access_token(client, admin)}"}
+    first_response = client.post(
+        "/api/v1/products",
+        json=PRODUCT_PAYLOAD,
+        headers=headers,
+    )
+    duplicate_response = client.post(
+        "/api/v1/products",
+        json={**PRODUCT_PAYLOAD, "name": "  LAVANTA   EL KREMI  "},
+        headers=headers,
+    )
+
+    assert first_response.status_code == 201
+    assert duplicate_response.status_code == 409
+    assert duplicate_response.json()["detail"] == "Bu ürün adı katalogda zaten kullanılıyor."
+    product_list = client.get("/api/v1/products", headers=headers).json()
+    assert product_list["total"] == 1
+
+
+def test_product_name_is_unique_after_unicode_nfc_normalization(
+    client: TestClient,
+    admin: User,
+) -> None:
+    headers = {"Authorization": f"Bearer {access_token(client, admin)}"}
+    first_response = client.post(
+        "/api/v1/products",
+        json={**PRODUCT_PAYLOAD, "name": "Café Sabunu"},
+        headers=headers,
+    )
+    duplicate_response = client.post(
+        "/api/v1/products",
+        json={**PRODUCT_PAYLOAD, "name": "Cafe\u0301 Sabunu"},
+        headers=headers,
+    )
+
+    assert first_response.status_code == 201
+    assert duplicate_response.status_code == 409
+    assert client.get("/api/v1/products", headers=headers).json()["total"] == 1
+
+
+def test_concurrent_duplicate_product_name_returns_conflict(
+    client: TestClient,
+    admin: User,
+    engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def commit_duplicate(session: Session) -> None:
+        session.rollback()
+        with engine.begin() as connection:
+            connection.execute(
+                Product.__table__.insert(),
+                {
+                    **PRODUCT_PAYLOAD,
+                    "name_key": "lavanta el kremi",
+                },
+            )
+        raise IntegrityError("INSERT products", {}, Exception("unique constraint"))
+
+    monkeypatch.setattr(Session, "commit", commit_duplicate)
+    response = client.post(
+        "/api/v1/products",
+        json=PRODUCT_PAYLOAD,
+        headers={"Authorization": f"Bearer {access_token(client, admin)}"},
+    )
+
+    assert response.status_code == 409
+    assert (
+        client.get(
+            "/api/v1/products",
+            headers={"Authorization": f"Bearer {access_token(client, admin)}"},
+        ).json()["total"]
+        == 1
+    )
+
+
+def test_unrelated_integrity_error_is_not_converted_to_duplicate_conflict(
+    client: TestClient,
+    admin: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def commit_with_integrity_error(_session: Session) -> None:
+        raise IntegrityError("INSERT products", {}, Exception("unrelated constraint"))
+
+    monkeypatch.setattr(Session, "commit", commit_with_integrity_error)
+
+    with pytest.raises(IntegrityError, match="unrelated constraint"):
+        client.post(
+            "/api/v1/products",
+            json=PRODUCT_PAYLOAD,
+            headers={"Authorization": f"Bearer {access_token(client, admin)}"},
+        )
+
+
 def test_customer_cannot_create_products(
     client: TestClient,
     customer: User,
@@ -109,17 +209,31 @@ def test_create_products_rejects_missing_authentication(
     "updates",
     [
         pytest.param({"name": "x"}, id="name-too-short"),
+        pytest.param({"name": " A "}, id="name-too-short-after-normalization"),
         pytest.param({"category": "x"}, id="category-too-short"),
+        pytest.param({"category": " C "}, id="category-too-short-after-normalization"),
         pytest.param({"description": ""}, id="empty-description"),
         pytest.param({"price": "0"}, id="zero-price"),
         pytest.param({"price": "1.999"}, id="too-many-decimals"),
-        pytest.param({"price": "100000000"}, id="price-out-of-range"),
+        pytest.param({"price": "1000000.00"}, id="price-out-of-range"),
+        pytest.param({"price": True}, id="price-must-not-be-boolean"),
         pytest.param({"price": "-0.01"}, id="negative-price"),
         pytest.param({"stock": -1}, id="negative-stock"),
         pytest.param({"stock": 1.5}, id="fractional-stock"),
-        pytest.param({"name": "N" * 121}, id="name-too-long"),
-        pytest.param({"category": "C" * 81}, id="category-too-long"),
-        pytest.param({"description": "D" * 601}, id="description-too-long"),
+        pytest.param({"name": "N" * 33}, id="name-too-long"),
+        pytest.param({"name": "Ürün!"}, id="name-invalid-format"),
+        pytest.param({"category": "C" * 41}, id="category-too-long"),
+        pytest.param({"category": "Bakım!"}, id="category-invalid-format"),
+        pytest.param({"description": "Kısa"}, id="description-too-short"),
+        pytest.param(
+            {"description": "         x"},
+            id="description-too-short-after-trimming",
+        ),
+        pytest.param({"description": "D" * 501}, id="description-too-long"),
+        pytest.param(
+            {"description": "Geçersiz\x00 açıklama"},
+            id="description-control-character",
+        ),
     ],
 )
 def test_admin_cannot_create_product_with_invalid_fields(
@@ -135,6 +249,79 @@ def test_admin_cannot_create_product_with_invalid_fields(
     )
 
     assert response.status_code == 422
+    assert response.json()["detail"]
+    catalog = client.get(
+        "/api/v1/products",
+        headers={"Authorization": f"Bearer {access_token(client, admin)}"},
+    )
+    assert catalog.json()["total"] == 0
+
+
+@pytest.mark.parametrize(
+    "updates",
+    [
+        pytest.param({"name": "N" * 33}, id="name-over-32-characters"),
+        pytest.param({"category": "C" * 41}, id="category-over-40-characters"),
+        pytest.param({"description": "D" * 9}, id="description-under-10-characters"),
+        pytest.param({"description": "D" * 501}, id="description-over-500-characters"),
+        pytest.param({"price": Decimal("0.00")}, id="price-below-minimum"),
+        pytest.param({"price": Decimal("1000000.00")}, id="price-above-maximum"),
+        pytest.param({"stock": 1000000}, id="stock-above-maximum"),
+    ],
+)
+def test_database_constraints_reject_invalid_products(
+    engine,
+    updates: dict[str, object],
+) -> None:
+    product_data: dict[str, object] = {
+        "name": "Geçerli Ürün",
+        "name_key": "geçerli ürün",
+        "category": "Kişisel Bakım",
+        "description": "Yeterince uzun ürün açıklaması.",
+        "price": Decimal("129.90"),
+        "stock": 24,
+    }
+    product_data.update(updates)
+    if "name" in updates:
+        product_data["name_key"] = str(updates["name"]).casefold()
+
+    session_factory = sessionmaker(bind=engine, class_=Session)
+    with session_factory() as session:
+        session.add(Product(**product_data))
+        with pytest.raises(IntegrityError):
+            session.commit()
+        session.rollback()
+        assert session.scalar(select(func.count()).select_from(Product)) == 0
+
+
+def test_database_enforces_product_name_key_uniqueness(engine) -> None:
+    session_factory = sessionmaker(bind=engine, class_=Session)
+    with session_factory() as session:
+        session.add(
+            Product(
+                name="Lavanta El Kremi",
+                name_key="lavanta el kremi",
+                category="Kişisel Bakım",
+                description="Günlük kullanım için nemlendirici el kremi.",
+                price=Decimal("129.90"),
+                stock=24,
+            )
+        )
+        session.commit()
+        session.add(
+            Product(
+                name="LAVANTA EL KREMİ",
+                name_key="lavanta el kremi",
+                category="Kişisel Bakım",
+                description="İkinci ürün açıklaması, yeterli uzunlukta.",
+                price=Decimal("99.90"),
+                stock=1,
+            )
+        )
+        with pytest.raises(IntegrityError):
+            session.commit()
+        session.rollback()
+        assert session.scalar(select(func.count()).select_from(Product)) == 1
 
 
 def test_list_products_supports_stable_pagination(

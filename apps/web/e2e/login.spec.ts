@@ -25,12 +25,25 @@ test.describe('REQ-001 login, REQ-002 catalog, and REQ-003 admin product creatio
     await expect(page.getByRole('button', { name: '+ Ürün ekle' })).toBeVisible()
     await page.getByRole('button', { name: '+ Ürün ekle' }).click()
     await expect(page.getByRole('heading', { name: 'Yeni ürün ekle' })).toBeVisible()
-    await page.getByLabel('Ürün adı').fill('Admin UI Test Ürünü')
+    await page.getByLabel('Ürün adı').fill('Admin!')
     await page.getByLabel('Kategori').fill('Test Kategorisi')
     await page.getByLabel('Açıklama').fill('Admin sayfasından eklenen test ürünü.')
     await page.getByLabel('Fiyat (TL)').fill('89.90')
     await page.getByLabel('Stok adedi').fill('6')
 
+    let createRequestCount = 0
+    page.on('request', (request) => {
+      if (request.url().endsWith('/api/v1/products') && request.method() === 'POST') {
+        createRequestCount += 1
+      }
+    })
+    await page.getByRole('button', { name: 'Ürünü kaydet' }).click()
+    await expect(page.getByRole('alert')).toContainText(
+      'Ürün bilgilerini kontrol edip tekrar dene.',
+    )
+    expect(createRequestCount).toBe(0)
+
+    await page.getByLabel('Ürün adı').fill('Admin UI Test Ürünü')
     const createResponsePromise = page.waitForResponse(
       (response) =>
         response.url().endsWith('/api/v1/products') &&
@@ -42,6 +55,25 @@ test.describe('REQ-001 login, REQ-002 catalog, and REQ-003 admin product creatio
     expect(createResponse.status()).toBe(201)
     await expect(page.getByRole('table', { name: 'Ürün listesi' })).toContainText(
       'Admin UI Test Ürünü',
+    )
+
+    await page.getByRole('button', { name: '+ Ürün ekle' }).click()
+    await page.getByLabel('Ürün adı').fill('admin ui test ürünü')
+    await page.getByLabel('Kategori').fill('Test Kategorisi')
+    await page.getByLabel('Açıklama').fill('Aynı ürün adı yeniden eklenmemelidir.')
+    await page.getByLabel('Fiyat (TL)').fill('89.90')
+    await page.getByLabel('Stok adedi').fill('6')
+    const duplicateResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/api/v1/products') &&
+        response.request().method() === 'POST',
+    )
+    await page.getByRole('button', { name: 'Ürünü kaydet' }).click()
+    const duplicateResponse = await duplicateResponsePromise
+
+    expect(duplicateResponse.status()).toBe(409)
+    await expect(page.getByRole('alert')).toContainText(
+      'Bu ürün adı katalogda zaten kullanılıyor.',
     )
   })
 

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ProductCreatePage from './ProductCreatePage'
@@ -67,6 +67,39 @@ describe('admin product creation page', () => {
     expect(onCancel).not.toHaveBeenCalled()
   })
 
+  it('normalizes decomposed product names to Unicode NFC before sending', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify(createdProduct), {
+        status: 201,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    const user = userEvent.setup()
+    render(
+      <ProductCreatePage token="admin-token" onCancel={onCancel} onCreated={onCreated} />,
+    )
+    await user.type(screen.getByLabelText('Ürün adı'), 'Cafe\u0301 Sabunu')
+    await user.type(screen.getByLabelText('Kategori'), 'Ev ve Yaşam')
+    await user.type(screen.getByLabelText('Açıklama'), 'El yapımı dekoratif ürün.')
+    await user.type(screen.getByLabelText('Fiyat (TL)'), '299.90')
+    await user.type(screen.getByLabelText('Stok adedi'), '7')
+
+    await user.click(screen.getByRole('button', { name: 'Ürünü kaydet' }))
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/products',
+      expect.objectContaining({
+        body: JSON.stringify({
+          name: 'Café Sabunu',
+          category: 'Ev ve Yaşam',
+          description: 'El yapımı dekoratif ürün.',
+          price: '299.9',
+          stock: 7,
+        }),
+      }),
+    )
+  })
+
   it('requires every field and rejects invalid price and stock before sending', async () => {
     const user = userEvent.setup()
     render(
@@ -88,9 +121,83 @@ describe('admin product creation page', () => {
     expect(screen.getByLabelText('Fiyat (TL)')).toBeInvalid()
   })
 
+  it('rejects a description that is too short after trimming whitespace', async () => {
+    const user = userEvent.setup()
+    render(
+      <ProductCreatePage token="admin-token" onCancel={onCancel} onCreated={onCreated} />,
+    )
+    await user.type(screen.getByLabelText('Ürün adı'), 'Yeni Ürün')
+    await user.type(screen.getByLabelText('Kategori'), 'Ev ve Yaşam')
+    fireEvent.change(screen.getByLabelText('Açıklama'), {
+      target: { value: '         x' },
+    })
+    await user.type(screen.getByLabelText('Fiyat (TL)'), '299.90')
+    await user.type(screen.getByLabelText('Stok adedi'), '7')
+
+    await user.click(screen.getByRole('button', { name: 'Ürünü kaydet' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Ürün bilgilerini kontrol edip tekrar dene.',
+    )
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('exposes the same field constraints as the product API', () => {
+    render(
+      <ProductCreatePage token="admin-token" onCancel={onCancel} onCreated={onCreated} />,
+    )
+
+    expect(screen.getByLabelText('Ürün adı')).toHaveAttribute('maxLength', '32')
+    expect(screen.getByLabelText('Kategori')).toHaveAttribute('maxLength', '40')
+    expect(screen.getByLabelText('Açıklama')).toHaveAttribute('minLength', '10')
+    expect(screen.getByLabelText('Açıklama')).toHaveAttribute('maxLength', '500')
+    expect(screen.getByLabelText('Fiyat (TL)')).toHaveAttribute('min', '0.01')
+    expect(screen.getByLabelText('Fiyat (TL)')).toHaveAttribute('max', '999999.99')
+    expect(screen.getByLabelText('Stok adedi')).toHaveAttribute('min', '0')
+    expect(screen.getByLabelText('Stok adedi')).toHaveAttribute('max', '999999')
+  })
+
+  it.each([
+    ['Ürün adı', 'A'.repeat(33)],
+    ['Ürün adı', 'Geçersiz!'],
+    ['Kategori', 'K'.repeat(41)],
+    ['Kategori', 'Bakım!'],
+    ['Açıklama', 'Kısa'],
+    ['Açıklama', 'A'.repeat(501)],
+    ['Açıklama', 'Geçersiz\u0000 açıklama'],
+    ['Fiyat (TL)', '0'],
+    ['Fiyat (TL)', '1000000'],
+    ['Fiyat (TL)', ''],
+    ['Stok adedi', '-1'],
+    ['Stok adedi', '1000000'],
+    ['Stok adedi', ''],
+  ])('blocks invalid %s value %s before the API request', async (field, invalidValue) => {
+    render(
+      <ProductCreatePage token="admin-token" onCancel={onCancel} onCreated={onCreated} />,
+    )
+
+    fireEvent.change(screen.getByLabelText('Ürün adı'), { target: { value: 'Yeni Ürün' } })
+    fireEvent.change(screen.getByLabelText('Kategori'), { target: { value: 'Ev ve Yaşam' } })
+    fireEvent.change(screen.getByLabelText('Açıklama'), {
+      target: { value: 'El yapımı dekoratif ürün.' },
+    })
+    fireEvent.change(screen.getByLabelText('Fiyat (TL)'), { target: { value: '299.90' } })
+    fireEvent.change(screen.getByLabelText('Stok adedi'), { target: { value: '7' } })
+    fireEvent.change(screen.getByLabelText(field), { target: { value: invalidValue } })
+
+    fireEvent.submit(screen.getByRole('button', { name: 'Ürünü kaydet' }).closest('form')!)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Ürün bilgilerini kontrol edip tekrar dene.',
+    )
+    expect(fetch).not.toHaveBeenCalled()
+    expect(onCreated).not.toHaveBeenCalled()
+  })
+
   it.each([
     [401, 'Oturum süren dolmuş. Çıkış yapıp yeniden giriş yap.'],
     [403, 'Bu işlem için yönetici yetkisi gereklidir.'],
+    [409, 'Bu ürün adı katalogda zaten kullanılıyor.'],
     [422, 'Ürün bilgilerini kontrol edip tekrar dene.'],
     [500, 'Ürün eklenemedi. Lütfen tekrar dene.'],
   ])('shows a safe message when the API returns %i', async (status, message) => {

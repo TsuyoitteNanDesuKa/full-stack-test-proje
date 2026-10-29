@@ -1,13 +1,19 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from shop_api.database import get_db
 from shop_api.dependencies import get_admin_user, get_current_user
 from shop_api.models import Product, User
-from shop_api.schemas import ProductCreateRequest, ProductListResponse, ProductResponse
+from shop_api.schemas import (
+    ProductCreateRequest,
+    ProductListResponse,
+    ProductResponse,
+    product_name_key,
+)
 
 router = APIRouter(prefix="/api/v1/products", tags=["products"])
 
@@ -39,8 +45,24 @@ def create_product(
     _admin_user: Annotated[User, Depends(get_admin_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> ProductResponse:
-    product = Product(**payload.model_dump())
+    name_key = product_name_key(payload.name)
+    if db.scalar(select(Product.id).where(Product.name_key == name_key)) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Bu ürün adı katalogda zaten kullanılıyor.",
+        )
+
+    product = Product(**payload.model_dump(), name_key=name_key)
     db.add(product)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        if db.scalar(select(Product.id).where(Product.name_key == name_key)) is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Bu ürün adı katalogda zaten kullanılıyor.",
+            ) from None
+        raise
     db.refresh(product)
     return ProductResponse.model_validate(product)

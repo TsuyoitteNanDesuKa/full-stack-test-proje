@@ -9,12 +9,49 @@ interface ProductCreatePageProps {
   onCreated: (product: Product) => void
 }
 
+function hasValidProductFields(product: ProductCreateRequest): boolean {
+  const namePattern = /^[\p{L}\p{N}_]+(?:[ '-][\p{L}\p{N}_]+)*$/u
+  const categoryPattern =
+    /^[\p{L}\p{N}_]+(?:[ &/'’-][\p{L}\p{N}_]+)*$/u
+  const nonPrintablePattern = /[\p{C}\p{Z}]/u
+  const hasInvalidDescriptionCharacter = [...product.description].some(
+    (character) =>
+      character !== ' ' &&
+      character !== '\n' &&
+      character !== '\t' &&
+      nonPrintablePattern.test(character),
+  )
+  const validPrice =
+    /^\d+(?:\.\d{1,2})?$/.test(product.price) &&
+    Number(product.price) >= 0.01 &&
+    Number(product.price) <= 999999.99
+
+  return (
+    product.name.length >= 2 &&
+    product.name.length <= 32 &&
+    namePattern.test(product.name) &&
+    product.category.length >= 2 &&
+    product.category.length <= 40 &&
+    categoryPattern.test(product.category) &&
+    product.description.length >= 10 &&
+    product.description.length <= 500 &&
+    !hasInvalidDescriptionCharacter &&
+    validPrice &&
+    Number.isInteger(product.stock) &&
+    product.stock >= 0 &&
+    product.stock <= 999999
+  )
+}
+
 function getErrorMessage(error: unknown): string {
   if (error instanceof ApiError && error.status === 401) {
     return 'Oturum süren dolmuş. Çıkış yapıp yeniden giriş yap.'
   }
   if (error instanceof ApiError && error.status === 403) {
     return 'Bu işlem için yönetici yetkisi gereklidir.'
+  }
+  if (error instanceof ApiError && error.status === 409) {
+    return 'Bu ürün adı katalogda zaten kullanılıyor.'
   }
   if (error instanceof ApiError && error.status === 422) {
     return 'Ürün bilgilerini kontrol edip tekrar dene.'
@@ -41,16 +78,21 @@ export default function ProductCreatePage({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError('')
-    setIsSubmitting(true)
 
     const product: ProductCreateRequest = {
-      name: name.trim(),
-      category: category.trim(),
+      name: name.trim().replace(/\s+/g, ' ').normalize('NFC'),
+      category: category.trim().replace(/\s+/g, ' ').normalize('NFC'),
       description: description.trim(),
       price,
-      stock: Number(stock),
+      stock: stock === '' ? Number.NaN : Number(stock),
     }
 
+    if (!hasValidProductFields(product)) {
+      setError('Ürün bilgilerini kontrol edip tekrar dene.')
+      return
+    }
+
+    setIsSubmitting(true)
     try {
       const createdProduct = await createProduct(token, product)
       onCreated(createdProduct)
@@ -83,10 +125,11 @@ export default function ProductCreatePage({
           <input
             autoComplete="off"
             id="product-name"
-            maxLength={120}
+            maxLength={32}
             minLength={2}
             onChange={(event) => setName(event.target.value)}
             required
+            title="Harf, rakam, boşluk, tire ve kesme işareti kullanın."
             value={name}
           />
 
@@ -94,17 +137,19 @@ export default function ProductCreatePage({
           <input
             autoComplete="off"
             id="product-category"
-            maxLength={80}
+            maxLength={40}
             minLength={2}
             onChange={(event) => setCategory(event.target.value)}
             required
+            title="Kategori biçimini kontrol edin."
             value={category}
           />
 
           <label htmlFor="product-description">Açıklama</label>
           <textarea
             id="product-description"
-            maxLength={600}
+            maxLength={500}
+            minLength={10}
             onChange={(event) => setDescription(event.target.value)}
             required
             rows={4}
@@ -117,6 +162,7 @@ export default function ProductCreatePage({
               <input
                 id="product-price"
                 min="0.01"
+                max="999999.99"
                 onChange={(event) => setPrice(event.target.value)}
                 required
                 step="0.01"
@@ -129,6 +175,7 @@ export default function ProductCreatePage({
               <input
                 id="product-stock"
                 min="0"
+                max="999999"
                 onChange={(event) => setStock(event.target.value)}
                 required
                 step="1"
