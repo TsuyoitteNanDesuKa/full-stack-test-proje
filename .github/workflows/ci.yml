@@ -1,0 +1,221 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend tests and quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install backend dependencies
+        id: dependencies
+        working-directory: apps/api
+        run: uv sync --locked
+
+      - name: Ruff lint
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        working-directory: apps/api
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        working-directory: apps/api
+        run: uv run ruff format --check .
+
+      - name: Run backend tests with coverage
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        working-directory: apps/api
+        run: |
+          mkdir -p reports
+          uv run pytest \
+            --cov=shop_api \
+            --cov-report=term-missing \
+            --cov-report=json:reports/backend-coverage.json \
+            --cov-report=html:reports/backend-coverage-html \
+            --junitxml=reports/backend-junit.xml
+
+      - name: Upload backend reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-reports
+          path: apps/api/reports/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  frontend:
+    name: Frontend tests and quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install frontend dependencies
+        id: dependencies
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Oxlint
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        working-directory: apps/web
+        run: npm run lint
+
+      - name: TypeScript check and production build
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        working-directory: apps/web
+        run: npm run build
+
+      - name: Run frontend tests with coverage
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        working-directory: apps/web
+        run: |
+          mkdir -p test-results
+          npm run test:coverage -- \
+            --reporter=default \
+            --reporter=junit \
+            --outputFile=test-results/frontend-junit.xml
+
+      - name: Upload frontend reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-reports
+          path: |
+            apps/web/test-results/
+            apps/web/coverage/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  e2e:
+    name: Browser end-to-end tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install frontend dependencies
+        id: frontend-dependencies
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Install backend dependencies
+        id: backend-dependencies
+        if: ${{ !cancelled() && steps.frontend-dependencies.outcome == 'success' }}
+        working-directory: apps/api
+        run: uv sync --locked
+
+      - name: Install Chromium and system dependencies
+        id: browser
+        if: ${{ !cancelled() && steps.backend-dependencies.outcome == 'success' }}
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser tests
+        if: ${{ !cancelled() && steps.browser.outcome == 'success' }}
+        working-directory: apps/web
+        run: npm run test:e2e
+
+      - name: Upload Playwright report and traces
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-reports
+          path: apps/web/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  report:
+    name: Unified test report
+    if: ${{ always() }}
+    needs:
+      - backend
+      - frontend
+      - e2e
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Download backend reports
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-reports
+          path: artifacts/backend
+
+      - name: Download frontend reports
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-reports
+          path: artifacts/frontend
+
+      - name: Download browser test reports
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: e2e-reports
+          path: artifacts/e2e
+
+      - name: Write unified workflow summary
+        if: ${{ always() }}
+        env:
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+        run: node scripts/ci-summary.mjs
+
+      - name: Fail the workflow if any quality stage failed
+        if: ${{ always() }}
+        env:
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+        run: |
+          if [[ "$BACKEND_RESULT" != "success" || \
+                "$FRONTEND_RESULT" != "success" || \
+                "$E2E_RESULT" != "success" ]]; then
+            echo "At least one quality stage did not pass."
+            exit 1
+          fi

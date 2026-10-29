@@ -8,7 +8,7 @@ Müşterilerin ürünleri bulup satın alabildiği bir çevrimiçi mağaza geli�
 
 ## Kapsam ve varsayımlar
 
-- İlk istemci uygulaması tarayıcı üzerinden kullanılacaktır; bu dilimde yalnızca backend API geliştirilmektedir.
+- İlk istemci uygulaması tarayıcı üzerinden kullanılacaktır; bu gereksinim backend API ve login arayüzünü kapsar.
 - İlk gereksinimde giriş yapacak müşterinin hesabı önceden oluşturulmuş ve etkin durumdadır.
 - Herkese açık müşteri kaydı, parola sıfırlama, sosyal giriş ve oturum kapatma ilk gereksinimin kapsamında değildir.
 - Yerel geliştirme veritabanı SQLite'tır. PostgreSQL'e geçiş ayrı ortam çalışmasıdır.
@@ -23,7 +23,7 @@ Müşterilerin ürünleri bulup satın alabildiği bir çevrimiçi mağaza geli�
 ## REQ-001 — Kayıtlı müşteri girişi ve ana sayfaya erişim
 
 **Öncelik:** P0  
-**Durum:** Backend/API hazır; tarayıcı arayüzü ayrı bir dilimde geliştirilecek.  
+**Durum:** Backend ve login arayüzü hazır; kayıt ve ürün kataloğu sonraki dilimlerde geliştirilecek.  
 **Kullanıcı hikâyesi:** Bir müşteri olarak hesabıma güvenli biçimde giriş yapıp mağaza ana sayfasını görmek istiyorum; böylece alışverişe başlayabilirim.  
 **Ön koşul:** Müşteri hesabı etkin durumdadır ve geçerli bir e-posta adresiyle önceden oluşturulmuştur.
 
@@ -42,7 +42,7 @@ Müşterilerin ürünleri bulup satın alabildiği bir çevrimiçi mağaza geli�
 - Müşteri kayıt, parola sıfırlama, çok faktörlü kimlik doğrulama ve sosyal giriş.
 - Refresh token, cihaz/oturum yönetimi ve oturum kapatma.
 - Ürün listesi, arama, kampanya ve kişiye özel ana sayfa içeriği.
-- Tarayıcı kullanıcı arayüzü.
+- Kayıt, ürün listesi ve müşteri hesabı ekranları.
 
 ### API sözleşmesi (ilk sürüm)
 
@@ -103,6 +103,10 @@ Erişim belirteci yoksa veya geçersizse `401 Unauthorized` döndürülür.
 | REQ-001-T5 | API | Belirteçli ana sayfa isteği | `200`, beklenen karşılama içeriği |
 | REQ-001-T6 | API | Belirteç yok/bozuk/süresi dolmuş | `401` |
 | REQ-001-T7 | Güvenlik | Yanıt gövdesi ve uygulama logları | Parola veya parola özeti dışarı sızmaz |
+| REQ-001-T8 | Component/integration | Başarılı giriş ve ana sayfa isteği | Login formu token'ı korumalı istekte kullanır; ana sayfa görünür |
+| REQ-001-T9 | Component | Login `401`, `422`, `5xx` ve bağlantı hataları | Her durumda kullanıcıya uygun, sunucu iç detaylarını açmayan mesaj gösterilir |
+| REQ-001-T10 | E2E | Gerçek tarayıcı, API ve veritabanıyla geçerli giriş | Login ve korumalı ana sayfa akışı tamamlanır; çıkış login formuna döner |
+| REQ-001-T11 | E2E | Gerçek backend ile yanlış parola | Genel hata gösterilir; ana sayfa isteği gönderilmez |
 
 ## İleri gereksinim adayları
 

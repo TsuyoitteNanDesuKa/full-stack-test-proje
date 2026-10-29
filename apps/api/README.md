@@ -43,10 +43,19 @@ The login response contains a short-lived bearer token. Send it as `Authorizatio
 
 ## Tests and lint
 
+The tests are isolated from the local development database:
+
+- `tests/test_security.py` and `tests/test_config.py` exercise password, token, and settings rules.
+- `tests/test_auth.py` and `tests/test_home.py` exercise the login and protected-home HTTP APIs against temporary SQLite databases.
+- `tests/test_database.py` and `tests/test_main.py` cover database selection and application lifecycle.
+
 ```powershell
 uv run pytest
+uv run pytest --cov=shop_api --cov-report=term-missing
 uv run ruff check .
 uv run ruff format --check .
 ```
 
-Each test creates an isolated SQLite database. No local customer data or running database service is needed.
+Branch coverage is enabled, with a 95% minimum across the measured `shop_api` package; the local operator-only `create_user.py` helper is excluded. Each API test creates an isolated SQLite database. No local customer data or running database service is needed.
+
+GitHub Actions runs the same tests and quality checks for pushes and pull requests. Its unified run summary reports backend test counts and statement/branch coverage; detailed HTML coverage and JUnit results are retained as workflow artifacts.

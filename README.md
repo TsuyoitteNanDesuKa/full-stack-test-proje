@@ -56,6 +56,40 @@ uv run uvicorn shop_api.main:create_app --factory --reload
 
 `shop-create-user` komutu giriş yapabilmek için yerel bir mevcut hesap oluşturur; herkese açık kayıt uç noktası değildir. API dokümantasyonu `http://127.0.0.1:8000/docs` adresinde açılır. Diğer ortam ve test yönergeleri [backend README](./apps/api/README.md) dosyasındadır.
 
+### Login arayüzünü çalıştırma
+
+İlk kurulumda API ortamını hazırlayıp örnek bir müşteri hesabı oluşturun. Parola terminalde gizli istenir:
+
+```powershell
+Set-Location apps/api
+uv sync
+Copy-Item .env.example .env
+```
+
+`.env` içindeki `SHOP_SECRET_KEY` değerini benzersiz ve en az 32 karakterlik bir değerle değiştirin. Ardından:
+
+```powershell
+uv run alembic upgrade head
+uv run shop-create-user
+```
+
+İki terminal açın. İlkinde backend'i:
+
+```powershell
+Set-Location apps/api
+uv run uvicorn shop_api.main:create_app --factory --reload
+```
+
+İkincisinde frontend'i başlatın:
+
+```powershell
+Set-Location apps/web
+npm install
+npm run dev
+```
+
+Login ekranını `http://127.0.0.1:5173` adresinde açın. Frontend `/api` isteklerini Vite proxy ile `http://127.0.0.1:8000` adresindeki backend'e iletir. Giriş başarılı olduğunda frontend, bearer belirteciyle ana sayfa API'sini çağırır; belirteç tarayıcı belleğinde tutulur ve çıkışta silinir.
+
 ## Önerilen teknoloji seti
 
 Teknolojiler öğrenme hedefini desteklemek için seçilmiştir; her aracın tüm özelliklerini öğrenmek gerekmez.
@@ -125,6 +159,12 @@ Her pull request için hedeflenen temel sıra:
 5. Kararlı ve kritik Playwright senaryoları.
 
 Testlerin deterministik, bağımsız ve anlaşılır hata mesajlarına sahip olmasını hedefleyin. Test başarısızlıklarını gizlemeyin; flaky testleri karantinaya almak yerine kök nedenini takip edin. Kapsam yüzdesini tek başına kalite ölçütü olarak kullanmayın; kritik kuralların ve risklerin gerçekten kapsandığını değerlendirin.
+
+### CI sonuçlarını tek ekranda izleme
+
+GitHub Actions iş akışı her push ve pull request'te backend, frontend ve tarayıcı E2E aşamalarını ayrı işler olarak çalıştırır. İş akışı sayfasındaki **Summary** sekmesi bu aşamaların durumunu, testlerde geçen/toplam senaryo sayısını ve kapsam yüzdelerini tek tabloda birleştirir. Coverage yüzdeleri kendi ölçüm kapsamları içinde gösterilir; farklı kod tabanlarının yüzdeleri tek bir yanıltıcı sayıya dönüştürülmez.
+
+Bir iş akışı koşusu içinden **Unified test report** işinin özetine ulaşın. Ayrıntılı HTML coverage raporları, JUnit test sonuçları ve başarısız E2E koşularının Playwright izleri koşu artefaktları olarak 14 gün saklanır. CI yerelde çalışan geliştirme sunucularını veya veritabanını kullanmaz.
 
 ## Yol planı
 
