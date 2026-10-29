@@ -38,6 +38,7 @@ uv run uvicorn shop_api.main:create_app --factory --reload
 
 - OpenAPI UI: `http://127.0.0.1:8000/docs`
 - Login: `POST /api/v1/auth/login`
+- The login response includes `is_admin` for the authenticated account.
 - Protected home: `GET /api/v1/home`
 - Product listing: `GET /api/v1/products?limit=20&offset=0` (authenticated)
 - Product creation: `POST /api/v1/products` (administrator only)

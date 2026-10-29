@@ -4,7 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 
 function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
+  const responseBody =
+    body !== null && typeof body === 'object' && 'access_token' in body
+      ? { is_admin: false, ...body }
+      : body
+  return new Response(JSON.stringify(responseBody), {
     status,
     headers: { 'Content-Type': 'application/json' },
   })
@@ -33,7 +37,12 @@ describe('customer login', () => {
     fetchMock
       .mockResolvedValueOnce(
         new Response(
-          JSON.stringify({ access_token: 'signed-token', token_type: 'bearer', expires_in: 1800 }),
+          JSON.stringify({
+            access_token: 'signed-token',
+            token_type: 'bearer',
+            expires_in: 1800,
+            is_admin: false,
+          }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         ),
       )
@@ -60,6 +69,7 @@ describe('customer login', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('customer@example.com olarak giriş yaptın. Sana iyi gelecek şeyler burada başlıyor.')).toBeInTheDocument()
     expect(await screen.findByRole('table', { name: 'Ürün listesi' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '+ Ürün ekle' })).not.toBeInTheDocument()
     const productRow = screen.getByRole('row', { name: /Lavanta El Kremi/ })
     expect(productRow).toHaveTextContent('Kişisel Bakım')
     expect(productRow).toHaveTextContent('Günlük kullanım için nemlendirici el kremi.')
@@ -93,6 +103,64 @@ describe('customer login', () => {
 
     await user.click(screen.getByRole('button', { name: /çıkış yap/i }))
     expect(screen.getByRole('heading', { name: 'Merhaba.' })).toBeInTheDocument()
+  })
+
+  it('lets an administrator open the product page and adds the created product to the table', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        jsonResponse({
+          access_token: 'admin-token',
+          token_type: 'bearer',
+          expires_in: 1800,
+          is_admin: true,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ message: 'Welcome', featured_categories: [] }),
+      )
+      .mockResolvedValueOnce(jsonResponse(productList([])))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            ...sampleProduct,
+            id: 2,
+            name: 'Yeni Yönetici Ürünü',
+            price: '299.90',
+          },
+          201,
+        ),
+      )
+
+    const user = userEvent.setup()
+    render(<App />)
+    await user.type(screen.getByLabelText('E-posta adresi'), 'admin@example.com')
+    await user.type(screen.getByLabelText('Parola'), 'correct-password')
+    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
+
+    await screen.findByRole('heading', { name: 'Welcome.' })
+    await user.click(await screen.findByRole('button', { name: '+ Ürün ekle' }))
+    expect(screen.getByRole('heading', { name: 'Yeni ürün ekle' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Ürün listesine dön' }))
+    expect(await screen.findByText('Henüz listelenecek ürün yok.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '+ Ürün ekle' }))
+
+    await user.type(screen.getByLabelText('Ürün adı'), 'Yeni Yönetici Ürünü')
+    await user.type(screen.getByLabelText('Kategori'), 'Kişisel Bakım')
+    await user.type(screen.getByLabelText('Açıklama'), 'Günlük kullanım ürünü.')
+    await user.type(screen.getByLabelText('Fiyat (TL)'), '299.90')
+    await user.type(screen.getByLabelText('Stok adedi'), '24')
+    await user.click(screen.getByRole('button', { name: 'Ürünü kaydet' }))
+
+    expect(await screen.findByRole('table', { name: 'Ürün listesi' })).toHaveTextContent(
+      'Yeni Yönetici Ürünü',
+    )
+    expect(fetch).toHaveBeenLastCalledWith(
+      '/api/v1/products',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ Authorization: 'Bearer admin-token' }),
+      }),
+    )
   })
 
   it('shows an understandable message for incorrect credentials', async () => {

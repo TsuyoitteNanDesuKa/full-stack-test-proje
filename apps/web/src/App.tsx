@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import './App.css'
 import { ApiError, getHome, getProducts, login } from './api'
 import type { Product } from './api'
+import ProductCreatePage from './ProductCreatePage'
 
 class HomeLoadError extends Error {
   constructor(cause: unknown) {
@@ -245,17 +246,20 @@ function HomePage({
   email,
   message,
   token,
+  isAdmin,
   onLogout,
 }: {
   email: string
   message: string
   token: string
+  isAdmin: boolean
   onLogout: () => void
 }) {
   const [products, setProducts] = useState<Product[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [retryCount, setRetryCount] = useState(0)
+  const [isCreatingProduct, setIsCreatingProduct] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -290,6 +294,19 @@ function HomePage({
     currency: 'TRY',
   })
 
+  if (isCreatingProduct && isAdmin) {
+    return (
+      <ProductCreatePage
+        onCancel={() => setIsCreatingProduct(false)}
+        onCreated={(product) => {
+          setProducts((currentProducts) => [product, ...currentProducts])
+          setIsCreatingProduct(false)
+        }}
+        token={token}
+      />
+    )
+  }
+
   return (
     <main className="store-home">
       <header className="store-header">
@@ -318,6 +335,15 @@ function HomePage({
           </div>
           {!isLoading && !error && (
             <span className="products-count">{products.length} ürün</span>
+          )}
+          {isAdmin && (
+            <button
+              className="add-product-button"
+              onClick={() => setIsCreatingProduct(true)}
+              type="button"
+            >
+              + Ürün ekle
+            </button>
           )}
         </div>
         {isLoading ? (
@@ -376,7 +402,12 @@ function HomePage({
 }
 
 function App() {
-  const [home, setHome] = useState<{ email: string; message: string; token: string } | null>(null)
+  const [home, setHome] = useState<{
+    email: string
+    message: string
+    token: string
+    isAdmin: boolean
+  } | null>(null)
 
   async function handleLogin(email: string, password: string) {
     const tokenResponse = await login(email, password)
@@ -386,13 +417,19 @@ function App() {
     } catch (error) {
       throw new HomeLoadError(error)
     }
-    setHome({ email, message: homeResponse.message, token: tokenResponse.access_token })
+    setHome({
+      email,
+      message: homeResponse.message,
+      token: tokenResponse.access_token,
+      isAdmin: tokenResponse.is_admin,
+    })
   }
 
   if (home) {
     return (
       <HomePage
         email={home.email}
+        isAdmin={home.isAdmin}
         message={home.message}
         onLogout={() => setHome(null)}
         token={home.token}

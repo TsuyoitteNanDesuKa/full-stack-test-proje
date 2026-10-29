@@ -18,7 +18,7 @@ export default defineConfig({
     setupFiles: './src/test/setup.ts',
     restoreMocks: true,
     coverage: {
-      include: ['src/App.tsx', 'src/api.ts'],
+      include: ['src/App.tsx', 'src/api.ts', 'src/ProductCreatePage.tsx'],
       reporter: ['text', 'html', 'json-summary'],
       thresholds: {
         statements: 100,

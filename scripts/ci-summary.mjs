@@ -97,14 +97,14 @@ const stages = [
     coverage: frontendCoverage?.total
       ? `Statements ${percentage(frontendCoverage.total.statements?.pct)}; branches ${percentage(frontendCoverage.total.branches?.pct)}; functions ${percentage(frontendCoverage.total.functions?.pct)}; lines ${percentage(frontendCoverage.total.lines?.pct)}`
       : 'Coverage report unavailable',
-    scope: '`Vitest`: API client and React login flow; coverage measured for `src/App.tsx` and `src/api.ts`',
+    scope: '`Vitest`: API client, login/catalog, and admin product creation; coverage measured for `src/App.tsx`, `src/api.ts`, and `src/ProductCreatePage.tsx`',
   },
   {
     name: 'Browser E2E',
     result: process.env.E2E_RESULT,
     tests: e2eTests,
     coverage: 'Behavioral scenarios; source coverage is not measured by E2E',
-    scope: '`Playwright` Chromium: login, admin product creation, customer write denial/listing, and invalid credentials; REQ-001/REQ-002',
+    scope: '`Playwright` Chromium: customer login/catalog, admin login/product creation, authorization, and invalid credentials; REQ-001/REQ-002/REQ-003',
   },
 ]
 

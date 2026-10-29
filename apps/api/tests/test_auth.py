@@ -21,6 +21,7 @@ def test_login_returns_access_token_for_existing_customer(
     assert response.status_code == 200
     assert response.json()["token_type"] == "bearer"
     assert response.json()["expires_in"] == 1800
+    assert response.json()["is_admin"] is False
     assert response.json()["access_token"]
     assert "password" not in response.json()
 
@@ -32,6 +33,19 @@ def test_login_returns_access_token_for_existing_customer(
     assert claims["sub"] == str(customer.id)
     assert claims["exp"] - claims["iat"] == 1800
     assert password not in caplog.text
+
+
+def test_admin_login_identifies_administrator_role(
+    client: TestClient,
+    admin: User,
+) -> None:
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": admin.email, "password": "correct-password-123"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["is_admin"] is True
 
 
 def test_login_normalizes_email(client: TestClient, customer: User) -> None:

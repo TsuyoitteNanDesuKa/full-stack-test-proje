@@ -6,7 +6,45 @@ import {
   testPassword,
 } from './test-credentials'
 
-test.describe('REQ-001 customer login and REQ-002 product catalog', () => {
+test.describe('REQ-001 login, REQ-002 catalog, and REQ-003 admin product creation', () => {
+  test('admin logs in and adds a product from the product page', async ({ page }) => {
+    await page.goto('/')
+    await page.getByLabel('E-posta adresi').fill(testAdminEmail)
+    await page.getByLabel('Parola', { exact: true }).fill(testAdminPassword)
+
+    const loginResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/api/v1/auth/login') &&
+        response.request().method() === 'POST',
+    )
+    await page.getByRole('button', { name: /giriş yap/i }).click()
+    const loginResponse = await loginResponsePromise
+    expect(loginResponse.status()).toBe(200)
+    expect((await loginResponse.json()).is_admin).toBe(true)
+
+    await expect(page.getByRole('button', { name: '+ Ürün ekle' })).toBeVisible()
+    await page.getByRole('button', { name: '+ Ürün ekle' }).click()
+    await expect(page.getByRole('heading', { name: 'Yeni ürün ekle' })).toBeVisible()
+    await page.getByLabel('Ürün adı').fill('Admin UI Test Ürünü')
+    await page.getByLabel('Kategori').fill('Test Kategorisi')
+    await page.getByLabel('Açıklama').fill('Admin sayfasından eklenen test ürünü.')
+    await page.getByLabel('Fiyat (TL)').fill('89.90')
+    await page.getByLabel('Stok adedi').fill('6')
+
+    const createResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/api/v1/products') &&
+        response.request().method() === 'POST',
+    )
+    await page.getByRole('button', { name: 'Ürünü kaydet' }).click()
+    const createResponse = await createResponsePromise
+
+    expect(createResponse.status()).toBe(201)
+    await expect(page.getByRole('table', { name: 'Ürün listesi' })).toContainText(
+      'Admin UI Test Ürünü',
+    )
+  })
+
   test('logs into the real API and lists products created through the API', async ({
     page,
     request,

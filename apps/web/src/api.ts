@@ -2,6 +2,7 @@ export interface TokenResponse {
   access_token: string
   token_type: 'bearer'
   expires_in: number
+  is_admin: boolean
 }
 
 export interface HomeResponse {
@@ -23,6 +24,14 @@ export interface ProductListResponse {
   total: number
   limit: number
   offset: number
+}
+
+export interface ProductCreateRequest {
+  name: string
+  category: string
+  description: string
+  price: string
+  stock: number
 }
 
 interface ApiErrorBody {
@@ -80,5 +89,16 @@ export function getProducts(
   const query = new URLSearchParams({ limit: String(limit), offset: String(offset) })
   return request<ProductListResponse>(`/api/v1/products?${query}`, {
     headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function createProduct(
+  token: string,
+  product: ProductCreateRequest,
+): Promise<Product> {
+  return request<Product>('/api/v1/products', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(product),
   })
 }

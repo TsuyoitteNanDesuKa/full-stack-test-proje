@@ -36,4 +36,8 @@ def login(
         request.app.state.secret_key,
         request.app.state.access_token_expire_minutes,
     )
-    return TokenResponse(access_token=token, expires_in=expires_in)
+    return TokenResponse(
+        access_token=token,
+        expires_in=expires_in,
+        is_admin=user.is_admin,
+    )

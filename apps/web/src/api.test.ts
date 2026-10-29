@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, getHome, getProducts, login } from './api'
+import { ApiError, createProduct, getHome, getProducts, login } from './api'
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -18,6 +18,7 @@ describe('login API client', () => {
       access_token: 'signed-token',
       token_type: 'bearer' as const,
       expires_in: 1800,
+      is_admin: false,
     }
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(body))
 
@@ -142,6 +143,64 @@ describe('storefront API client', () => {
       name: 'ApiError',
       status: 401,
       message: 'Kimlik doğrulaması gerekli.',
+    } satisfies Partial<ApiError>)
+  })
+
+  it('creates a product with the admin bearer token', async () => {
+    const product = {
+      id: 8,
+      name: 'Yeni Ürün',
+      category: 'Ev ve Yaşam',
+      description: 'El yapımı dekoratif ürün.',
+      price: '299.90',
+      stock: 7,
+    }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(product, 201))
+
+    await expect(
+      createProduct('admin-token', {
+        name: 'Yeni Ürün',
+        category: 'Ev ve Yaşam',
+        description: 'El yapımı dekoratif ürün.',
+        price: '299.90',
+        stock: 7,
+      }),
+    ).resolves.toEqual(product)
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/products',
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer admin-token',
+        },
+        body: JSON.stringify({
+          name: 'Yeni Ürün',
+          category: 'Ev ve Yaşam',
+          description: 'El yapımı dekoratif ürün.',
+          price: '299.90',
+          stock: 7,
+        }),
+      }),
+    )
+  })
+
+  it('preserves product creation failures for the form', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ detail: 'Bu işlem için yönetici yetkisi gereklidir.' }, 403),
+    )
+
+    await expect(
+      createProduct('customer-token', {
+        name: 'Yeni Ürün',
+        category: 'Ev ve Yaşam',
+        description: 'Ürün açıklaması.',
+        price: '29.90',
+        stock: 1,
+      }),
+    ).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 403,
     } satisfies Partial<ApiError>)
   })
 })
