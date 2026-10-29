@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
-import { ApiError, getHome, login } from './api'
+import { ApiError, getHome, getProducts, login } from './api'
+import type { Product } from './api'
 
 class HomeLoadError extends Error {
   constructor(cause: unknown) {
@@ -243,12 +244,52 @@ function LoginPage({
 function HomePage({
   email,
   message,
+  token,
   onLogout,
 }: {
   email: string
   message: string
+  token: string
   onLogout: () => void
 }) {
+  const [products, setProducts] = useState<Product[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [retryCount, setRetryCount] = useState(0)
+
+  useEffect(() => {
+    let active = true
+    getProducts(token)
+      .then((response) => {
+        if (active) {
+          setProducts(response.products)
+        }
+      })
+      .catch((loadError: unknown) => {
+        if (active) {
+          setError(
+            loadError instanceof TypeError
+              ? 'Ürünlere şu anda ulaşılamıyor. Sunucu bağlantısını kontrol edip tekrar dene.'
+              : 'Ürünler yüklenemedi. Lütfen tekrar dene.',
+          )
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setIsLoading(false)
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [retryCount, token])
+
+  const formatter = new Intl.NumberFormat('tr-TR', {
+    style: 'currency',
+    currency: 'TRY',
+  })
+
   return (
     <main className="store-home">
       <header className="store-header">
@@ -268,11 +309,66 @@ function HomePage({
         </span>
         <h1>{message}<span>.</span></h1>
         <p>{email} olarak giriş yaptın. Sana iyi gelecek şeyler burada başlıyor.</p>
-        <div className="store-empty">
-          <span aria-hidden="true">✳</span>
-          <p>Özenle seçtiklerimiz çok yakında burada.</p>
-          <small>Mağazamızı senin için hazırlıyoruz.</small>
+      </section>
+      <section aria-labelledby="products-heading" className="products-section">
+        <div className="products-heading-row">
+          <div>
+            <span className="products-kicker">LIVA SEÇKİSİ</span>
+            <h2 id="products-heading">Sana iyi gelecek ürünler</h2>
+          </div>
+          {!isLoading && !error && (
+            <span className="products-count">{products.length} ürün</span>
+          )}
         </div>
+        {isLoading ? (
+          <p className="products-status" role="status">Ürünler yükleniyor...</p>
+        ) : error ? (
+          <div className="products-error" role="alert">
+            <p>{error}</p>
+            <button
+              className="retry-button"
+              onClick={() => {
+                setError('')
+                setIsLoading(true)
+                setRetryCount((count) => count + 1)
+              }}
+              type="button"
+            >
+              Tekrar dene
+            </button>
+          </div>
+        ) : products.length === 0 ? (
+          <div className="store-empty">
+            <span aria-hidden="true">✳</span>
+            <p>Henüz listelenecek ürün yok.</p>
+            <small>Yeni ürünler eklendiğinde burada görebilirsin.</small>
+          </div>
+        ) : (
+          <div className="product-table-scroll">
+            <table aria-label="Ürün listesi" className="product-table">
+              <thead>
+                <tr>
+                  <th scope="col">Ürün</th>
+                  <th scope="col">Kategori</th>
+                  <th scope="col">Açıklama</th>
+                  <th scope="col">Fiyat</th>
+                  <th scope="col">Stok</th>
+                </tr>
+              </thead>
+              <tbody>
+                {products.map((product) => (
+                  <tr key={product.id}>
+                    <th scope="row">{product.name}</th>
+                    <td><span className="product-category">{product.category}</span></td>
+                    <td className="product-description">{product.description}</td>
+                    <td className="product-price">{formatter.format(Number(product.price))}</td>
+                    <td>{product.stock}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
       <footer className="store-footer">© 2026 Liva <span>Senin için, özenle.</span></footer>
     </main>
@@ -280,7 +376,7 @@ function HomePage({
 }
 
 function App() {
-  const [home, setHome] = useState<{ email: string; message: string } | null>(null)
+  const [home, setHome] = useState<{ email: string; message: string; token: string } | null>(null)
 
   async function handleLogin(email: string, password: string) {
     const tokenResponse = await login(email, password)
@@ -290,11 +386,18 @@ function App() {
     } catch (error) {
       throw new HomeLoadError(error)
     }
-    setHome({ email, message: homeResponse.message })
+    setHome({ email, message: homeResponse.message, token: tokenResponse.access_token })
   }
 
   if (home) {
-    return <HomePage email={home.email} message={home.message} onLogout={() => setHome(null)} />
+    return (
+      <HomePage
+        email={home.email}
+        message={home.message}
+        onLogout={() => setHome(null)}
+        token={home.token}
+      />
+    )
   }
 
   return <LoginPage onLogin={handleLogin} />

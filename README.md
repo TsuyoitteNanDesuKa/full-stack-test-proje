@@ -51,10 +51,11 @@ Copy-Item .env.example .env
 ```powershell
 uv run alembic upgrade head
 uv run shop-create-user
+uv run shop-set-admin admin@example.com
 uv run uvicorn shop_api.main:create_app --factory --reload
 ```
 
-`shop-create-user` komutu giriş yapabilmek için yerel bir mevcut hesap oluşturur; herkese açık kayıt uç noktası değildir. API dokümantasyonu `http://127.0.0.1:8000/docs` adresinde açılır. Diğer ortam ve test yönergeleri [backend README](./apps/api/README.md) dosyasındadır.
+`shop-create-user` komutu giriş yapabilmek için yerel bir hesap oluşturur; herkese açık kayıt uç noktası değildir. `shop-set-admin` komutuna `shop-create-user` sırasında kullandığınız e-posta adresini verin; örnekteki adresi kendi hesabınızla değiştirin. Ürün listeleme tüm giriş yapmış müşterilere, ürün ekleme yalnızca adminlere açıktır. API dokümantasyonu `http://127.0.0.1:8000/docs` adresinde açılır. Diğer ortam ve test yönergeleri [backend README](./apps/api/README.md) dosyasındadır.
 
 ### Login arayüzünü çalıştırma
 
@@ -71,9 +72,10 @@ Copy-Item .env.example .env
 ```powershell
 uv run alembic upgrade head
 uv run shop-create-user
+uv run shop-set-admin admin@example.com
 ```
 
-İki terminal açın. İlkinde backend'i:
+Komuttaki e-posta adresini oluşturduğunuz hesapla değiştirin. İki terminal açın. İlkinde backend'i:
 
 ```powershell
 Set-Location apps/api

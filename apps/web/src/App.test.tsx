@@ -10,6 +10,19 @@ function jsonResponse(body: unknown, status = 200): Response {
   })
 }
 
+const sampleProduct = {
+  id: 1,
+  name: 'Lavanta El Kremi',
+  category: 'Kişisel Bakım',
+  description: 'Günlük kullanım için nemlendirici el kremi.',
+  price: '129.90',
+  stock: 24,
+}
+
+function productList(products: typeof sampleProduct[] = [sampleProduct]) {
+  return { products, total: products.length, limit: 20, offset: 0 }
+}
+
 describe('customer login', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn())
@@ -33,6 +46,7 @@ describe('customer login', () => {
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         ),
       )
+      .mockResolvedValueOnce(jsonResponse(productList()))
 
     const user = userEvent.setup()
     render(<App />)
@@ -45,6 +59,12 @@ describe('customer login', () => {
       await screen.findByRole('heading', { name: 'Alışverişe hoş geldiniz.' }),
     ).toBeInTheDocument()
     expect(screen.getByText('customer@example.com olarak giriş yaptın. Sana iyi gelecek şeyler burada başlıyor.')).toBeInTheDocument()
+    expect(await screen.findByRole('table', { name: 'Ürün listesi' })).toBeInTheDocument()
+    const productRow = screen.getByRole('row', { name: /Lavanta El Kremi/ })
+    expect(productRow).toHaveTextContent('Kişisel Bakım')
+    expect(productRow).toHaveTextContent('Günlük kullanım için nemlendirici el kremi.')
+    expect(productRow).toHaveTextContent('₺129,90')
+    expect(productRow).toHaveTextContent('24')
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
       '/api/v1/auth/login',
@@ -59,6 +79,13 @@ describe('customer login', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
       '/api/v1/home',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer signed-token' }),
+      }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      '/api/v1/products?limit=20&offset=0',
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: 'Bearer signed-token' }),
       }),
@@ -162,6 +189,7 @@ describe('customer login', () => {
             resolveHome = resolve
           }),
       )
+      .mockResolvedValueOnce(jsonResponse(productList()))
 
     const user = userEvent.setup()
     render(<App />)
@@ -183,6 +211,7 @@ describe('customer login', () => {
 
     resolveHome(jsonResponse({ message: 'Welcome', featured_categories: [] }))
     expect(await screen.findByRole('heading', { name: 'Welcome.' })).toBeInTheDocument()
+    expect(await screen.findByRole('table', { name: 'Ürün listesi' })).toBeInTheDocument()
   })
 
   it('keeps the login form available if the protected home request fails', async () => {
@@ -210,6 +239,170 @@ describe('customer login', () => {
     )
     expect(screen.getByRole('heading', { name: 'Merhaba.' })).toBeInTheDocument()
   })
+
+  it('shows an empty product state when the catalog has no products', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        jsonResponse({
+          access_token: 'signed-token',
+          token_type: 'bearer',
+          expires_in: 1800,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ message: 'Welcome', featured_categories: [] }),
+      )
+      .mockResolvedValueOnce(jsonResponse(productList([])))
+
+    const user = userEvent.setup()
+    render(<App />)
+    await user.type(screen.getByLabelText('E-posta adresi'), 'customer@example.com')
+    await user.type(screen.getByLabelText('Parola'), 'correct-password')
+    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
+
+    expect(await screen.findByText('Henüz listelenecek ürün yok.')).toBeInTheDocument()
+    expect(screen.queryByRole('table', { name: 'Ürün listesi' })).not.toBeInTheDocument()
+  })
+
+  it('announces product loading until the catalog request completes', async () => {
+    let resolveProducts: (response: Response) => void = () => {
+      throw new Error('Product request was not initialized.')
+    }
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        jsonResponse({
+          access_token: 'signed-token',
+          token_type: 'bearer',
+          expires_in: 1800,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ message: 'Welcome', featured_categories: [] }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveProducts = resolve
+          }),
+      )
+
+    const user = userEvent.setup()
+    render(<App />)
+    await user.type(screen.getByLabelText('E-posta adresi'), 'customer@example.com')
+    await user.type(screen.getByLabelText('Parola'), 'correct-password')
+    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
+
+    expect(await screen.findByRole('heading', { name: 'Welcome.' })).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Ürünler yükleniyor...')
+    expect(screen.queryByRole('table', { name: 'Ürün listesi' })).not.toBeInTheDocument()
+
+    resolveProducts(jsonResponse(productList()))
+    expect(await screen.findByRole('table', { name: 'Ürün listesi' })).toBeInTheDocument()
+  })
+
+  it('shows product API errors and lets the customer retry', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        jsonResponse({
+          access_token: 'signed-token',
+          token_type: 'bearer',
+          expires_in: 1800,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ message: 'Welcome', featured_categories: [] }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ detail: 'Private server detail.' }, 503),
+      )
+      .mockResolvedValueOnce(jsonResponse(productList()))
+
+    const user = userEvent.setup()
+    render(<App />)
+    await user.type(screen.getByLabelText('E-posta adresi'), 'customer@example.com')
+    await user.type(screen.getByLabelText('Parola'), 'correct-password')
+    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Ürünler yüklenemedi. Lütfen tekrar dene.',
+    )
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Private server detail.')
+    await user.click(screen.getByRole('button', { name: 'Tekrar dene' }))
+    expect(await screen.findByRole('table', { name: 'Ürün listesi' })).toBeInTheDocument()
+  })
+
+  it('shows a connection-specific message when the product service is unavailable', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        jsonResponse({
+          access_token: 'signed-token',
+          token_type: 'bearer',
+          expires_in: 1800,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ message: 'Welcome', featured_categories: [] }),
+      )
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+
+    const user = userEvent.setup()
+    render(<App />)
+    await user.type(screen.getByLabelText('E-posta adresi'), 'customer@example.com')
+    await user.type(screen.getByLabelText('Parola'), 'correct-password')
+    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Ürünlere şu anda ulaşılamıyor.',
+    )
+  })
+
+  it.each(['resolved', 'rejected'] as const)(
+    'ignores a product request that is %s after logout',
+    async (outcome) => {
+      let resolveProducts: (response: Response) => void = () => {
+        throw new Error('Product request was not initialized.')
+      }
+      let rejectProducts: (error: Error) => void = () => {
+        throw new Error('Product request was not initialized.')
+      }
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(
+          jsonResponse({
+            access_token: 'signed-token',
+            token_type: 'bearer',
+            expires_in: 1800,
+          }),
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({ message: 'Welcome', featured_categories: [] }),
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve, reject) => {
+              resolveProducts = resolve
+              rejectProducts = reject
+            }),
+        )
+
+      const user = userEvent.setup()
+      render(<App />)
+      await user.type(screen.getByLabelText('E-posta adresi'), 'customer@example.com')
+      await user.type(screen.getByLabelText('Parola'), 'correct-password')
+      await user.click(screen.getByRole('button', { name: /giriş yap/i }))
+      await screen.findByRole('heading', { name: 'Welcome.' })
+      await screen.findByRole('status')
+      await user.click(screen.getByRole('button', { name: /çıkış yap/i }))
+
+      if (outcome === 'resolved') {
+        resolveProducts(jsonResponse(productList()))
+      } else {
+        rejectProducts(new TypeError('Failed to fetch'))
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(screen.getByRole('heading', { name: 'Merhaba.' })).toBeInTheDocument()
+    },
+  )
 
   it('can reveal and hide the password without submitting the form', async () => {
     const user = userEvent.setup()

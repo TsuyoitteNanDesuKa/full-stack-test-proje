@@ -30,6 +30,7 @@ dev = [
 
 [project.scripts]
 shop-create-user = "shop_api.create_user:main"
+shop-set-admin = "shop_api.set_admin:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/shop_api"]
@@ -40,7 +41,7 @@ pythonpath = ["src"]
 
 [tool.coverage.run]
 branch = true
-omit = ["*/shop_api/create_user.py"]
+omit = ["*/shop_api/create_user.py", "*/shop_api/set_admin.py"]
 
 [tool.coverage.report]
 fail_under = 95

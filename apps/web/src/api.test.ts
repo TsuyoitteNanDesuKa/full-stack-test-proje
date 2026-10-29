@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, getHome, login } from './api'
+import { ApiError, getHome, getProducts, login } from './api'
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -84,5 +84,64 @@ describe('storefront API client', () => {
         },
       }),
     )
+  })
+
+  it('sends the bearer token and pagination to the product listing endpoint', async () => {
+    const body = {
+      products: [
+        {
+          id: 1,
+          name: 'Lavanta El Kremi',
+          category: 'Kişisel Bakım',
+          description: 'Nemlendirici el kremi.',
+          price: '129.90',
+          stock: 24,
+        },
+      ],
+      total: 1,
+      limit: 10,
+      offset: 5,
+    }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(body))
+
+    await expect(getProducts('signed-token', 10, 5)).resolves.toEqual(body)
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/products?limit=10&offset=5',
+      expect.objectContaining({
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer signed-token',
+        },
+      }),
+    )
+  })
+
+  it('uses the default page size and offset for product listing', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ products: [], total: 0, limit: 20, offset: 0 }),
+    )
+
+    await expect(getProducts('signed-token')).resolves.toEqual({
+      products: [],
+      total: 0,
+      limit: 20,
+      offset: 0,
+    })
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/products?limit=20&offset=0',
+      expect.any(Object),
+    )
+  })
+
+  it('preserves product endpoint failures for the caller', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ detail: 'Kimlik doğrulaması gerekli.' }, 401),
+    )
+
+    await expect(getProducts('expired-token')).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 401,
+      message: 'Kimlik doğrulaması gerekli.',
+    } satisfies Partial<ApiError>)
   })
 })

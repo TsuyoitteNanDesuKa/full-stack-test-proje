@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from shop_api.config import Settings, get_settings
 from shop_api.database import create_database_engine
-from shop_api.routes import auth, home
+from shop_api.routes import auth, home, products
 
 
 def create_app(settings: Settings | None = None, db_engine: Engine | None = None) -> FastAPI:
@@ -27,7 +27,7 @@ def create_app(settings: Settings | None = None, db_engine: Engine | None = None
     app = FastAPI(
         title="Online Store API",
         version="0.1.0",
-        description="API for the first online-store customer login and home-page increment.",
+        description="API for customer login, the storefront, and its product catalog.",
         lifespan=lifespan,
     )
     app.state.secret_key = secret_key
@@ -52,4 +52,5 @@ def create_app(settings: Settings | None = None, db_engine: Engine | None = None
 
     app.include_router(auth.router)
     app.include_router(home.router)
+    app.include_router(products.router)
     return app

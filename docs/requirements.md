@@ -12,7 +12,7 @@ Müşterilerin ürünleri bulup satın alabildiği bir çevrimiçi mağaza geli�
 - İlk gereksinimde giriş yapacak müşterinin hesabı önceden oluşturulmuş ve etkin durumdadır.
 - Herkese açık müşteri kaydı, parola sıfırlama, sosyal giriş ve oturum kapatma ilk gereksinimin kapsamında değildir.
 - Yerel geliştirme veritabanı SQLite'tır. PostgreSQL'e geçiş ayrı ortam çalışmasıdır.
-- Ana sayfa bu dilimde doğrulanmış erişim gerektiren bir API'dir; ürün kataloğu ve kişiselleştirilmiş içerik sonraki gereksinimlerde ele alınır.
+- Ana sayfa ve ürün kataloğu yalnızca doğrulanmış müşterilere sunulur. Ürün oluşturma işlemi yönetici rolüyle sınırlandırılır.
 
 ## Gereksinim öncelikleri
 
@@ -23,7 +23,7 @@ Müşterilerin ürünleri bulup satın alabildiği bir çevrimiçi mağaza geli�
 ## REQ-001 — Kayıtlı müşteri girişi ve ana sayfaya erişim
 
 **Öncelik:** P0  
-**Durum:** Backend ve login arayüzü hazır; kayıt ve ürün kataloğu sonraki dilimlerde geliştirilecek.  
+**Durum:** Tamamlandı; ürün kataloğu REQ-002 kapsamındadır.
 **Kullanıcı hikâyesi:** Bir müşteri olarak hesabıma güvenli biçimde giriş yapıp mağaza ana sayfasını görmek istiyorum; böylece alışverişe başlayabilirim.  
 **Ön koşul:** Müşteri hesabı etkin durumdadır ve geçerli bir e-posta adresiyle önceden oluşturulmuştur.
 
@@ -36,12 +36,13 @@ Müşterilerin ürünleri bulup satın alabildiği bir çevrimiçi mağaza geli�
 5. Geçerli erişim belirteciyle ana sayfa isteği başarıyla karşılanır ve karşılama içeriği döner.
 6. Belirteç olmadan, bozuk belirteçle veya süresi geçmiş belirteçle ana sayfa isteği `401 Unauthorized` döndürür.
 7. Erişim belirteci yalnızca kimlik bilgisi doğrulanmış etkin hesaba verilir.
+8. Giriş başarılı olduğunda istemci ana sayfaya yönelir; ürün kataloğu REQ-002'ye göre listelenir.
 
 ### Dışarıda bırakılanlar
 
 - Müşteri kayıt, parola sıfırlama, çok faktörlü kimlik doğrulama ve sosyal giriş.
 - Refresh token, cihaz/oturum yönetimi ve oturum kapatma.
-- Ürün listesi, arama, kampanya ve kişiye özel ana sayfa içeriği.
+- Ürün arama, filtreleme, kampanya ve kişiye özel ana sayfa içeriği.
 - Kayıt, ürün listesi ve müşteri hesabı ekranları.
 
 ### API sözleşmesi (ilk sürüm)
@@ -107,13 +108,82 @@ Erişim belirteci yoksa veya geçersizse `401 Unauthorized` döndürülür.
 | REQ-001-T9 | Component | Login `401`, `422`, `5xx` ve bağlantı hataları | Her durumda kullanıcıya uygun, sunucu iç detaylarını açmayan mesaj gösterilir |
 | REQ-001-T10 | E2E | Gerçek tarayıcı, API ve veritabanıyla geçerli giriş | Login ve korumalı ana sayfa akışı tamamlanır; çıkış login formuna döner |
 | REQ-001-T11 | E2E | Gerçek backend ile yanlış parola | Genel hata gösterilir; ana sayfa isteği gönderilmez |
+| REQ-001-T12 | E2E | Yanlış parola | Ürün listesi isteği gönderilmez |
+
+## REQ-002 — Giriş sonrası ana sayfada ürünleri listeleme
+
+**Öncelik:** P0
+**Durum:** Tamamlandı; backend, frontend ve E2E testleriyle doğrulandı.
+**Kullanıcı hikâyesi:** Giriş yapmış bir müşteri olarak mağaza ana sayfasında ürünleri tablo halinde görmek istiyorum; böylece ürünleri ve temel bilgilerini karşılaştırmaya başlayabilirim.
+**Ön koşul:** Kullanıcı hesabı etkin durumdadır ve geçerli bir erişim belirteci vardır. Örnek ürün oluşturma için yönetici hesabı gerekir.
+
+### Kabul kriterleri
+
+1. Başarılı girişten sonra frontend `/api/v1/home` ve korumalı `/api/v1/products` endpoint'lerini çağırır; ürünler ana sayfada listelenir.
+2. Ürün listesi ürün adı, kategori, açıklama, TRY fiyatı ve stok miktarını tablo halinde gösterir.
+3. Boş katalog, yükleniyor ve ürünleri yükleyememe durumları kullanıcıya anlaşılır biçimde gösterilir; yükleme hatası tekrar denenebilir.
+4. Ürün listesi varsayılan olarak ilk 20 kaydı döndürür; `limit` 1–100, `offset` sıfır veya daha büyük olabilir. Sonuçlar ürün kimliğine göre kararlı sıradadır.
+5. Ürün listesi isteğinde geçerli müşteri belirteci zorunludur; yetkisiz veya geçersiz istek `401 Unauthorized` döndürür.
+6. Yönetici olmayan kullanıcı ürün oluşturamaz; `POST /api/v1/products` isteği `403 Forbidden` döndürür. Ürün eklemek için geçerli yönetici belirteci gerekir.
+7. Ürün oluşturma alanları doğrulanır: ad (2–120), kategori (2–80), açıklama (1–600), fiyat (0'dan büyük ve en fazla iki ondalık basamaklı), stok (sıfır veya daha büyük tam sayı). Başarı `201 Created` döndürür.
+8. Örnek ürünler, aynı yöneticiye açık `POST /api/v1/products` endpoint'i kullanılarak eklenir ve listeleme endpoint'i ile doğrulanır.
+
+### API sözleşmesi
+
+#### `GET /api/v1/products?limit=20&offset=0`
+
+İstek başlığı: `Authorization: Bearer <access-token>`
+
+Başarılı yanıt `200 OK`:
+
+```json
+{
+  "products": [
+    {
+      "id": 1,
+      "name": "Lavanta El Kremi",
+      "category": "Kişisel Bakım",
+      "description": "Günlük kullanım için nemlendirici el kremi.",
+      "price": "129.90",
+      "stock": 24
+    }
+  ],
+  "total": 1,
+  "limit": 20,
+  "offset": 0
+}
+```
+
+#### `POST /api/v1/products`
+
+Yalnızca admin rolüne açık. İstek gövdesi `name`, `category`, `description`, `price` ve `stock` alanlarından oluşur; başarılı yanıt oluşturulan ürünü `201 Created` ile döndürür. Geçersiz veri `422`, admin olmayan kullanıcı `403`, token yok/geçersiz ise `401` alır.
+
+### Doğrulama/test fikirleri
+
+| Kimlik | Seviye | Durum | Beklenti |
+|---|---|---|---|
+| REQ-002-T1 | API | Boş ürün kataloğu, geçerli müşteri belirteci | `200`, boş liste ve toplam 0 |
+| REQ-002-T2 | API | Geçerli admin gövdesiyle ürün oluşturma | `201`, saklanan ürün alanları döner |
+| REQ-002-T3 | API | Müşteri ürün oluşturmaya çalışır | `403`, ürün oluşturulmaz |
+| REQ-002-T4 | API | Ürün adı/kategori/açıklama/fiyat/stok sınırları geçersiz | `422`, ürün oluşturulmaz |
+| REQ-002-T5 | API | Ürünleri limit ve offset ile listeleme | Toplam sayısı ve kimliğe göre kararlı sayfa döner |
+| REQ-002-T6 | API | Token yok veya pagination parametresi geçersiz | Sırasıyla `401` veya `422` |
+| REQ-002-T7 | Component/integration | Ürün listesi yüklendi | Ad, kategori, açıklama, TRY fiyatı ve stok erişilebilir tabloda görünür |
+| REQ-002-T8 | Component | Boş katalog veya ürün API hatası | Boş durum veya yeniden denenebilir hata gösterilir |
+| REQ-002-T9 | E2E | Admin API ile örnek ürün ekle, müşteri olarak giriş yap | Ürün korumalı katalog endpoint'inden okunup tabloda gösterilir |
+| REQ-002-T10 | E2E | Hatalı giriş | Ana sayfa ve ürün endpoint'lerine istek gönderilmez |
+| REQ-002-T11 | Unit | `ProductCreateRequest` şema sınırları | Geçerli üst sınırlar kabul; uzunluk/fiyat/stok dışı değerler reddedilir |
+| REQ-002-T12 | Frontend unit | Ürün istemcisi API hatası | HTTP hata durumu ve mesajı çağırana aktarılır |
+| REQ-002-T13 | Component | Ürün listesi beklemede | Erişilebilir yükleniyor durumu tablo gelene kadar görünür |
+
+**Test katmanı izlenebilirliği:** Şema alanlarının sınır/birim doğrulaması `apps/api/tests/test_product_schemas.py` (unit); kimlik doğrulama, admin yetkisi, SQLite kalıcılığı, API yanıtları ve sayfalama `apps/api/tests/test_products.py` (API/entegrasyon); query/header ve API hata aktarımı `apps/web/src/api.test.ts` (istemci unit); tablo, yükleniyor/boş/hata/yeniden deneme davranışları `apps/web/src/App.test.tsx` (component/frontend entegrasyonu); admin ile API'den ürün ekleyip müşteri UI'ında listeleme ve yetki reddi `apps/web/e2e/login.spec.ts` (gerçek tarayıcı E2E). Lint, TypeScript build ve coverage eşikleri CI statik/kalite kapılarıdır.
 
 ## İleri gereksinim adayları
 
 Bu maddeler kapsamı erkenden sabitlememek için henüz kabul kriterlerine dönüştürülmemiştir:
 
 - Müşteri hesabı oluşturma ve e-posta doğrulama.
-- Ürün kataloğunu görüntüleme, arama ve filtreleme.
+- Ürün kataloğunda arama ve filtreleme.
 - Sepet yönetimi ve stok/ürün fiyatı kuralları.
 - Adres ve teslimat seçenekleriyle sipariş oluşturma.
 - Ödeme sağlayıcısı entegrasyonu, sipariş geçmişi ve iptal/iade.

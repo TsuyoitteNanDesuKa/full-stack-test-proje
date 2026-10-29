@@ -9,6 +9,22 @@ export interface HomeResponse {
   featured_categories: string[]
 }
 
+export interface Product {
+  id: number
+  name: string
+  category: string
+  description: string
+  price: string
+  stock: number
+}
+
+export interface ProductListResponse {
+  products: Product[]
+  total: number
+  limit: number
+  offset: number
+}
+
 interface ApiErrorBody {
   detail?: string
 }
@@ -52,6 +68,17 @@ export function login(email: string, password: string): Promise<TokenResponse> {
 
 export function getHome(token: string): Promise<HomeResponse> {
   return request<HomeResponse>('/api/v1/home', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function getProducts(
+  token: string,
+  limit = 20,
+  offset = 0,
+): Promise<ProductListResponse> {
+  const query = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+  return request<ProductListResponse>(`/api/v1/products?${query}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
 }

@@ -104,7 +104,7 @@ const stages = [
     result: process.env.E2E_RESULT,
     tests: e2eTests,
     coverage: 'Behavioral scenarios; source coverage is not measured by E2E',
-    scope: '`Playwright` Chromium: successful login/protected home and invalid credentials; REQ-001',
+    scope: '`Playwright` Chromium: login, admin product creation, customer write denial/listing, and invalid credentials; REQ-001/REQ-002',
   },
 ]
 

@@ -20,3 +20,4 @@ def test_default_app_engine_lifecycle_serves_openapi_and_disposes_engine(
     assert response.status_code == 200
     assert "/api/v1/auth/login" in response.json()["paths"]
     assert "/api/v1/home" in response.json()["paths"]
+    assert "/api/v1/products" in response.json()["paths"]

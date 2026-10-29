@@ -45,3 +45,18 @@ def customer(engine: Engine) -> User:
         session.flush()
         session.refresh(user)
         return user
+
+
+@pytest.fixture
+def admin(engine: Engine) -> User:
+    session_factory = sessionmaker(bind=engine, class_=Session, expire_on_commit=False)
+    with session_factory.begin() as session:
+        user = User(
+            email="admin@example.com",
+            password_hash=hash_password("correct-password-123"),
+            is_admin=True,
+        )
+        session.add(user)
+        session.flush()
+        session.refresh(user)
+        return user
