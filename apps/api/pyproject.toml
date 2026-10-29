@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "shop-api"
+version = "0.1.0"
+description = "FastAPI backend for an online shopping application"
+requires-python = ">=3.13"
+dependencies = [
+    "alembic>=1.15,<2",
+    "email-validator>=2.2,<3",
+    "fastapi>=0.115,<1",
+    "pydantic-settings>=2.8,<3",
+    "psycopg[binary]>=3.2,<4",
+    "PyJWT>=2.10,<3",
+    "pwdlib[argon2]>=0.2,<1",
+    "sqlalchemy>=2.0,<3",
+    "uvicorn[standard]>=0.34,<1",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28,<1",
+    "httpx2>=2.16.0",
+    "pytest>=8.3,<9",
+    "ruff>=0.11,<1",
+]
+
+[project.scripts]
+shop-create-user = "shop_api.create_user:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/shop_api"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
