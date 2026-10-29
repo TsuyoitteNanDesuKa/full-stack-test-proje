@@ -42,6 +42,7 @@ uv run uvicorn shop_api.main:create_app --factory --reload
 - Protected home: `GET /api/v1/home`
 - Product listing: `GET /api/v1/products?limit=20&offset=0` (authenticated)
 - Product creation: `POST /api/v1/products` (administrator only)
+- Product update: `PUT /api/v1/products/{id}` (administrator only)
 
 The login response contains a short-lived bearer token. Send it as `Authorization: Bearer <token>` to the home endpoint.
 

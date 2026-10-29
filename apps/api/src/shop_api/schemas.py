@@ -1,5 +1,6 @@
 import re
 import unicodedata
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -84,6 +85,14 @@ class ProductResponse(BaseModel):
     description: str
     price: Decimal
     stock: int
+    updated_at: datetime | None
+
+    @field_validator("updated_at")
+    @classmethod
+    def normalize_update_time_to_utc(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value
 
 
 def product_name_key(name: str) -> str:

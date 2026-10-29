@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, createProduct, getHome, getProducts, login } from './api'
+import { ApiError, createProduct, getHome, getProducts, login, updateProduct } from './api'
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -97,6 +97,7 @@ describe('storefront API client', () => {
           description: 'Nemlendirici el kremi.',
           price: '129.90',
           stock: 24,
+          updated_at: null,
         },
       ],
       total: 1,
@@ -201,6 +202,59 @@ describe('storefront API client', () => {
     ).rejects.toMatchObject({
       name: 'ApiError',
       status: 403,
+    } satisfies Partial<ApiError>)
+  })
+
+  it('updates every product field using the admin bearer token', async () => {
+    const updatedProduct = {
+      id: 8,
+      name: 'Değiştirilen Ürün',
+      category: 'Ev ve Yaşam',
+      description: 'Güncellenmiş ürün açıklaması.',
+      price: '349.90',
+      stock: 11,
+      updated_at: '2026-10-29T10:00:00',
+    }
+    const payload = {
+      name: 'Değiştirilen Ürün',
+      category: 'Ev ve Yaşam',
+      description: 'Güncellenmiş ürün açıklaması.',
+      price: '349.90',
+      stock: 11,
+    }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(updatedProduct))
+
+    await expect(updateProduct('admin-token', 8, payload)).resolves.toEqual(updatedProduct)
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/products/8',
+      expect.objectContaining({
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer admin-token',
+        },
+        body: JSON.stringify(payload),
+      }),
+    )
+  })
+
+  it('preserves product update failures for the form', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ detail: 'Ürün bulunamadı.' }, 404),
+    )
+
+    await expect(
+      updateProduct('admin-token', 404, {
+        name: 'Yeni Ürün',
+        category: 'Ev ve Yaşam',
+        description: 'Ürün açıklaması.',
+        price: '29.90',
+        stock: 1,
+      }),
+    ).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 404,
+      message: 'Ürün bulunamadı.',
     } satisfies Partial<ApiError>)
   })
 })

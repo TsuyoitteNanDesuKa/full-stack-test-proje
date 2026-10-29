@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal
 
 import pytest
@@ -63,6 +64,7 @@ def test_admin_can_create_product_and_customer_can_list_it(
         "id": 1,
         **PRODUCT_PAYLOAD,
         "price": "129.90",
+        "updated_at": None,
     }
 
     list_response = client.get(
@@ -195,6 +197,184 @@ def test_customer_cannot_create_products(
         ).json()["total"]
         == 0
     )
+
+
+def test_admin_can_update_all_product_fields_and_customers_see_the_updated_product(
+    client: TestClient,
+    admin: User,
+    customer: User,
+) -> None:
+    admin_headers = {"Authorization": f"Bearer {access_token(client, admin)}"}
+    customer_headers = {"Authorization": f"Bearer {access_token(client, customer)}"}
+    created = client.post("/api/v1/products", json=PRODUCT_PAYLOAD, headers=admin_headers)
+    updated_payload = {
+        "name": "Güncellenmiş Lavanta Kremi",
+        "category": "Kişisel Bakım",
+        "description": "Yeni açıklama ile güncellenmiş ürün.",
+        "price": "159.90",
+        "stock": 31,
+    }
+
+    response = client.put(
+        f"/api/v1/products/{created.json()['id']}",
+        json=updated_payload,
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 200
+    updated_product = response.json()
+    assert {
+        key: updated_product[key] for key in ("name", "category", "description", "price", "stock")
+    } == {**updated_payload, "price": "159.90"}
+    assert datetime.fromisoformat(updated_product["updated_at"])
+    listed_product = client.get("/api/v1/products", headers=customer_headers).json()["products"][0]
+    assert listed_product == updated_product
+
+
+def test_admin_can_update_product_without_changing_its_name(
+    client: TestClient,
+    admin: User,
+) -> None:
+    headers = {"Authorization": f"Bearer {access_token(client, admin)}"}
+    created = client.post("/api/v1/products", json=PRODUCT_PAYLOAD, headers=headers)
+    updated_payload = {**PRODUCT_PAYLOAD, "stock": 30}
+
+    response = client.put(
+        f"/api/v1/products/{created.json()['id']}",
+        json=updated_payload,
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["name"] == PRODUCT_PAYLOAD["name"]
+    assert response.json()["stock"] == 30
+    assert response.json()["updated_at"] is not None
+
+
+def test_admin_cannot_update_product_to_another_products_name(
+    client: TestClient,
+    admin: User,
+) -> None:
+    headers = {"Authorization": f"Bearer {access_token(client, admin)}"}
+    first = client.post("/api/v1/products", json=PRODUCT_PAYLOAD, headers=headers)
+    second = client.post(
+        "/api/v1/products",
+        json={**PRODUCT_PAYLOAD, "name": "Başka Ürün"},
+        headers=headers,
+    )
+
+    response = client.put(
+        f"/api/v1/products/{second.json()['id']}",
+        json=PRODUCT_PAYLOAD,
+        headers=headers,
+    )
+
+    assert first.status_code == second.status_code == 201
+    assert response.status_code == 409
+    assert (
+        client.get("/api/v1/products", headers=headers).json()["products"][1]["name"]
+        == "Başka Ürün"
+    )
+
+
+def test_invalid_product_update_does_not_change_existing_product(
+    client: TestClient,
+    admin: User,
+) -> None:
+    headers = {"Authorization": f"Bearer {access_token(client, admin)}"}
+    created = client.post("/api/v1/products", json=PRODUCT_PAYLOAD, headers=headers)
+
+    response = client.put(
+        f"/api/v1/products/{created.json()['id']}",
+        json={**PRODUCT_PAYLOAD, "price": "0"},
+        headers=headers,
+    )
+
+    assert response.status_code == 422
+    unchanged_product = client.get("/api/v1/products", headers=headers).json()["products"][0]
+    assert unchanged_product == created.json()
+
+
+def test_update_product_requires_admin_and_existing_product(
+    client: TestClient,
+    customer: User,
+    admin: User,
+) -> None:
+    response_without_auth = client.put("/api/v1/products/1", json=PRODUCT_PAYLOAD)
+    customer_response = client.put(
+        "/api/v1/products/1",
+        json=PRODUCT_PAYLOAD,
+        headers={"Authorization": f"Bearer {access_token(client, customer)}"},
+    )
+    missing_product_response = client.put(
+        "/api/v1/products/404",
+        json=PRODUCT_PAYLOAD,
+        headers={"Authorization": f"Bearer {access_token(client, admin)}"},
+    )
+
+    assert response_without_auth.status_code == 401
+    assert customer_response.status_code == 403
+    assert missing_product_response.status_code == 404
+
+
+def test_concurrent_duplicate_name_update_returns_conflict(
+    client: TestClient,
+    admin: User,
+    engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    headers = {"Authorization": f"Bearer {access_token(client, admin)}"}
+    original = client.post(
+        "/api/v1/products",
+        json={**PRODUCT_PAYLOAD, "name": "Mevcut Ürün"},
+        headers=headers,
+    ).json()
+    update_payload = {**PRODUCT_PAYLOAD, "name": "Yeni Ürün Adı"}
+
+    def commit_duplicate(session: Session) -> None:
+        session.rollback()
+        with engine.begin() as connection:
+            connection.execute(
+                Product.__table__.insert(),
+                {
+                    **update_payload,
+                    "name_key": "yeni ürün adı",
+                },
+            )
+        raise IntegrityError("UPDATE products", {}, Exception("unique constraint"))
+
+    monkeypatch.setattr(Session, "commit", commit_duplicate)
+    response = client.put(
+        f"/api/v1/products/{original['id']}",
+        json=update_payload,
+        headers=headers,
+    )
+
+    assert response.status_code == 409
+    product_list = client.get("/api/v1/products", headers=headers).json()["products"]
+    assert product_list[0]["name"] == "Mevcut Ürün"
+    assert product_list[0]["updated_at"] is None
+
+
+def test_unrelated_update_integrity_error_is_not_converted_to_conflict(
+    client: TestClient,
+    admin: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    headers = {"Authorization": f"Bearer {access_token(client, admin)}"}
+    product = client.post("/api/v1/products", json=PRODUCT_PAYLOAD, headers=headers).json()
+
+    def commit_with_integrity_error(_session: Session) -> None:
+        raise IntegrityError("UPDATE products", {}, Exception("unrelated constraint"))
+
+    monkeypatch.setattr(Session, "commit", commit_with_integrity_error)
+
+    with pytest.raises(IntegrityError, match="unrelated constraint"):
+        client.put(
+            f"/api/v1/products/{product['id']}",
+            json={**PRODUCT_PAYLOAD, "stock": 99},
+            headers=headers,
+        )
 
 
 def test_create_products_rejects_missing_authentication(

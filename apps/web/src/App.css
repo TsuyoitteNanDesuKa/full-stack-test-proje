@@ -927,6 +927,33 @@
   font-weight: 650;
 }
 
+.product-updated-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 4px 7px;
+  border: 1px solid #dce5d2;
+  border-radius: 12px;
+  background: #f0f4e9;
+  color: #526d53;
+  font-size: 9px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.edit-product-button {
+  padding: 7px 10px;
+  border: 1px solid #dfe5da;
+  border-radius: 4px;
+  background: #fff;
+  color: #49624d;
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.edit-product-button:hover {
+  background: #f5f6f1;
+}
+
 .product-category {
   display: inline-block;
   padding: 5px 8px;
@@ -1035,7 +1062,7 @@
   }
 
   .product-table {
-    min-width: 760px;
+    min-width: 860px;
   }
 
   .form-topline {

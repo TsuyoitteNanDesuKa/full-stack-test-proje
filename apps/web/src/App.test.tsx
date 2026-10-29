@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import type { Product } from './api'
 
 function jsonResponse(body: unknown, status = 200): Response {
   const responseBody =
@@ -14,13 +15,14 @@ function jsonResponse(body: unknown, status = 200): Response {
   })
 }
 
-const sampleProduct = {
+const sampleProduct: Product = {
   id: 1,
   name: 'Lavanta El Kremi',
   category: 'Kişisel Bakım',
   description: 'Günlük kullanım için nemlendirici el kremi.',
   price: '129.90',
   stock: 24,
+  updated_at: null,
 }
 
 function productList(products: typeof sampleProduct[] = [sampleProduct]) {
@@ -55,7 +57,16 @@ describe('customer login', () => {
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         ),
       )
-      .mockResolvedValueOnce(jsonResponse(productList()))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          productList([
+            {
+              ...sampleProduct,
+              updated_at: '2026-10-29T10:00:00',
+            },
+          ]),
+        ),
+      )
 
     const user = userEvent.setup()
     render(<App />)
@@ -75,6 +86,7 @@ describe('customer login', () => {
     expect(productRow).toHaveTextContent('Günlük kullanım için nemlendirici el kremi.')
     expect(productRow).toHaveTextContent('₺129,90')
     expect(productRow).toHaveTextContent('24')
+    expect(productRow).toHaveTextContent('Güncellendi')
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
       '/api/v1/auth/login',
@@ -105,7 +117,7 @@ describe('customer login', () => {
     expect(screen.getByRole('heading', { name: 'Merhaba.' })).toBeInTheDocument()
   })
 
-  it('lets an administrator open the product page and adds the created product to the table', async () => {
+  it('lets an administrator create and update products in the catalog', async () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(
         jsonResponse({
@@ -118,7 +130,7 @@ describe('customer login', () => {
       .mockResolvedValueOnce(
         jsonResponse({ message: 'Welcome', featured_categories: [] }),
       )
-      .mockResolvedValueOnce(jsonResponse(productList([])))
+      .mockResolvedValueOnce(jsonResponse(productList()))
       .mockResolvedValueOnce(
         jsonResponse(
           {
@@ -129,6 +141,18 @@ describe('customer login', () => {
           },
           201,
         ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          ...sampleProduct,
+          id: 2,
+          name: 'Güncellenmiş Yönetici Ürünü',
+          category: 'Ev ve Yaşam',
+          description: 'Güncellenen ürün açıklaması.',
+          price: '399.90',
+          stock: 31,
+          updated_at: '2026-10-29T10:00:00',
+        }),
       )
 
     const user = userEvent.setup()
@@ -141,7 +165,7 @@ describe('customer login', () => {
     await user.click(await screen.findByRole('button', { name: '+ Ürün ekle' }))
     expect(screen.getByRole('heading', { name: 'Yeni ürün ekle' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Ürün listesine dön' }))
-    expect(await screen.findByText('Henüz listelenecek ürün yok.')).toBeInTheDocument()
+    expect(await screen.findByRole('row', { name: /Lavanta El Kremi/ })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '+ Ürün ekle' }))
 
     await user.type(screen.getByLabelText('Ürün adı'), 'Yeni Yönetici Ürünü')
@@ -154,10 +178,41 @@ describe('customer login', () => {
     expect(await screen.findByRole('table', { name: 'Ürün listesi' })).toHaveTextContent(
       'Yeni Yönetici Ürünü',
     )
+    expect(
+      screen.getByRole('row', { name: /Yeni Yönetici Ürünü/ }),
+    ).not.toHaveTextContent('Güncellendi')
+    await user.click(screen.getByRole('button', { name: 'Düzenle Yeni Yönetici Ürünü' }))
+    expect(screen.getByLabelText('Ürün adı')).toHaveValue('Yeni Yönetici Ürünü')
+    expect(screen.getByLabelText('Kategori')).toHaveValue('Kişisel Bakım')
+    expect(screen.getByLabelText('Açıklama')).toHaveValue(
+      'Günlük kullanım için nemlendirici el kremi.',
+    )
+    expect(screen.getByLabelText('Fiyat (TL)')).toHaveValue(299.9)
+    expect(screen.getByLabelText('Stok adedi')).toHaveValue(24)
+    await user.clear(screen.getByLabelText('Ürün adı'))
+    await user.type(screen.getByLabelText('Ürün adı'), 'Güncellenmiş Yönetici Ürünü')
+    await user.clear(screen.getByLabelText('Kategori'))
+    await user.type(screen.getByLabelText('Kategori'), 'Ev ve Yaşam')
+    await user.clear(screen.getByLabelText('Açıklama'))
+    await user.type(screen.getByLabelText('Açıklama'), 'Güncellenen ürün açıklaması.')
+    await user.clear(screen.getByLabelText('Fiyat (TL)'))
+    await user.type(screen.getByLabelText('Fiyat (TL)'), '399.90')
+    await user.clear(screen.getByLabelText('Stok adedi'))
+    await user.type(screen.getByLabelText('Stok adedi'), '31')
+    await user.click(screen.getByRole('button', { name: 'Değişiklikleri kaydet' }))
+
+    const updatedRow = await screen.findByRole('row', {
+      name: /Güncellenmiş Yönetici Ürünü/,
+    })
+    expect(updatedRow).toHaveTextContent('Ev ve Yaşam')
+    expect(updatedRow).toHaveTextContent('Güncellenen ürün açıklaması.')
+    expect(updatedRow).toHaveTextContent('₺399,90')
+    expect(updatedRow).toHaveTextContent('31')
+    expect(updatedRow).toHaveTextContent('Güncellendi')
     expect(fetch).toHaveBeenLastCalledWith(
-      '/api/v1/products',
+      '/api/v1/products/2',
       expect.objectContaining({
-        method: 'POST',
+        method: 'PUT',
         headers: expect.objectContaining({ Authorization: 'Bearer admin-token' }),
       }),
     )

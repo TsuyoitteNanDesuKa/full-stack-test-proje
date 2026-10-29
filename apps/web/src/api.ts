@@ -17,6 +17,7 @@ export interface Product {
   description: string
   price: string
   stock: number
+  updated_at: string | null
 }
 
 export interface ProductListResponse {
@@ -98,6 +99,18 @@ export function createProduct(
 ): Promise<Product> {
   return request<Product>('/api/v1/products', {
     method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(product),
+  })
+}
+
+export function updateProduct(
+  token: string,
+  productId: number,
+  product: ProductCreateRequest,
+): Promise<Product> {
+  return request<Product>(`/api/v1/products/${productId}`, {
+    method: 'PUT',
     headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify(product),
   })

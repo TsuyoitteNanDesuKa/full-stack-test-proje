@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { ApiError, createProduct } from './api'
+import { ApiError, createProduct, updateProduct } from './api'
 import type { Product, ProductCreateRequest } from './api'
 
 interface ProductCreatePageProps {
+  product?: Product
   token: string
   onCancel: () => void
-  onCreated: (product: Product) => void
+  onSaved: (product: Product) => void
 }
 
 function hasValidProductFields(product: ProductCreateRequest): boolean {
@@ -43,7 +44,7 @@ function hasValidProductFields(product: ProductCreateRequest): boolean {
   )
 }
 
-function getErrorMessage(error: unknown): string {
+function getErrorMessage(error: unknown, isEditing: boolean): string {
   if (error instanceof ApiError && error.status === 401) {
     return 'Oturum süren dolmuş. Çıkış yapıp yeniden giriş yap.'
   }
@@ -56,24 +57,33 @@ function getErrorMessage(error: unknown): string {
   if (error instanceof ApiError && error.status === 422) {
     return 'Ürün bilgilerini kontrol edip tekrar dene.'
   }
+  if (error instanceof ApiError && error.status === 404 && isEditing) {
+    return 'Düzenlenecek ürün bulunamadı. Ürün listesini yenileyip tekrar dene.'
+  }
   if (error instanceof TypeError) {
     return 'Sunucuya bağlanılamadı. Backend servisinin çalıştığını kontrol et.'
   }
-  return 'Ürün eklenemedi. Lütfen tekrar dene.'
+  return isEditing
+    ? 'Ürün güncellenemedi. Lütfen tekrar dene.'
+    : 'Ürün eklenemedi. Lütfen tekrar dene.'
 }
 
 export default function ProductCreatePage({
+  product: productToEdit,
   token,
   onCancel,
-  onCreated,
+  onSaved,
 }: ProductCreatePageProps) {
-  const [name, setName] = useState('')
-  const [category, setCategory] = useState('')
-  const [description, setDescription] = useState('')
-  const [price, setPrice] = useState('')
-  const [stock, setStock] = useState('')
+  const [name, setName] = useState(productToEdit?.name ?? '')
+  const [category, setCategory] = useState(productToEdit?.category ?? '')
+  const [description, setDescription] = useState(productToEdit?.description ?? '')
+  const [price, setPrice] = useState(productToEdit?.price ?? '')
+  const [stock, setStock] = useState(
+    productToEdit === undefined ? '' : String(productToEdit.stock),
+  )
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const isEditing = productToEdit !== undefined
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -94,10 +104,12 @@ export default function ProductCreatePage({
 
     setIsSubmitting(true)
     try {
-      const createdProduct = await createProduct(token, product)
-      onCreated(createdProduct)
+      const savedProduct = isEditing
+        ? await updateProduct(token, productToEdit.id, product)
+        : await createProduct(token, product)
+      onSaved(savedProduct)
     } catch (requestError) {
-      setError(getErrorMessage(requestError))
+      setError(getErrorMessage(requestError, isEditing))
     } finally {
       setIsSubmitting(false)
     }
@@ -117,8 +129,14 @@ export default function ProductCreatePage({
 
       <section aria-labelledby="create-product-heading" className="product-create-content">
         <span className="products-kicker">YÖNETİCİ PANELİ</span>
-        <h1 id="create-product-heading">Yeni ürün ekle</h1>
-        <p>Ürün bilgilerini doldurarak mağaza kataloğuna ekle.</p>
+        <h1 id="create-product-heading">
+          {isEditing ? 'Ürünü düzenle' : 'Yeni ürün ekle'}
+        </h1>
+        <p>
+          {isEditing
+            ? 'Ürün bilgilerini güncelleyerek mağaza kataloğunu düzenle.'
+            : 'Ürün bilgilerini doldurarak mağaza kataloğuna ekle.'}
+        </p>
 
         <form className="product-create-form" onSubmit={handleSubmit}>
           <label htmlFor="product-name">Ürün adı</label>
@@ -192,7 +210,13 @@ export default function ProductCreatePage({
               İptal
             </button>
             <button className="submit-button product-submit-button" disabled={isSubmitting} type="submit">
-              {isSubmitting ? 'Ürün ekleniyor...' : 'Ürünü kaydet'}
+              {isSubmitting
+                ? isEditing
+                  ? 'Ürün güncelleniyor...'
+                  : 'Ürün ekleniyor...'
+                : isEditing
+                  ? 'Değişiklikleri kaydet'
+                  : 'Ürünü kaydet'}
             </button>
           </div>
         </form>

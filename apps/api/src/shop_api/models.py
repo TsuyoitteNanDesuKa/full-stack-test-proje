@@ -1,6 +1,7 @@
+from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, CheckConstraint, Numeric, String, false
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Numeric, String, false
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -52,3 +53,7 @@ class Product(Base):
     description: Mapped[str] = mapped_column(String(500), nullable=False)
     price: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False)
     stock: Mapped[int] = mapped_column(nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )

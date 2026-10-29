@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -59,6 +60,60 @@ def create_product(
     except IntegrityError:
         db.rollback()
         if db.scalar(select(Product.id).where(Product.name_key == name_key)) is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Bu ürün adı katalogda zaten kullanılıyor.",
+            ) from None
+        raise
+    db.refresh(product)
+    return ProductResponse.model_validate(product)
+
+
+@router.put("/{product_id}", response_model=ProductResponse)
+def update_product(
+    product_id: int,
+    payload: ProductCreateRequest,
+    _admin_user: Annotated[User, Depends(get_admin_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> ProductResponse:
+    product = db.get(Product, product_id)
+    if product is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ürün bulunamadı.",
+        )
+
+    name_key = product_name_key(payload.name)
+    duplicate_id = db.scalar(
+        select(Product.id).where(
+            Product.name_key == name_key,
+            Product.id != product_id,
+        )
+    )
+    if duplicate_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Bu ürün adı katalogda zaten kullanılıyor.",
+        )
+
+    for field, value in payload.model_dump().items():
+        setattr(product, field, value)
+    product.name_key = name_key
+    product.updated_at = datetime.now(UTC)
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        if (
+            db.scalar(
+                select(Product.id).where(
+                    Product.name_key == name_key,
+                    Product.id != product_id,
+                )
+            )
+            is not None
+        ):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Bu ürün adı katalogda zaten kullanılıyor.",

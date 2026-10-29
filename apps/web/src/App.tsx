@@ -260,6 +260,7 @@ function HomePage({
   const [error, setError] = useState('')
   const [retryCount, setRetryCount] = useState(0)
   const [isCreatingProduct, setIsCreatingProduct] = useState(false)
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null)
 
   useEffect(() => {
     let active = true
@@ -294,14 +295,26 @@ function HomePage({
     currency: 'TRY',
   })
 
-  if (isCreatingProduct && isAdmin) {
+  if ((isCreatingProduct || editingProduct !== null) && isAdmin) {
     return (
       <ProductCreatePage
-        onCancel={() => setIsCreatingProduct(false)}
-        onCreated={(product) => {
-          setProducts((currentProducts) => [product, ...currentProducts])
+        key={editingProduct?.id ?? 'new'}
+        onCancel={() => {
           setIsCreatingProduct(false)
+          setEditingProduct(null)
         }}
+        onSaved={(product) => {
+          setProducts((currentProducts) =>
+            editingProduct === null
+              ? [product, ...currentProducts]
+              : currentProducts.map((currentProduct) =>
+                  currentProduct.id === product.id ? product : currentProduct,
+                ),
+          )
+          setIsCreatingProduct(false)
+          setEditingProduct(null)
+        }}
+        product={editingProduct ?? undefined}
         token={token}
       />
     )
@@ -379,16 +392,40 @@ function HomePage({
                   <th scope="col">Açıklama</th>
                   <th scope="col">Fiyat</th>
                   <th scope="col">Stok</th>
+                  {isAdmin && <th scope="col">İşlem</th>}
                 </tr>
               </thead>
               <tbody>
                 {products.map((product) => (
                   <tr key={product.id}>
-                    <th scope="row">{product.name}</th>
+                    <th scope="row">
+                      {product.name}
+                      {product.updated_at && (
+                        <time
+                          className="product-updated-badge"
+                          dateTime={product.updated_at}
+                          title={`Son güncelleme: ${new Date(product.updated_at).toLocaleString('tr-TR')}`}
+                        >
+                          Güncellendi
+                        </time>
+                      )}
+                    </th>
                     <td><span className="product-category">{product.category}</span></td>
                     <td className="product-description">{product.description}</td>
                     <td className="product-price">{formatter.format(Number(product.price))}</td>
                     <td>{product.stock}</td>
+                    {isAdmin && (
+                      <td>
+                        <button
+                          aria-label={`Düzenle ${product.name}`}
+                          className="edit-product-button"
+                          onClick={() => setEditingProduct(product)}
+                          type="button"
+                        >
+                          Düzenle
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

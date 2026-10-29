@@ -10,6 +10,7 @@ const createdProduct = {
   description: 'El yapımı dekoratif ürün.',
   price: '299.90',
   stock: 7,
+  updated_at: null,
 }
 
 async function fillValidForm(user: ReturnType<typeof userEvent.setup>) {
@@ -23,12 +24,12 @@ async function fillValidForm(user: ReturnType<typeof userEvent.setup>) {
 
 describe('admin product creation page', () => {
   const onCancel = vi.fn()
-  const onCreated = vi.fn()
+  const onSaved = vi.fn()
 
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn())
     onCancel.mockReset()
-    onCreated.mockReset()
+    onSaved.mockReset()
   })
 
   it('creates a product with the entered values and returns it to the caller', async () => {
@@ -40,14 +41,14 @@ describe('admin product creation page', () => {
     )
     const user = userEvent.setup()
     render(
-      <ProductCreatePage token="admin-token" onCancel={onCancel} onCreated={onCreated} />,
+      <ProductCreatePage token="admin-token" onCancel={onCancel} onSaved={onSaved} />,
     )
     await fillValidForm(user)
 
     await user.click(screen.getByRole('button', { name: 'Ürünü kaydet' }))
 
     expect(await screen.findByRole('heading', { name: 'Yeni ürün ekle' })).toBeInTheDocument()
-    expect(onCreated).toHaveBeenCalledWith(createdProduct)
+    expect(onSaved).toHaveBeenCalledWith(createdProduct)
     expect(fetch).toHaveBeenCalledWith(
       '/api/v1/products',
       expect.objectContaining({
@@ -76,7 +77,7 @@ describe('admin product creation page', () => {
     )
     const user = userEvent.setup()
     render(
-      <ProductCreatePage token="admin-token" onCancel={onCancel} onCreated={onCreated} />,
+      <ProductCreatePage token="admin-token" onCancel={onCancel} onSaved={onSaved} />,
     )
     await user.type(screen.getByLabelText('Ürün adı'), 'Cafe\u0301 Sabunu')
     await user.type(screen.getByLabelText('Kategori'), 'Ev ve Yaşam')
@@ -100,10 +101,147 @@ describe('admin product creation page', () => {
     )
   })
 
+  it('pre-fills every product field and sends all edits to the update endpoint', async () => {
+    const updatedProduct = {
+      ...createdProduct,
+      name: 'Değiştirilen Ürün',
+      category: 'Kişisel Bakım',
+      description: 'Güncellenmiş ürün açıklaması.',
+      price: '349.90',
+      stock: 11,
+      updated_at: '2026-10-29T10:00:00',
+    }
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify(updatedProduct), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    const user = userEvent.setup()
+    render(
+      <ProductCreatePage
+        product={createdProduct}
+        token="admin-token"
+        onCancel={onCancel}
+        onSaved={onSaved}
+      />,
+    )
+
+    expect(screen.getByRole('heading', { name: 'Ürünü düzenle' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Ürün adı')).toHaveValue('Yeni Ürün')
+    expect(screen.getByLabelText('Kategori')).toHaveValue('Ev ve Yaşam')
+    expect(screen.getByLabelText('Açıklama')).toHaveValue('El yapımı dekoratif ürün.')
+    expect(screen.getByLabelText('Fiyat (TL)')).toHaveValue(299.9)
+    expect(screen.getByLabelText('Stok adedi')).toHaveValue(7)
+
+    await user.clear(screen.getByLabelText('Ürün adı'))
+    await user.type(screen.getByLabelText('Ürün adı'), 'Değiştirilen Ürün')
+    await user.clear(screen.getByLabelText('Kategori'))
+    await user.type(screen.getByLabelText('Kategori'), 'Kişisel Bakım')
+    await user.clear(screen.getByLabelText('Açıklama'))
+    await user.type(screen.getByLabelText('Açıklama'), 'Güncellenmiş ürün açıklaması.')
+    await user.clear(screen.getByLabelText('Fiyat (TL)'))
+    await user.type(screen.getByLabelText('Fiyat (TL)'), '349.90')
+    await user.clear(screen.getByLabelText('Stok adedi'))
+    await user.type(screen.getByLabelText('Stok adedi'), '11')
+    await user.click(screen.getByRole('button', { name: 'Değişiklikleri kaydet' }))
+
+    expect(onSaved).toHaveBeenCalledWith(updatedProduct)
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/products/8',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({
+          name: 'Değiştirilen Ürün',
+          category: 'Kişisel Bakım',
+          description: 'Güncellenmiş ürün açıklaması.',
+          price: '349.9',
+          stock: 11,
+        }),
+      }),
+    )
+  })
+
+  it('shows a safe conflict message when an update uses another product name', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: 'Private server detail.' }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    const user = userEvent.setup()
+    render(
+      <ProductCreatePage
+        product={createdProduct}
+        token="admin-token"
+        onCancel={onCancel}
+        onSaved={onSaved}
+      />,
+    )
+    await user.clear(screen.getByLabelText('Ürün adı'))
+    await user.type(screen.getByLabelText('Ürün adı'), 'Var olan başka ürün')
+    await user.click(screen.getByRole('button', { name: 'Değişiklikleri kaydet' }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Bu ürün adı katalogda zaten kullanılıyor.')
+    expect(alert).not.toHaveTextContent('Private server detail.')
+    expect(onSaved).not.toHaveBeenCalled()
+  })
+
+  it('explains when a product being edited no longer exists', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: 'Private server detail.' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    const user = userEvent.setup()
+    render(
+      <ProductCreatePage
+        product={createdProduct}
+        token="admin-token"
+        onCancel={onCancel}
+        onSaved={onSaved}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Değişiklikleri kaydet' }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(
+      'Düzenlenecek ürün bulunamadı. Ürün listesini yenileyip tekrar dene.',
+    )
+    expect(alert).not.toHaveTextContent('Private server detail.')
+    expect(onSaved).not.toHaveBeenCalled()
+  })
+
+  it('shows an edit-specific message for unexpected update failures', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: 'Private server detail.' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    const user = userEvent.setup()
+    render(
+      <ProductCreatePage
+        product={createdProduct}
+        token="admin-token"
+        onCancel={onCancel}
+        onSaved={onSaved}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Değişiklikleri kaydet' }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Ürün güncellenemedi. Lütfen tekrar dene.')
+    expect(alert).not.toHaveTextContent('Private server detail.')
+    expect(onSaved).not.toHaveBeenCalled()
+  })
+
   it('requires every field and rejects invalid price and stock before sending', async () => {
     const user = userEvent.setup()
     render(
-      <ProductCreatePage token="admin-token" onCancel={onCancel} onCreated={onCreated} />,
+      <ProductCreatePage token="admin-token" onCancel={onCancel} onSaved={onSaved} />,
     )
 
     await user.click(screen.getByRole('button', { name: 'Ürünü kaydet' }))
@@ -124,7 +262,7 @@ describe('admin product creation page', () => {
   it('rejects a description that is too short after trimming whitespace', async () => {
     const user = userEvent.setup()
     render(
-      <ProductCreatePage token="admin-token" onCancel={onCancel} onCreated={onCreated} />,
+      <ProductCreatePage token="admin-token" onCancel={onCancel} onSaved={onSaved} />,
     )
     await user.type(screen.getByLabelText('Ürün adı'), 'Yeni Ürün')
     await user.type(screen.getByLabelText('Kategori'), 'Ev ve Yaşam')
@@ -144,7 +282,7 @@ describe('admin product creation page', () => {
 
   it('exposes the same field constraints as the product API', () => {
     render(
-      <ProductCreatePage token="admin-token" onCancel={onCancel} onCreated={onCreated} />,
+      <ProductCreatePage token="admin-token" onCancel={onCancel} onSaved={onSaved} />,
     )
 
     expect(screen.getByLabelText('Ürün adı')).toHaveAttribute('maxLength', '32')
@@ -173,7 +311,7 @@ describe('admin product creation page', () => {
     ['Stok adedi', ''],
   ])('blocks invalid %s value %s before the API request', async (field, invalidValue) => {
     render(
-      <ProductCreatePage token="admin-token" onCancel={onCancel} onCreated={onCreated} />,
+      <ProductCreatePage token="admin-token" onCancel={onCancel} onSaved={onSaved} />,
     )
 
     fireEvent.change(screen.getByLabelText('Ürün adı'), { target: { value: 'Yeni Ürün' } })
@@ -191,7 +329,7 @@ describe('admin product creation page', () => {
       'Ürün bilgilerini kontrol edip tekrar dene.',
     )
     expect(fetch).not.toHaveBeenCalled()
-    expect(onCreated).not.toHaveBeenCalled()
+    expect(onSaved).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -209,7 +347,7 @@ describe('admin product creation page', () => {
     )
     const user = userEvent.setup()
     render(
-      <ProductCreatePage token="admin-token" onCancel={onCancel} onCreated={onCreated} />,
+      <ProductCreatePage token="admin-token" onCancel={onCancel} onSaved={onSaved} />,
     )
     await fillValidForm(user)
 
@@ -218,14 +356,14 @@ describe('admin product creation page', () => {
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(message)
     expect(alert).not.toHaveTextContent('Private server detail.')
-    expect(onCreated).not.toHaveBeenCalled()
+    expect(onSaved).not.toHaveBeenCalled()
   })
 
   it('shows a connection message when the API cannot be reached', async () => {
     vi.mocked(fetch).mockRejectedValueOnce(new TypeError('Failed to fetch'))
     const user = userEvent.setup()
     render(
-      <ProductCreatePage token="admin-token" onCancel={onCancel} onCreated={onCreated} />,
+      <ProductCreatePage token="admin-token" onCancel={onCancel} onSaved={onSaved} />,
     )
     await fillValidForm(user)
 
@@ -238,7 +376,7 @@ describe('admin product creation page', () => {
     vi.mocked(fetch).mockRejectedValueOnce(new Error('Unexpected error'))
     const user = userEvent.setup()
     render(
-      <ProductCreatePage token="admin-token" onCancel={onCancel} onCreated={onCreated} />,
+      <ProductCreatePage token="admin-token" onCancel={onCancel} onSaved={onSaved} />,
     )
     await fillValidForm(user)
 
@@ -261,7 +399,7 @@ describe('admin product creation page', () => {
     )
     const user = userEvent.setup()
     render(
-      <ProductCreatePage token="admin-token" onCancel={onCancel} onCreated={onCreated} />,
+      <ProductCreatePage token="admin-token" onCancel={onCancel} onSaved={onSaved} />,
     )
     await fillValidForm(user)
 
@@ -281,7 +419,7 @@ describe('admin product creation page', () => {
   it('allows cancelling the form without submitting it', async () => {
     const user = userEvent.setup()
     render(
-      <ProductCreatePage token="admin-token" onCancel={onCancel} onCreated={onCreated} />,
+      <ProductCreatePage token="admin-token" onCancel={onCancel} onSaved={onSaved} />,
     )
 
     await user.click(screen.getByRole('button', { name: 'Ürün listesine dön' }))
