@@ -2,20 +2,14 @@ import re
 import unicodedata
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, SecretStr, field_validator
-
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: SecretStr = Field(min_length=1, max_length=128)
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: Literal["bearer"] = "bearer"
-    expires_in: int
+class CurrentUserResponse(BaseModel):
+    subject: str
+    email: EmailStr | None
+    roles: list[str]
     is_admin: bool
 
 

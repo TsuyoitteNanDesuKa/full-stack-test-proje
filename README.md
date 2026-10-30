@@ -13,84 +13,69 @@ Bu proje, çevrimiçi alışveriş uygulamasını Agile yaklaşımla gereksiniml
 
 ## Ürün fikri: çevrimiçi alışveriş sitesi
 
-Öğrenme projesi olarak müşterilerin hesaplarıyla giriş yapabildiği, ürünleri inceleyebildiği ve alışveriş yapabildiği bir **çevrimiçi mağaza** geliştirilecektir. İlk geliştirme dilimi, kayıtlı bir müşterinin giriş yapması ve korumalı ana sayfa API'sine erişmesidir.
+Öğrenme projesi olarak müşterilerin hesaplarıyla giriş yapabildiği, ürünleri inceleyebildiği ve alışveriş yapabildiği bir **çevrimiçi mağaza** geliştirilecektir. Kimlik sağlayıcı Keycloak'tır. İlk kullanıcı yönetimi dilimi alıcıların kendi hesaplarını oluşturarak OIDC ile giriş yapmasıdır.
 
 ### İlk sürüm kapsamı
 
-- Müşteri hesabıyla güvenli giriş ve kimlik doğrulaması.
+- Keycloak üzerinden alıcı self-registration ve OIDC tabanlı güvenli giriş.
 - Kimliği doğrulanmış müşteriye ana sayfa içeriğinin sunulması.
 - İlerleyen dilimlerde ürün kataloğu, arama, sepet, sipariş ve müşteri hesabı akışları.
-- Güvenli parola saklama, geçersiz kimlik bilgileri ve yetkisiz erişim davranışlarının test edilmesi.
+- API'de Keycloak imzası, issuer, audience, süre ve rollerin doğrulanması.
 
-İlk dilimde müşteri kaydı API'si, ürün kataloğu, sepet ve sipariş akışları kapsam dışıdır. Gerçek zamanlı işbirliği, mikroservisler ve mobil uygulama da kapsam dışındadır. Yeni özellikler gereksinimleri ve testleriyle birlikte aşamalı eklenmelidir.
+E-posta doğrulama ve parola sıfırlama daha sonraki dilimlere bırakılmıştır. Satıcı başvurusu/işletme doğrulaması ve admin ataması alıcı kayıt diliminin dışındadır; admin rolü şimdilik yalnızca Keycloak yönetim konsolundan güvenilir operatör tarafından verilebilir. Gerçek zamanlı işbirliği, mikroservisler ve mobil uygulama da kapsam dışındadır.
 
-## Örnek kullanım senaryosu: Müşteri girişi
+## Örnek kullanım senaryosu: Alıcı kaydı ve giriş
 
-**Kullanıcı:** Kayıtlı bir müşteri  
-**Amaç:** Hesabına güvenli biçimde giriş yapıp mağaza ana sayfasına erişmek.
+**Kullanıcı:** Yeni veya kayıtlı alıcı
 
-1. Müşteri kayıtlı e-posta adresini ve parolasını göndererek giriş yapar.
-2. Doğru kimlik bilgileriyle geçici bir erişim belirteci alır.
-3. Belirteci kullanarak ana sayfa API'sine istek gönderir ve mağazanın karşılama içeriğini görür.
-4. Yanlış kimlik bilgileri veya belirteç olmadan ana sayfa isteği gönderildiğinde erişim reddedilir.
+**Amaç:** Keycloak üzerinde alıcı hesabı oluşturup mağaza ana sayfasına erişmek.
 
-Tam kabul kriterleri ve API sözleşmesi [REQ-001](./docs/requirements.md#req-001-kayitli-müşteri-girişi-ve-ana-sayfaya-erişim) gereksiniminde tanımlanmıştır.
+1. Ziyaretçi **Alıcı hesabı oluştur** seçer; kimlik bilgileri Keycloak'ın barındırılan ekranında girilir.
+2. Kayıtla oluşan hesap varsayılan `buyer` rolünü alır. Kayıt ekranı `seller` veya `admin` rolü atayamaz.
+3. Authorization Code + PKCE akışıyla tarayıcı uygulamasına dönüş yapılır; parolalar mağaza API'sine gönderilmez.
+4. React access token ile `/api/v1/auth/me` ve korumalı mağaza API'lerini çağırır; FastAPI token'ı Keycloak JWKS, issuer ve audience ile doğrular.
+5. Token yok/geçersizse `401`, alıcı admin işlemi denediğinde `403` döner.
+
+Tam kabul kriterleri [REQ-001](./docs/requirements.md#req-001-kayıtlı-müşteri-girişi-ve-ana-sayfaya-erişim) ve [REQ-006](./docs/requirements.md#req-006-keycloak-ile-alıcı-kaydı-ve-rol-tabanlı-kullanıcı-yönetimi) içinde tanımlanmıştır.
 
 ## Backend'i çalıştırma
 
-İlk backend dilimi `apps/api` altında FastAPI ile geliştirilmiştir. Docker/PostgreSQL kurulumu tamamlanana kadar yerel geliştirmede SQLite kullanılır.
+FastAPI yerel geliştirmede SQLite kullanır. Keycloak, yerel Docker Compose servisi olarak başlatılır. Docker Desktop/Compose kurulu olmalıdır.
 
 ```powershell
+Set-Location .
+$env:KEYCLOAK_ADMIN_PASSWORD = Read-Host "Yerel Keycloak yönetici parolası"
+docker compose up -d keycloak
+
 Set-Location apps/api
 uv sync
 Copy-Item .env.example .env
-```
-
-`.env` içindeki `SHOP_SECRET_KEY` değerini en az 32 karakterlik rastgele bir değerle değiştirin. Ardından veritabanı şemasını kurup API'yi başlatın:
-
-```powershell
 uv run alembic upgrade head
-uv run shop-create-user
-uv run shop-set-admin admin@example.com
 uv run uvicorn shop_api.main:create_app --factory --reload
 ```
 
-`shop-create-user` komutu giriş yapabilmek için yerel bir hesap oluşturur; herkese açık kayıt uç noktası değildir. `shop-set-admin` komutuna `shop-create-user` sırasında kullandığınız e-posta adresini verin; örnekteki adresi kendi hesabınızla değiştirin. Ürün listeleme tüm giriş yapmış müşterilere, ürün ekleme yalnızca adminlere açıktır. API dokümantasyonu `http://127.0.0.1:8000/docs` adresinde açılır. Diğer ortam ve test yönergeleri [backend README](./apps/api/README.md) dosyasındadır.
-
-### Login arayüzünü çalıştırma
-
-İlk kurulumda API ortamını hazırlayıp örnek bir müşteri hesabı oluşturun. Parola terminalde gizli istenir:
-
-```powershell
-Set-Location apps/api
-uv sync
-Copy-Item .env.example .env
-```
-
-`.env` içindeki `SHOP_SECRET_KEY` değerini benzersiz ve en az 32 karakterlik bir değerle değiştirin. Ardından:
-
-```powershell
-uv run alembic upgrade head
-uv run shop-create-user
-uv run shop-set-admin admin@example.com
-```
-
-Komuttaki e-posta adresini oluşturduğunuz hesapla değiştirin. İki terminal açın. İlkinde backend'i:
-
-```powershell
-Set-Location apps/api
-uv run uvicorn shop_api.main:create_app --factory --reload
-```
-
-İkincisinde frontend'i başlatın:
+Realm ve `shop-web` public OIDC istemcisi `infra/keycloak/realm-export.json` dosyasından ilk Keycloak başlangıcında içe aktarılır. Keycloak hazır olduğunda alıcı kayıt ve giriş ekranı `http://localhost:8080` üzerinden sunulur. `SHOP_OIDC_ISSUER` ve audience varsayılanları yerel realm ile eşleşir.
 
 ```powershell
 Set-Location apps/web
-npm install
+npm ci
+Copy-Item .env.example .env
 npm run dev
 ```
 
-Login ekranını `http://127.0.0.1:5173` adresinde açın. Frontend `/api` isteklerini Vite proxy ile `http://127.0.0.1:8000` adresindeki backend'e iletir. Giriş başarılı olduğunda frontend, bearer belirteciyle ana sayfa API'sini çağırır; belirteç tarayıcı belleğinde tutulur ve çıkışta silinir.
+`http://localhost:5173` adresinde **Giriş yap** veya **Alıcı hesabı oluştur** seçilebilir. Uygulama parolayı almaz; Keycloak oturumundan dönen token'ı API'ye gönderir. Keycloak admin konsolu `http://localhost:8080/admin` adresindedir. Admin ürün işlemlerini yerel olarak denemek için bir test kullanıcısına `admin` realm rolünü yalnızca bu güvenilir konsoldan atayın; alıcılar kendileri rol yükseltemez. API dokümantasyonu `http://127.0.0.1:8000/docs` adresindedir. Ayrıntılar [backend README](./apps/api/README.md) ve [web README](./apps/web/README.md) içindedir.
+
+### Keycloak hesabı oluşturma E2E testi
+
+Keycloak realm'ini başlatıp aşağıdaki komutla tarayıcı testini çalıştırın:
+
+```powershell
+$env:E2E_KEYCLOAK_E2E = "1"
+Set-Location apps/web
+npm run test:e2e
+```
+
+Playwright testi benzersiz alıcı hesabını gerçek Keycloak kayıt ekranından oluşturur; parolalar test sırasında üretilir. Keycloak E2E testi varsayılan olarak atlanır; gerçek realm çalışırken açıkça etkinleştirilmelidir.
 
 ## Önerilen teknoloji seti
 

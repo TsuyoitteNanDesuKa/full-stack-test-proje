@@ -186,7 +186,6 @@ describe('admin product creation page', () => {
         method: 'PUT',
         body: JSON.stringify({
           ...productRequest(updatedProduct),
-          price: String(Number(updatedProduct.price)),
         }),
       }),
     )

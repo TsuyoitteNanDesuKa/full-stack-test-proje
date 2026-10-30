@@ -1,7 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
-import { testEmail, testPassword } from './e2e/test-credentials'
 
 const databasePath = resolve(
   process.env.PLAYWRIGHT_E2E_DATABASE_PATH ??
@@ -10,15 +9,13 @@ const databasePath = resolve(
 const databaseUrl = `sqlite:///${databasePath.replaceAll('\\', '/')}`
 const apiPort = 8001
 const webPort = 5174
-const testSecret = 'playwright-integration-signing-key-with-48-bytes'
+const oidcIssuer = process.env.E2E_KEYCLOAK_ISSUER ?? 'http://localhost:8080/realms/shop'
 
 const sharedEnvironment = {
   SHOP_DATABASE_URL: databaseUrl,
-  SHOP_SECRET_KEY: testSecret,
-  SHOP_ACCESS_TOKEN_EXPIRE_MINUTES: '30',
+  SHOP_OIDC_ISSUER: oidcIssuer,
+  SHOP_OIDC_AUDIENCE: 'shop-api',
   E2E_DATABASE_PATH: databasePath,
-  E2E_TEST_EMAIL: testEmail,
-  E2E_TEST_PASSWORD: testPassword,
 }
 
 export default defineConfig({
@@ -62,6 +59,8 @@ export default defineConfig({
       timeout: 120_000,
       env: {
         VITE_API_PROXY_TARGET: `http://127.0.0.1:${apiPort}`,
+        VITE_OIDC_AUTHORITY: oidcIssuer,
+        VITE_OIDC_CLIENT_ID: 'shop-web',
       },
     },
   ],

@@ -2,6 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 
 import pytest
+from conftest import create_test_token
 from factories import product_payload
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
@@ -15,12 +16,12 @@ PRODUCT_PAYLOAD = product_payload()
 
 
 def access_token(client: TestClient, user: User) -> str:
-    response = client.post(
-        "/api/v1/auth/login",
-        json={"email": user.email, "password": "correct-password-123"},
+    return create_test_token(
+        client,
+        subject=f"user-{user.id}",
+        email=user.email,
+        roles=["admin"] if user.is_admin else ["buyer"],
     )
-    assert response.status_code == 200
-    return response.json()["access_token"]
 
 
 def test_list_products_requires_authentication(client: TestClient) -> None:

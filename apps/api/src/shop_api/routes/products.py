@@ -8,20 +8,21 @@ from sqlalchemy.orm import Session
 
 from shop_api.database import get_db
 from shop_api.dependencies import get_admin_user, get_current_user
-from shop_api.models import Product, User
+from shop_api.models import Product
 from shop_api.schemas import (
     ProductCreateRequest,
     ProductListResponse,
     ProductResponse,
     product_name_key,
 )
+from shop_api.security import AuthenticatedUser
 
 router = APIRouter(prefix="/api/v1/products", tags=["products"])
 
 
 @router.get("", response_model=ProductListResponse)
 def list_products(
-    _current_user: Annotated[User, Depends(get_current_user)],
+    _current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -43,7 +44,7 @@ def list_products(
 )
 def create_product(
     payload: ProductCreateRequest,
-    _admin_user: Annotated[User, Depends(get_admin_user)],
+    _admin_user: Annotated[AuthenticatedUser, Depends(get_admin_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> ProductResponse:
     name_key = product_name_key(payload.name)
@@ -73,7 +74,7 @@ def create_product(
 def update_product(
     product_id: int,
     payload: ProductCreateRequest,
-    _admin_user: Annotated[User, Depends(get_admin_user)],
+    _admin_user: Annotated[AuthenticatedUser, Depends(get_admin_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> ProductResponse:
     product = db.get(Product, product_id)
@@ -129,7 +130,7 @@ def update_product(
 )
 def delete_product(
     product_id: int,
-    _admin_user: Annotated[User, Depends(get_admin_user)],
+    _admin_user: Annotated[AuthenticatedUser, Depends(get_admin_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> None:
     product = db.get(Product, product_id)

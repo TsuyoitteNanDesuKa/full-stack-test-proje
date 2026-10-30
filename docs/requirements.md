@@ -4,13 +4,14 @@ Bu belge, ürün gereksinimlerinin kapsamını ve kabul kriterlerini tutar. Gere
 
 ## Ürün özeti
 
-Müşterilerin ürünleri bulup satın alabildiği bir çevrimiçi mağaza geliştirilecektir. Ürün kataloğu, arama, sepet, sipariş ve müşteri hesabı ayrı dilimlerle eklenecektir. İlk dikey dilim, kayıtlı bir müşterinin kimliğini doğrulayıp ana sayfaya erişmesidir.
+Müşterilerin ürünleri bulup satın alabildiği bir çevrimiçi mağaza geliştirilecektir. Ürün kataloğu, arama, sepet, sipariş ve kullanıcı hesapları ayrı dilimlerle eklenecektir. Kimlik sağlayıcı olarak Keycloak kullanılacak; uygulama kimlik doğrulamayı OIDC üzerinden yapacak, mağazaya özgü profil ve yetkilendirme kararlarını backend'de sürdürecektir.
 
 ## Kapsam ve varsayımlar
 
 - İlk istemci uygulaması tarayıcı üzerinden kullanılacaktır; bu gereksinim backend API ve login arayüzünü kapsar.
-- İlk gereksinimde giriş yapacak müşterinin hesabı önceden oluşturulmuş ve etkin durumdadır.
-- Herkese açık müşteri kaydı, parola sıfırlama, sosyal giriş ve oturum kapatma ilk gereksinimin kapsamında değildir.
+- REQ-001'in yerel parola tabanlı ilk prototipi Keycloak/OIDC entegrasyonuyla değiştirilmektedir; alıcı self-registration REQ-006 kapsamındadır.
+- Alıcı, satıcı ve platform yöneticisi farklı iş profilleridir. Herkese açık kayıt yalnızca alıcı hesabı oluşturur; satıcı/yönetici rolü kullanıcı tarafından seçilemez veya yükseltilemez.
+- E-posta doğrulama ve parola sıfırlama daha sonraki dilimlere bırakılmıştır; ilk kayıt akışında e-posta doğrulaması zorunlu değildir.
 - Yerel geliştirme veritabanı SQLite'tır. PostgreSQL'e geçiş ayrı ortam çalışmasıdır.
 - Ana sayfa ve ürün kataloğu yalnızca doğrulanmış müşterilere sunulur. Ürün oluşturma, güncelleme ve silme işlemleri yönetici rolüyle sınırlandırılır.
 
@@ -20,63 +21,70 @@ Müşterilerin ürünleri bulup satın alabildiği bir çevrimiçi mağaza geli�
 - **P1:** İlk ürün sürümünde gerekli, ancak sonraki dilimde tamamlanabilir.
 - **P2:** İleri sürüm/iyileştirme.
 
+## Kullanıcı profili araştırması ve ürün kararları
+
+Bu araştırma, sağlayıcıların kamuya açık müşteri/satıcı akışları ile mağaza için aldığımız ürün kararlarını birbirinden ayırır. Büyük pazar yerlerinin iç rol/izin matrisleri kamuya açık olmadığı için aşağıdaki profiller birebir Amazon veya Trendyol iç sistemlerinin rol dökümü değildir.
+
+| Profil | Pazar yeri örüntüsü ve proje kararı |
+|---|---|
+| Alıcı | Trendyol'un herkese açık giriş/kayıt ekranı e-posta ile devam etme ve Google/Facebook ile devam etme seçeneklerini gösteriyor. Amazon'un tüketici hesapları da ayrı bir alışveriş hesabı deneyimi sunuyor. İlk dilimde kullanıcı e-posta ve parola ile kendi alıcı hesabını oluşturur; adres/ödeme bilgisi kayıt sırasında istenmez. |
+| Satıcı | Amazon'ın resmi satıcı kayıt rehberi, satıcı kaydını alıcı hesabından ayrı bir iş akışı olarak tanımlıyor; işletme, birincil irtibat, banka/ödeme bilgileri ve kimlik doğrulaması istiyor. Trendyol Partner/Satıcı portalı ayrı bir iş yüzeyi; erişilebilen herkese açık sayfalar iç rol ve doğrulama ayrıntılarını göstermiyor. Projede satıcı, bireysel giriş hesabından ziyade ileride bir satıcı/işletme profiline bağlanacak ayrıcalıklı aktör olacaktır. Satıcı başvurusu, işletme doğrulaması ve ekip üyeleri bu gereksinimin dışındadır. |
+| Platform yöneticisi | Pazar yerlerinde platform operasyonu ve moderasyonu alıcı/satıcı deneyimlerinden ayrıdır. Bu projede admin rolü yalnızca güvenilir yönetim kanalından atanır; herkese açık kayıtla admin olunamaz. Admin, mağaza genelindeki yönetim işlemlerini yapar; satıcıya ait ürün/işletme yetkileri ileride ayrı kurallarla tanımlanır. |
+
+**Kaynaklar (30 Ekim 2026'da erişilen kamuya açık sayfalar):**
+
+- [Trendyol — Giriş Yap veya Üye Ol](https://www.trendyol.com/uyelik): e-posta ile devam ve Google/Facebook seçenekleri.
+- [Trendyol Partner Portalı](https://partner.trendyol.com/): satıcı iş yüzeyi; sayfa JavaScript ve oturum gerektirdiği için dahili kayıt/rol kuralları doğrulanamadı.
+- [Amazon — How to sell on Amazon](https://sell.amazon.com/sell): satıcı kayıt planı, işletme/irtibat bilgileri, banka ve kimlik doğrulaması adımları.
+- [Keycloak Server Administration Guide](https://www.keycloak.org/docs/latest/server_admin/): Keycloak kullanıcı, rol, self-registration ve hesap yönetimi kabiliyetleri.
+
+**Karar:** İlk kullanıcı yönetimi dilimi Keycloak ile OIDC tabanlı olacak. Alıcı kendi kendine kayıt olabilir; satıcı ve admin erişimleri güvenilir yönetim süreciyle verilir. E-posta doğrulama ve parola sıfırlama sonraki roadmap maddeleridir.
+
 ## REQ-001 — Kayıtlı müşteri girişi ve ana sayfaya erişim
 
 **Öncelik:** P0  
-**Durum:** Tamamlandı; ürün kataloğu REQ-002 kapsamındadır.
-**Kullanıcı hikâyesi:** Bir müşteri olarak hesabıma güvenli biçimde giriş yapıp mağaza ana sayfasını görmek istiyorum; böylece alışverişe başlayabilirim.  
-**Ön koşul:** Müşteri hesabı etkin durumdadır ve geçerli bir e-posta adresiyle önceden oluşturulmuştur.
+**Durum:** Yerel parola tabanlı prototip superseded; Keycloak/OIDC entegrasyonu ve doğrulaması REQ-006 kapsamında devam ediyor.
+**Kullanıcı hikâyesi:** Bir alıcı olarak hesabıma güvenli biçimde giriş yapıp mağaza ana sayfasını görmek istiyorum; böylece alışverişe başlayabilirim.
+
+**Ön koşul:** Alıcı hesabı Keycloak `shop` realm'inde etkindir ve `buyer` rolüne sahiptir.
 
 ### Kabul kriterleri
 
-1. E-posta ve doğru parola ile giriş isteği kabul edilir ve sınırlı ömürlü erişim belirteci döndürülür.
-2. E-posta adresi büyük/küçük harf farkı olmadan eşleştirilir; baştaki/sondaki boşluklar yok sayılır.
-3. Yanlış parola, bilinmeyen e-posta veya devre dışı hesap aynı genel kimlik doğrulama hatasını döndürür; hesap varlığı açığa çıkarılmaz.
-4. Giriş isteğinde e-posta veya parola eksik/geçersizse istek doğrulama hatasıyla reddedilir; parola yanıt veya loglarda gösterilmez.
-5. Geçerli erişim belirteciyle ana sayfa isteği başarıyla karşılanır ve karşılama içeriği döner.
-6. Belirteç olmadan, bozuk belirteçle veya süresi geçmiş belirteçle ana sayfa isteği `401 Unauthorized` döndürür.
-7. Erişim belirteci yalnızca kimlik bilgisi doğrulanmış etkin hesaba verilir.
-8. Giriş başarılı olduğunda istemci ana sayfaya yönelir; ürün kataloğu REQ-002'ye göre listelenir.
+1. Web istemcisi kullanıcıyı Keycloak'a yönlendirir; OIDC Authorization Code + PKCE kullanılır ve uygulama parolayı almaz.
+2. Keycloak'tan dönen access token yalnızca yapılandırılmış issuer, audience ve imzaya göre doğrulanır; API, geçerli ve aktif access token ile çalışır.
+3. Token yok/bozuk/süresi dolmuş, yanlış issuer/audience veya bilinmeyen imzaya sahipse korumalı API `401 Unauthorized` döndürür.
+4. JWKS anahtarları alınamıyorsa API token'ı kabul etmez ve `503 Service Unavailable` döndürür.
+5. Geçerli access token ile `/api/v1/auth/me` kullanıcı subject, e-posta ve uygulama rollerini döndürür; parola ve token yanıtta yer almaz.
+6. Geçerli `buyer` token'ı ile ana sayfa isteği başarıyla karşılanır; ürün kataloğu REQ-002'ye göre listelenir.
+7. Başarılı oturumda token tarayıcı oturum saklamasında tutulur; çıkış Keycloak oturumunu sonlandırır.
 
 ### Dışarıda bırakılanlar
 
 - Müşteri kayıt, parola sıfırlama, çok faktörlü kimlik doğrulama ve sosyal giriş.
-- Refresh token, cihaz/oturum yönetimi ve oturum kapatma.
+- Refresh token yenileme, cihaz/oturum yönetimi ve gelişmiş oturum denetimi.
 - Ürün arama, filtreleme, kampanya ve kişiye özel ana sayfa içeriği.
 - Kayıt, ürün listesi ve müşteri hesabı ekranları.
 
-### API sözleşmesi (ilk sürüm)
+### API sözleşmesi (Keycloak entegrasyonu)
 
-#### `POST /api/v1/auth/login`
+Giriş ve kayıt Keycloak hosted OIDC akışında yapılır; mağaza API'sinde parola alan endpoint bulunmaz. Eski `POST /api/v1/auth/login` endpoint'i kaldırılmıştır.
 
-İstek:
+#### `GET /api/v1/auth/me`
 
-```json
-{
-  "email": "customer@example.com",
-  "password": "customer-password"
-}
-```
+İstek başlığı: `Authorization: Bearer <keycloak-access-token>`
 
 Başarılı yanıt `200 OK`:
 
 ```json
 {
-  "access_token": "<signed-access-token>",
-  "token_type": "bearer",
-  "expires_in": 1800
+  "subject": "<keycloak-user-subject>",
+  "email": "buyer@example.com",
+  "roles": ["buyer"],
+  "is_admin": false
 }
 ```
 
-Geçersiz kimlik bilgisi `401 Unauthorized`:
-
-```json
-{
-  "detail": "Geçersiz e-posta veya parola."
-}
-```
-
-Girdi doğrulama hataları `422 Unprocessable Entity` döndürür.
+Geçersiz token `401 Unauthorized`; JWKS erişim hatası `503 Service Unavailable` döndürür.
 
 #### `GET /api/v1/home`
 
@@ -97,18 +105,14 @@ Erişim belirteci yoksa veya geçersizse `401 Unauthorized` döndürülür.
 
 | Kimlik | Seviye | Durum | Beklenti |
 |---|---|---|---|
-| REQ-001-T1 | API | Geçerli e-posta/parola | `200`, bearer belirteci |
-| REQ-001-T2 | API | E-posta farklı harf kullanımı/boşlukla | Geçerli hesapla giriş başarılı |
-| REQ-001-T3 | API | Yanlış parola veya bilinmeyen e-posta | Aynı genel `401` yanıtı |
-| REQ-001-T4 | API | Eksik/geçersiz e-posta | `422`, belirteç verilmez |
-| REQ-001-T5 | API | Belirteçli ana sayfa isteği | `200`, beklenen karşılama içeriği |
-| REQ-001-T6 | API | Belirteç yok/bozuk/süresi dolmuş | `401` |
-| REQ-001-T7 | Güvenlik | Yanıt gövdesi ve uygulama logları | Parola veya parola özeti dışarı sızmaz |
-| REQ-001-T8 | Component/integration | Başarılı giriş ve ana sayfa isteği | Login formu token'ı korumalı istekte kullanır; ana sayfa görünür |
-| REQ-001-T9 | Component | Login `401`, `422`, `5xx` ve bağlantı hataları | Her durumda kullanıcıya uygun, sunucu iç detaylarını açmayan mesaj gösterilir |
-| REQ-001-T10 | E2E | Gerçek tarayıcı, API ve veritabanıyla geçerli giriş | Login ve korumalı ana sayfa akışı tamamlanır; çıkış login formuna döner |
-| REQ-001-T11 | E2E | Gerçek backend ile yanlış parola | Genel hata gösterilir; ana sayfa isteği gönderilmez |
-| REQ-001-T12 | E2E | Yanlış parola | Ürün listesi isteği gönderilmez |
+| REQ-001-T1 | Unit/API | OIDC token doğru imza, issuer, audience ve claim'lerle | `/auth/me` ve korumalı mağaza API'leri `200` |
+| REQ-001-T2 | API negatif | Token yok, bozuk, expired, imza/issuer/audience hatalı | `401`; korumalı veri açığa çıkmaz |
+| REQ-001-T3 | API/operasyon | JWKS endpoint erişilemez | `503`; token kabul edilmez ve hata kaydedilir |
+| REQ-001-T4 | API | Geçerli alıcı token'ı ile `/auth/me` ve ana sayfa | Doğrulanmış subject/rol ve beklenen içerik döner |
+| REQ-001-T5 | Güvenlik | Login isteği ve frontend formu | API'ye parola gönderilmez; kullanıcı parolası uygulama loglarına girmez |
+| REQ-001-T6 | Component | Keycloak login/kayıt yönlendirmeleri | Tarayıcı OIDC provider'a yönlenir; uygulamada credential alanı bulunmaz |
+| REQ-001-T7 | Component | OIDC callback ve session restore | Geçerli session ile korumalı API çağrıları yapılır; expired session restore edilmez |
+| REQ-001-T8 | E2E | Keycloak hosted login ve ana sayfa | Giriş sonrası katalog görünür; çıkış Keycloak session'ını sonlandırır |
 
 ## REQ-002 — Giriş sonrası ana sayfada ürünleri listeleme
 
@@ -346,11 +350,67 @@ Yalnızca admin rolüne açık. Başarıda boş gövdeli `204 No Content`; bulun
 
 **Test katmanı izlenebilirliği:** Silme endpoint'i, rol/404/geçersiz belirteç kontrolleri ve silme sonrası katalog/benzersizlik doğrulamaları `apps/api/tests/test_products.py`; boş yanıt ve hata aktarımı `apps/web/src/api.test.ts`; onay/iptal, hedef satırın kaldırılması, `401`/`404` ve ağ hatasında korunması, bekleyen istekte tekrarın engellenmesi `apps/web/src/App.test.tsx`; admin ve müşteri tarayıcı akışları `apps/web/e2e/login.spec.ts` ile doğrulanır.
 
+## REQ-006 — Keycloak ile alıcı kaydı ve rol tabanlı kullanıcı yönetimi
+
+- **Öncelik:** P0 (v1.0 sonrası ilk özellik dilimi)
+- **Durum:** Alıcı registration/login dikey dilimi geliştiriliyor; kapsamlı kabul testi tamamlanmadan tamamlandı sayılmaz.
+- **Kullanıcı hikâyesi:** Bir ziyaretçi olarak e-posta ve parolamla alıcı hesabı oluşturmak, giriş yapmak ve alışverişe başlamak istiyorum. Mağaza yöneticisi olarak da alıcı, satıcı ve admin yetkilerinin güvenli biçimde ayrılmasını istiyorum.
+- **Ön koşul:** Keycloak yerel geliştirme ortamında çalışır; web istemcisi ve API için OIDC istemci yapılandırması vardır.
+
+### Profil ve yetki modeli
+
+| Rol/profil | İlk dilimde atama | Yetki sınırı |
+|---|---|---|
+| `buyer` (alıcı) | Herkese açık başarılı kayıtta otomatik atanır | Ana sayfa ve ürün kataloğunu görüntüler; yalnızca kendi kullanıcı verilerine erişir. |
+| `seller` (satıcı) | Yalnızca güvenilir admin/operasyon süreciyle; self-registration ile atanamaz | Bu dilimde satıcı başvurusu, işletme doğrulaması ve satıcıya özel ürün yönetimi yoktur. |
+| `admin` (platform yöneticisi) | Yalnızca güvenilir Keycloak yönetim kanalıyla; self-registration ile atanamaz | Mevcut ürün CRUD yetkileri admin rolünde kalır. Rol kullanıcı profilinden veya istemci isteğinden değiştirilemez. |
+
+Roller kullanıcı kategorilerini anlatır; satıcı organizasyonu ve birden fazla çalışan/alt rol desteği bu dilimin kapsamı değildir. Backend her istekte doğrulanmış token'daki yetkiyi denetler; yalnızca frontend'de eylem gizlemek yetkilendirme sayılmaz.
+
+### Kabul kriterleri
+
+1. Ziyaretçi e-posta ve parola ile Keycloak'ın kayıt akışından alıcı hesabı oluşturabilir; başarılı kayıt `buyer` rolü verir ve uygulamada oturum açma/ana sayfaya ilerleme imkânı sağlar.
+2. Kayıt formu e-posta ve parolayı uygulama backend'ine göndermez; kimlik bilgileri yalnızca Keycloak tarafından işlenir. OIDC tarayıcı akışında Authorization Code + PKCE kullanılır.
+3. E-posta benzersizliği Keycloak tarafından korunur. Var olan e-posta ile tekrar kayıt ve geçersiz/eksik alanlar kullanıcıya güvenli, anlaşılır hata verir; hesap/kimlik bilgisi ayrıntıları gereksiz yere açığa çıkarılmaz.
+4. İlk sürümde e-posta doğrulaması zorunlu değildir. Kayıt sonrasında doğrulanmamış e-posta ile giriş engellenmez.
+5. Parola sıfırlama, e-posta doğrulama, sosyal giriş, MFA ve satıcı self-service başvurusu ilk dilimde sunulmaz; bunlar roadmap'te sonraki işlerdir.
+6. Kullanıcı kayıt isteğinde `seller` veya `admin` talep etse bile rol yükseltemez. Yeni alıcı hesabı sadece `buyer` olur; ayrıcalıklı roller yalnızca güvenilir yönetim kanalından atanabilir.
+7. FastAPI yalnızca yapılandırılmış Keycloak issuer'ından gelen, imzası ve `iss`, `aud`, süre/aktiflik kontrolleri doğrulanmış access token'ları kabul eder. Eksik, bozuk, süresi dolmuş veya yanlış issuer/audience token `401` döndürür.
+8. Backend rol/yetki denetimi uygular: alıcı ürün CRUD yapamaz (`403`); admin mevcut ürün CRUD işlemlerini sürdürebilir; kullanıcı kendi sepeti/siparişi gibi kişisel kayıtlar eklendiğinde yalnızca kendisininkine erişebilir.
+9. Keycloak'ın kapalı veya erişilemez olması başarılı kayıt/giriş gibi gösterilmez; kullanıcıya güvenli hata gösterilir ve uygulama hatayı gözlemlenebilir biçimde kaydeder.
+10. Mevcut ürün kataloğu ve admin ürün yönetimi akışları Keycloak entegrasyonundan sonra da çalışır; önceki rol/yetkisiz erişim davranışları regresyon testleriyle korunur.
+
+### Dışarıda bırakılanlar
+
+- E-posta adresi doğrulama, parola sıfırlama/değiştirme, MFA, sosyal giriş ve gelişmiş oturum/cihaz yönetimi.
+- Satıcı başvurusu, şirket/kimlik/KYC kontrolü, banka/ödeme bilgileri, mağaza profili, satıcı çalışanları ve satıcıya özel ürün yetkileri.
+- Admin kullanıcı arayüzü veya kullanıcıların kendi rollerini yönetmesi.
+- Müşteri adresi ve ödeme aracı toplama.
+
+### Doğrulama/test fikirleri
+
+| Kimlik | Seviye | Durum | Beklenti |
+|---|---|---|---|
+| REQ-006-T1 | Keycloak entegrasyon/E2E | Geçerli alıcı kaydı | Keycloak kaydı başarıyla tamamlanır; yeni hesap `buyer` olur ve uygulamaya döner |
+| REQ-006-T2 | Keycloak entegrasyon/E2E negatif | Aynı e-posta ile ikinci kayıt | Tekil hesap kuralı korunur; güvenli hata döner |
+| REQ-006-T3 | Keycloak entegrasyon/E2E negatif | Eksik/bozuk e-posta veya zorunlu alan | Kayıt reddedilir; hesap/oturum yanlışlıkla oluşturulmaz |
+| REQ-006-T4 | Güvenlik/entegrasyon | Self-registration sırasında `seller`/`admin` rolü talep etme | Varsayılan rol `buyer` kalır; istemci rol yükseltemez |
+| REQ-006-T5 | API negatif | Yok, bozuk, süresi dolmuş veya yanlış `iss`/`aud` access token | `401`; korumalı veri/işlem açığa çıkmaz |
+| REQ-006-T6 | API yetki | Alıcı ürün create/update/delete ister | `403`; ürün verisi değişmez |
+| REQ-006-T7 | API yetki | Güvenilir admin token'ı ile ürün CRUD | Mevcut admin davranışı korunur |
+| REQ-006-T8 | Component/unit | OIDC kayıt/login yönlendirmesi, callback iptali/bozulması ve Keycloak erişim hatası | Yönlendirme doğru başlar; callback parametreleri temizlenir; hata başarı gibi gösterilmez |
+| REQ-006-T9 | E2E | Yeni e-posta ile tarayıcıdan kayıt ve giriş | Keycloak yönlendirmesi, alıcı oturumu ve katalog görünümü çalışır |
+| REQ-006-T10 | E2E negatif | Alıcıyla admin işlemi denemesi | Yönetim eylemi görünmez ve API isteği `403` ile reddedilir |
+
+**Test katmanı izlenebilirliği:** Barındırılan Keycloak kayıt formunun başarılı/negatif davranışları izole test realm'iyle entegrasyon ve E2E seviyelerinde; token doğrulama/rol kuralları unit ve API seviyelerinde; OIDC yönlendirme/callback davranışları component seviyesinde doğrulanmalıdır. Yerel uygulama parola formu sunmadığından kayıt formu component testleriyle taklit edilmemelidir. Testlerde gerçek kullanıcı parolası veya üretim hesabı kullanılmamalıdır.
+
+**Sıralı kullanıcı yönetimi dilimleri:** Önce alıcı kayıt/login entegrasyonu tamamlanıp tüm katmanlarda kapsamlı test edilecek. Test kapısı geçmeden satıcı başvurusu geliştirilmeyecek. Ardından satıcı başvurusu ve işletme doğrulaması, bu dilimin kabul/test kapısından sonra admin rol atama akışı geliştirilecek. Bu sonraki iki akışın iş kuralları ayrı gereksinimlerde netleştirilecektir.
+
 ## İleri gereksinim adayları
 
 Bu maddeler kapsamı erkenden sabitlememek için henüz kabul kriterlerine dönüştürülmemiştir:
 
-- Müşteri hesabı oluşturma ve e-posta doğrulama.
+- Satıcı başvurusu, işletme doğrulaması ve satıcı çalışan/alt rol yönetimi.
 - Ürün kataloğunda arama ve filtreleme.
 - Sepet yönetimi ve stok/ürün fiyatı kuralları.
 - Adres ve teslimat seçenekleriyle sipariş oluşturma.

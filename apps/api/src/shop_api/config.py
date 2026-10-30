@@ -1,6 +1,7 @@
 from functools import lru_cache
+from urllib.parse import urlsplit
 
-from pydantic import SecretStr, field_validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,23 +14,40 @@ class Settings(BaseSettings):
     )
 
     database_url: str = "sqlite:///./shop.db"
-    secret_key: SecretStr = SecretStr("")
-    access_token_expire_minutes: int = 30
+    oidc_issuer: str = "http://localhost:8080/realms/shop"
+    oidc_audience: str = "shop-api"
+    oidc_jwks_url: str | None = None
 
-    @field_validator("access_token_expire_minutes")
+    @field_validator("oidc_issuer")
     @classmethod
-    def validate_token_expiry(cls, value: int) -> int:
-        if not 1 <= value <= 1440:
-            raise ValueError("SHOP_ACCESS_TOKEN_EXPIRE_MINUTES must be between 1 and 1440.")
-        return value
+    def validate_oidc_issuer(cls, value: str) -> str:
+        issuer = value.rstrip("/")
+        parsed_issuer = urlsplit(issuer)
+        local_http = parsed_issuer.scheme == "http" and parsed_issuer.hostname in {
+            "localhost",
+            "127.0.0.1",
+        }
+        if (
+            parsed_issuer.scheme != "https"
+            and not local_http
+            or not parsed_issuer.hostname
+            or parsed_issuer.username
+            or parsed_issuer.password
+            or parsed_issuer.query
+            or parsed_issuer.fragment
+        ):
+            raise ValueError("SHOP_OIDC_ISSUER must use HTTPS except for local development.")
+        return issuer
 
-    def signing_key(self) -> str:
-        key = self.secret_key.get_secret_value()
-        if len(key) < 32 or key.startswith("replace-with-"):
-            raise ValueError(
-                "Set SHOP_SECRET_KEY to a unique random value of at least 32 characters."
-            )
-        return key
+    @field_validator("oidc_audience")
+    @classmethod
+    def validate_oidc_audience(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("SHOP_OIDC_AUDIENCE must not be empty.")
+        return value.strip()
+
+    def jwks_endpoint(self) -> str:
+        return self.oidc_jwks_url or f"{self.oidc_issuer}/protocol/openid-connect/certs"
 
 
 @lru_cache

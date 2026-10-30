@@ -188,7 +188,56 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 
 **Çıkış ölçütü:** Tüm maddeler yeşil, kritik iş kuralı boşluğu yok, `docs/requirements.md` gereksinim durumu tamamlandı ve `v1.0.0` etiketi/özet sürüm notu hazırlanabilir.
 
-### Öncelik 1 — REQ-006: Müşteri sepeti
+### Öncelik 1 — REQ-006: Keycloak ile alıcı kaydı ve rol tabanlı kullanıcı yönetimi
+
+**Amaç:** Ziyaretçi kendi alıcı hesabını açabilsin; Keycloak kimlik doğrulamayı, backend ise mağaza kaynaklarına erişim yetkisini güvenli biçimde yönetsin. Bu öncelik yalnızca alıcı registration/login ve OIDC geçişini kapsar; satıcı ve admin akışları sonraki sıralı gereksinimlerdir.
+
+- Keycloak'ı yerel geliştirme ortamına ekle; web istemcisi ve FastAPI için OIDC yapılandırmasını yap.
+- Alıcı için e-posta/parola ile self-service kayıt ve Authorization Code + PKCE tabanlı giriş akışını kur. Parola uygulama backend'ine uğramamalı.
+- Token issuer, audience, imza, süre ve rollerin backend doğrulamasını uygula; mevcut ürün CRUD yetkilerini yeni token/role modeline taşı.
+- `buyer`, `seller`, `admin` profillerini ayır. Herkese açık kayıt yalnızca `buyer` verir; `seller` ve `admin` ataması güvenilir yönetim süreciyle yapılır.
+- Duplicate e-posta, geçersiz kayıt, rol yükseltme, bozuk/expired/yanlış issuer-audience token, yetkisiz ürün işlemi ve Keycloak erişim hatalarını test et.
+- Keycloak test realm'i ve tekrarlanabilir test verisi kur; kayıt/giriş/rol sınırları için unit, API/entegrasyon, component ve E2E testleri ekle.
+- Keycloak gerçek servisinin de kullanıldığı tarayıcı kayıt akışını test et; testler geçmeden REQ-007'ye başlama.
+
+**Bu dilimde ertelenen işler:**
+
+- E-posta doğrulama: daha sonraki kimlik yaşam döngüsü iyileştirmesi; doğrulanmamış e-posta ile kayıt/giriş ilk sürümde mümkün.
+- Parola sıfırlama ve değiştirme: daha sonraki kimlik yaşam döngüsü iyileştirmesi.
+- Satıcı başvurusu, işletme/kimlik doğrulaması, ödeme bilgileri ve satıcı çalışan/alt rol yönetimi.
+- Sosyal giriş, MFA ve gelişmiş oturum/cihaz yönetimi.
+
+**Çıkış ölçütü:** Alıcı kendi hesabını oluşturup giriş yapar; rol/token kontrolleri backend'de uygulanır; unit/API/component/E2E testleri ve mevcut katalog/admin CRUD regresyonları geçer. Gerçek Keycloak kayıt akışı test edilmeden gereksinim tamamlanmış sayılmaz. E-posta doğrulama ve parola sıfırlama ayrı sonraki iş olarak kalır.
+
+### Öncelik 2 — REQ-007: Satıcı başvurusu ve işletme doğrulaması
+
+**Başlama koşulu:** REQ-006 alıcı registration/login gereksinimi ve kapsamlı test kapısı tamamlanmış olmalı.
+
+**Amaç:** Alıcı hesabı sahibi, mağaza satıcısı olmak için işletme bilgileriyle başvurabilsin; başvuru incelenip onaylanmadan kullanıcı `seller` yetkisi alamamalı.
+
+- REQ-006 test kapısı geçtikten sonra satıcı başvurusu için alanları, işletme doğrulama seviyesini, durum geçişlerini ve ret/yeniden başvuru politikasını ayrı gereksinimle tanımla.
+- Başvuru verilerini alıcı kimliğine ve işletme profiline bağla; müşteri kişisel verisini minimumda tut ve saklama/erişim kurallarını belirt.
+- Başvuru durumları en az taslak/gönderildi/incelemede/onaylandı/reddedildi olarak modellenmeli; yalnızca onaylı başvuru `seller` rolü kazanmalı.
+- Tekrarlanan başvuru, eksik/uygunsuz işletme verisi, doğrulama hatası, ret ve yetkisiz başvuru erişimini test et.
+- Başvuru ekranı ile API/DB transaction, audit ve erişim kontrolü testlerini ekle.
+
+**Çıkış ölçütü:** İşletme başvurusu izlenebilir bir inceleme sürecinden geçer; onaysız kullanıcı satıcı yetkisi veya satıcı işlevleri kazanamaz.
+
+### Öncelik 3 — REQ-008: Admin rolü atama ve yönetici erişimi
+
+**Başlama koşulu:** REQ-007 satıcı başvurusu/işletme doğrulaması ve test kapısı tamamlanmış olmalı.
+
+**Amaç:** Platform yöneticisi rolü yalnızca yetkili ve denetlenebilir bir yönetim süreciyle atanabilsin; uygulama kullanıcısı kendi yetkisini yükseltemesin.
+
+- Güvenilir ilk admin bootstrap yöntemi ve sonrasındaki admin atama/geri alma workflow'unu ayrı gereksinimle tanımla.
+- Admin rolü self-registration, profil düzenleme, istemci isteği veya satıcı başvuru onayıyla kendiliğinden verilememeli.
+- Yetkili atama yapan aktör, hedef kullanıcı, rol değişikliği, zaman ve sonuç audit kaydına alınmalı.
+- Admin atama/geri alma, son aktif admin'in kaldırılması, yetkisiz atama ve başarısız IdP erişimini test et.
+- Backend, tüm admin işlemlerinde Keycloak role claim'ini doğrulamaya devam etmeli.
+
+**Çıkış ölçütü:** Admin yetkisi yalnızca güvenilir iş akışından verilir/alınır; her değişiklik denetlenebilir ve API'de etkili olur.
+
+### Öncelik 4 — REQ-009: Müşteri sepeti
 
 **Amaç:** Giriş yapmış müşteri ürünleri sepete ekleyebilsin, miktarı değiştirebilsin ve sepetten çıkarabilsin.
 
@@ -200,7 +249,7 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 
 **Çıkış ölçütü:** Müşteri kendi sepetini güvenilir biçimde düzenler; hatalı veya yetkisiz değişiklikler kalıcılaşmaz; stok ve miktar kuralları backend'de atomik olarak korunur.
 
-### Öncelik 2 — REQ-007: Sipariş oluşturma
+### Öncelik 5 — REQ-010: Sipariş oluşturma
 
 **Amaç:** Müşteri sepetini doğrulayarak siparişe dönüştürebilsin; sipariş geçmişi satın alma anındaki ürün/fiyat bilgisini korusun.
 
@@ -212,7 +261,7 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 
 **Çıkış ölçütü:** Sipariş ya tüm kalemleriyle ve stok etkisiyle oluşur ya da hiçbir değişiklik kalıcılaşmaz; sipariş tutarı istemci girdisine güvenmez ve daha sonra ürün değişse/silinse bile geçmiş tutar korunur.
 
-### Öncelik 3 — REQ-008: Ödeme entegrasyonu
+### Öncelik 6 — REQ-011: Ödeme entegrasyonu
 
 **Amaç:** Sipariş, gerçek kart verisini uygulama sunucusuna almadan güvenilir bir ödeme sağlayıcısı üzerinden ödenebilsin.
 
@@ -223,7 +272,7 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 
 **Çıkış ölçütü:** Yinelenen veya doğrulanmamış bildirim ikinci kez tahsilat/sipariş geçişi yaratmaz; uygulama, sağlayıcı sonucu kesinleşene kadar siparişi tutarlı bir bekleme durumunda gösterir.
 
-### Öncelik 4 — REQ-009: Sipariş takibi ve operasyonel tamamlayıcılar
+### Öncelik 7 — REQ-012: Sipariş takibi ve operasyonel tamamlayıcılar
 
 - Müşteri sipariş geçmişi ve durum ayrıntıları; admin sipariş işleme yetkileri ayrı gereksinimle tanımlanmalı.
 - İptal, iade ve geri ödeme politikaları; stok iadesi ve ödeme sağlayıcı durumlarıyla transaction/idempotency kuralları belirlenmeli.
@@ -250,7 +299,7 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 7. Docker Compose ile tekrarlanabilir test ortamı.
 8. Playwright ile sistem/E2E testi.
 9. GitHub Actions ile CI.
-10. OpenAPI sözleşme kontrolleri; sonrasında erişilebilirlik, güvenlik ve performans araçları.
+10. OpenAPI sözleşme kontrolleri; Keycloak/OIDC kimlik entegrasyonu; sonrasında erişilebilirlik, güvenlik ve performans araçları.
 
 ## Öğrenme günlüğü ve ilerleme takibi
 

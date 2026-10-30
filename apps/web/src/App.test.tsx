@@ -1,757 +1,479 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import type { Product } from './api'
-import { createTestProduct } from './test/testData'
+import { createTestProduct, productRequest } from './test/testData'
+import { beginLogin, beginRegistration, endSession, getCurrentSession } from './auth'
+import type { AuthSession } from './auth'
+
+vi.mock('./auth', () => ({
+  beginLogin: vi.fn(),
+  beginRegistration: vi.fn(),
+  endSession: vi.fn(),
+  getCurrentSession: vi.fn(),
+}))
+
+const customerSession: AuthSession = {
+  accessToken: 'buyer-token',
+  email: 'customer@example.com',
+}
+const adminSession: AuthSession = {
+  accessToken: 'admin-token',
+  email: 'admin@example.com',
+}
+const sampleProduct: Product = createTestProduct()
 
 function jsonResponse(body: unknown, status = 200): Response {
-  const responseBody =
-    body !== null && typeof body === 'object' && 'access_token' in body
-      ? { is_admin: false, ...body }
-      : body
-  return new Response(JSON.stringify(responseBody), {
+  return new Response(JSON.stringify(body), {
     status,
     headers: { 'Content-Type': 'application/json' },
   })
 }
 
-const sampleProduct: Product = createTestProduct()
-
-function productList(products: typeof sampleProduct[] = [sampleProduct]) {
+function productList(products: Product[] = [sampleProduct]) {
   return { products, total: products.length, limit: 20, offset: 0 }
 }
 
-describe('customer login', () => {
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
+function setupApi(options: {
+  isAdmin?: boolean
+  email?: string
+  products?: Product[]
+  homeError?: Response
+  deleteError?: Response
+} = {}) {
+  const fetchMock = vi.mocked(fetch)
+  fetchMock.mockImplementation(async (input, init) => {
+    const path = String(input)
+    if (path === '/api/v1/auth/me') {
+      return jsonResponse({
+        subject: 'keycloak-user',
+        email: options.email ?? 'customer@example.com',
+        roles: options.isAdmin ? ['admin', 'buyer'] : ['buyer'],
+        is_admin: options.isAdmin ?? false,
+      })
+    }
+    if (path === '/api/v1/home') {
+      return options.homeError ?? jsonResponse({
+        message: 'Alışverişe hoş geldiniz',
+        featured_categories: [],
+      })
+    }
+    if (path.startsWith('/api/v1/products?')) {
+      return jsonResponse(productList(options.products))
+    }
+    if (path === '/api/v1/products' && init?.method === 'POST') {
+      const payload = JSON.parse(String(init.body)) as Product
+      return jsonResponse({ ...payload, id: 700 }, 201)
+    }
+    const productId = Number(path.split('/').at(-1))
+    if (path.endsWith(`/${productId}`) && init?.method === 'PUT') {
+      const payload = JSON.parse(String(init.body)) as Product
+      return jsonResponse({
+        ...payload,
+        id: productId,
+        updated_at: new Date().toISOString(),
+      })
+    }
+    if (path.endsWith(`/${productId}`) && init?.method === 'DELETE') {
+      return options.deleteError ?? new Response(null, { status: 204 })
+    }
+    return jsonResponse({ detail: 'unexpected request' }, 500)
+  })
+}
+
+describe('Keycloak authentication and storefront', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn())
     vi.stubGlobal('confirm', vi.fn(() => true))
+    vi.mocked(getCurrentSession).mockResolvedValue(customerSession)
+    vi.mocked(beginLogin).mockResolvedValue()
+    vi.mocked(beginRegistration).mockResolvedValue()
+    vi.mocked(endSession).mockResolvedValue()
   })
 
-  it('shows the storefront after logging in and fetching the home page', async () => {
-    const fetchMock = vi.mocked(fetch)
-    fetchMock
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            access_token: 'signed-token',
-            token_type: 'bearer',
-            expires_in: 1800,
-            is_admin: false,
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            message: 'Alışverişe hoş geldiniz',
-            featured_categories: [],
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        ),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse(
-          productList([
-            {
-              ...sampleProduct,
-              updated_at: '2026-10-29T10:00:00',
-            },
-          ]),
-        ),
-      )
-
+  it('starts hosted login without collecting credentials locally', async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(null)
     const user = userEvent.setup()
     render(<App />)
 
-    await user.type(screen.getByLabelText('E-posta adresi'), 'customer@example.com')
-    await user.type(screen.getByLabelText('Parola'), 'correct-password')
-    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
+    await user.click(await screen.findByRole('button', { name: /giriş yap/i }))
+
+    expect(beginLogin).toHaveBeenCalledOnce()
+    expect(screen.queryByLabelText('E-posta adresi')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Parola')).not.toBeInTheDocument()
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('starts Keycloak self-registration for a new buyer account', async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(null)
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: /alıcı hesabı oluştur/i }))
+
+    expect(beginRegistration).toHaveBeenCalledOnce()
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('shows an error when the identity provider redirect cannot start', async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(null)
+    vi.mocked(beginLogin).mockRejectedValue(new Error('identity provider unavailable'))
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: /giriş yap/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Kimlik sağlayıcısına bağlanılamadı.',
+    )
+  })
+
+  it('loads the signed-in buyer identity and storefront using the OIDC access token', async () => {
+    setupApi()
+    const user = userEvent.setup()
+    render(<App />)
 
     expect(
       await screen.findByRole('heading', { name: 'Alışverişe hoş geldiniz.' }),
     ).toBeInTheDocument()
-    expect(screen.getByText('customer@example.com olarak giriş yaptın. Sana iyi gelecek şeyler burada başlıyor.')).toBeInTheDocument()
+    expect(screen.getByText(/customer@example.com olarak giriş yaptın/)).toBeInTheDocument()
     expect(await screen.findByRole('table', { name: 'Ürün listesi' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '+ Ürün ekle' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^Sil / })).not.toBeInTheDocument()
-    const productRow = screen.getByRole('row', { name: new RegExp(sampleProduct.name) })
-    expect(productRow).toHaveTextContent(sampleProduct.category)
-    expect(productRow).toHaveTextContent(sampleProduct.description)
-    expect(productRow).toHaveTextContent(
-      new Intl.NumberFormat('tr-TR', {
-        style: 'currency',
-        currency: 'TRY',
-      }).format(Number(sampleProduct.price)),
-    )
-    expect(productRow).toHaveTextContent(String(sampleProduct.stock))
-    expect(productRow).toHaveTextContent('Güncellendi')
-    expect(fetchMock).toHaveBeenNthCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
       1,
-      '/api/v1/auth/login',
+      '/api/v1/auth/me',
       expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({
-          email: 'customer@example.com',
-          password: 'correct-password',
-        }),
+        headers: expect.objectContaining({ Authorization: 'Bearer buyer-token' }),
       }),
     )
-    expect(fetchMock).toHaveBeenNthCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
       2,
       '/api/v1/home',
       expect.objectContaining({
-        headers: expect.objectContaining({ Authorization: 'Bearer signed-token' }),
-      }),
-    )
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      3,
-      '/api/v1/products?limit=20&offset=0',
-      expect.objectContaining({
-        headers: expect.objectContaining({ Authorization: 'Bearer signed-token' }),
+        headers: expect.objectContaining({ Authorization: 'Bearer buyer-token' }),
       }),
     )
 
     await user.click(screen.getByRole('button', { name: /çıkış yap/i }))
-    expect(screen.getByRole('heading', { name: 'Merhaba.' })).toBeInTheDocument()
+    expect(endSession).toHaveBeenCalledOnce()
   })
 
-  it('lets an administrator create and update products in the catalog', async () => {
-    const newProduct = createTestProduct({
-      id: (sampleProduct.id % 100_000) + 1,
+  it('uses the email from the OIDC session when the profile has no email', async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue({
+      accessToken: 'buyer-token',
+      email: 'fallback@example.com',
     })
-    const updatedProduct = createTestProduct({
-      id: newProduct.id,
-      updated_at: new Date().toISOString(),
-    })
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(
-        jsonResponse({
-          access_token: 'admin-token',
-          token_type: 'bearer',
-          expires_in: 1800,
-          is_admin: true,
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({ message: 'Welcome', featured_categories: [] }),
-      )
-      .mockResolvedValueOnce(jsonResponse(productList()))
-      .mockResolvedValueOnce(
-        jsonResponse(newProduct, 201),
-      )
-      .mockResolvedValueOnce(jsonResponse(updatedProduct))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    setupApi({ email: '' })
+    render(<App />)
 
+    expect(await screen.findByText(/fallback@example.com olarak giriş yaptın/)).toBeInTheDocument()
+  })
+
+  it('uses a generic account label when neither source provides an email', async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue({
+      accessToken: 'buyer-token',
+      email: '',
+    })
+    setupApi({ email: '' })
+    render(<App />)
+
+    expect(await screen.findByText(/Hesabın olarak giriş yaptın/)).toBeInTheDocument()
+  })
+
+  it('shows a safe error if session restoration fails', async () => {
+    vi.mocked(getCurrentSession).mockRejectedValue(new Error('callback failed'))
+    render(<App />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Oturum başlatılamadı.')
+  })
+
+  it('shows the signed-out screen when no active session exists', async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(null)
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Merhaba.' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /giriş yap/i })).toBeInTheDocument()
+  })
+
+  it('shows a safe error when the API rejects a restored session', async () => {
+    setupApi({ homeError: jsonResponse({ detail: 'internal error' }, 401) })
+    render(<App />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Oturum başlatılamadı.')
+  })
+
+  it('renders catalog loading and empty states, then retries a failed request', async () => {
+    const fetchMock = vi.mocked(fetch)
+    let productCalls = 0
+    fetchMock.mockImplementation(async (input) => {
+      const path = String(input)
+      if (path === '/api/v1/auth/me') {
+        return jsonResponse({
+          subject: 'keycloak-user',
+          email: 'customer@example.com',
+          roles: ['buyer'],
+          is_admin: false,
+        })
+      }
+      if (path === '/api/v1/home') {
+        return jsonResponse({ message: 'Welcome', featured_categories: [] })
+      }
+      if (path.startsWith('/api/v1/products?')) {
+        productCalls += 1
+        return productCalls === 1
+          ? jsonResponse({ detail: 'failed' }, 500)
+          : jsonResponse(productList([]))
+      }
+      return jsonResponse({}, 500)
+    })
     const user = userEvent.setup()
     render(<App />)
-    await user.type(screen.getByLabelText('E-posta adresi'), 'admin@example.com')
-    await user.type(screen.getByLabelText('Parola'), 'correct-password')
-    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
 
-    await screen.findByRole('heading', { name: 'Welcome.' })
+    expect(await screen.findByRole('alert')).toHaveTextContent('Ürünler yüklenemedi.')
+    await user.click(screen.getByRole('button', { name: 'Tekrar dene' }))
+    expect(await screen.findByText('Henüz listelenecek ürün yok.')).toBeInTheDocument()
+    expect(productCalls).toBe(2)
+  })
+
+  it('ignores a catalog response that arrives after the storefront unmounts', async () => {
+    const productsResponse = deferred<Response>()
+    setupApi()
+    const previousFetch = vi.mocked(fetch).getMockImplementation()!
+    vi.mocked(fetch).mockImplementation((input, init) =>
+      String(input).startsWith('/api/v1/products?')
+        ? productsResponse.promise
+        : previousFetch(input, init),
+    )
+    const { unmount } = render(<App />)
+
+    await screen.findByText('Ürünler yükleniyor...')
+    unmount()
+    await act(async () => {
+      productsResponse.resolve(jsonResponse(productList()))
+      await productsResponse.promise
+    })
+  })
+
+  it('ignores a catalog failure that arrives after the storefront unmounts', async () => {
+    const productsResponse = deferred<Response>()
+    setupApi()
+    const previousFetch = vi.mocked(fetch).getMockImplementation()!
+    vi.mocked(fetch).mockImplementation((input, init) =>
+      String(input).startsWith('/api/v1/products?')
+        ? productsResponse.promise
+        : previousFetch(input, init),
+    )
+    const { unmount } = render(<App />)
+
+    await screen.findByText('Ürünler yükleniyor...')
+    unmount()
+    await act(async () => {
+      productsResponse.reject(new Error('catalog failed'))
+      await productsResponse.promise.catch(() => undefined)
+    })
+  })
+
+  it('does not update session state when initialization completes after unmount', async () => {
+    const session = deferred<AuthSession | null>()
+    vi.mocked(getCurrentSession).mockReturnValue(session.promise)
+    setupApi()
+    const { unmount } = render(<App />)
+
+    unmount()
+    await act(async () => {
+      session.resolve(customerSession)
+      await session.promise
+    })
+  })
+
+  it('does not update session state when initialization fails after unmount', async () => {
+    const session = deferred<AuthSession | null>()
+    vi.mocked(getCurrentSession).mockReturnValue(session.promise)
+    const { unmount } = render(<App />)
+
+    unmount()
+    await act(async () => {
+      session.reject(new Error('session failed'))
+      await session.promise.catch(() => undefined)
+    })
+  })
+
+  it('shows a connection-specific message when the catalog cannot be reached', async () => {
+    setupApi()
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      if (String(input).startsWith('/api/v1/products?')) {
+        throw new TypeError('network failure')
+      }
+      if (String(input) === '/api/v1/auth/me') {
+        return jsonResponse({ email: 'customer@example.com', is_admin: false })
+      }
+      return jsonResponse({ message: 'Welcome', featured_categories: [] })
+    })
+    render(<App />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Ürünlere şu anda ulaşılamıyor.')
+  })
+
+  it('allows an admin to create, edit, and delete a product', async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession)
+    setupApi({ isAdmin: true, email: 'admin@example.com' })
+    const newProduct = createTestProduct({ id: 700 })
+    const editedProduct = createTestProduct({ id: 700 })
+    const fetchMock = vi.mocked(fetch)
+    fetchMock.mockImplementation(async (input, init) => {
+      const path = String(input)
+      if (path === '/api/v1/auth/me') {
+        return jsonResponse({
+          email: 'admin@example.com',
+          roles: ['admin', 'buyer'],
+          is_admin: true,
+        })
+      }
+      if (path === '/api/v1/home') {
+        return jsonResponse({ message: 'Welcome', featured_categories: [] })
+      }
+      if (path.startsWith('/api/v1/products?')) {
+        return jsonResponse(productList())
+      }
+      if (path === '/api/v1/products' && init?.method === 'POST') {
+        return jsonResponse({ ...newProduct, ...JSON.parse(String(init.body)), id: 700 }, 201)
+      }
+      if (path === '/api/v1/products/700' && init?.method === 'PUT') {
+        return jsonResponse({
+          ...editedProduct,
+          ...JSON.parse(String(init.body)),
+          id: 700,
+          updated_at: new Date().toISOString(),
+        })
+      }
+      if (path === '/api/v1/products/700' && init?.method === 'DELETE') {
+        return new Response(null, { status: 204 })
+      }
+      return jsonResponse({}, 500)
+    })
+    const user = userEvent.setup()
+    render(<App />)
+
     await user.click(await screen.findByRole('button', { name: '+ Ürün ekle' }))
-    expect(screen.getByRole('heading', { name: 'Yeni ürün ekle' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Ürün listesine dön' }))
-    expect(
-      await screen.findByRole('row', { name: new RegExp(sampleProduct.name) }),
-    ).toBeInTheDocument()
+    expect(await screen.findByRole('table', { name: 'Ürün listesi' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '+ Ürün ekle' }))
-
-    fireEvent.change(screen.getByLabelText('Ürün adı'), {
-      target: { value: newProduct.name },
-    })
-    fireEvent.change(screen.getByLabelText('Kategori'), {
-      target: { value: newProduct.category },
-    })
-    fireEvent.change(screen.getByLabelText('Açıklama'), {
-      target: { value: newProduct.description },
-    })
-    fireEvent.change(screen.getByLabelText('Fiyat (TL)'), {
-      target: { value: newProduct.price },
-    })
-    fireEvent.change(screen.getByLabelText('Stok adedi'), {
-      target: { value: String(newProduct.stock) },
-    })
+    await user.type(screen.getByLabelText('Ürün adı'), newProduct.name)
+    await user.type(screen.getByLabelText('Kategori'), newProduct.category)
+    await user.type(screen.getByLabelText('Açıklama'), newProduct.description)
+    await user.type(screen.getByLabelText('Fiyat (TL)'), newProduct.price)
+    await user.type(screen.getByLabelText('Stok adedi'), String(newProduct.stock))
     await user.click(screen.getByRole('button', { name: 'Ürünü kaydet' }))
-
     expect(await screen.findByRole('table', { name: 'Ürün listesi' })).toHaveTextContent(
       newProduct.name,
     )
-    const newProductRow = screen.getByRole('row', { name: new RegExp(newProduct.name) })
-    expect(newProductRow).not.toHaveTextContent('Güncellendi')
-    await user.click(
-      screen.getByRole('button', { name: `Düzenle ${newProduct.name}` }),
-    )
-    expect(screen.getByLabelText('Ürün adı')).toHaveValue(newProduct.name)
-    expect(screen.getByLabelText('Kategori')).toHaveValue(newProduct.category)
-    expect(screen.getByLabelText('Açıklama')).toHaveValue(newProduct.description)
-    expect(screen.getByLabelText('Fiyat (TL)')).toHaveValue(Number(newProduct.price))
-    expect(screen.getByLabelText('Stok adedi')).toHaveValue(newProduct.stock)
-    fireEvent.change(screen.getByLabelText('Ürün adı'), {
-      target: { value: updatedProduct.name },
-    })
-    fireEvent.change(screen.getByLabelText('Kategori'), {
-      target: { value: updatedProduct.category },
-    })
-    fireEvent.change(screen.getByLabelText('Açıklama'), {
-      target: { value: updatedProduct.description },
-    })
-    fireEvent.change(screen.getByLabelText('Fiyat (TL)'), {
-      target: { value: updatedProduct.price },
-    })
-    fireEvent.change(screen.getByLabelText('Stok adedi'), {
-      target: { value: String(updatedProduct.stock) },
-    })
+
+    await user.click(screen.getByRole('button', { name: `Düzenle ${newProduct.name}` }))
+    fireEvent.change(screen.getByLabelText('Ürün adı'), { target: { value: editedProduct.name } })
     await user.click(screen.getByRole('button', { name: 'Değişiklikleri kaydet' }))
+    expect(await screen.findByRole('table', { name: 'Ürün listesi' })).toHaveTextContent(
+      editedProduct.name,
+    )
 
-    const updatedRow = await screen.findByRole('row', {
-      name: new RegExp(updatedProduct.name),
+    await user.click(screen.getByRole('button', { name: `Sil ${editedProduct.name}` }))
+    await waitFor(() => {
+      expect(screen.queryByText(editedProduct.name)).not.toBeInTheDocument()
     })
-    expect(updatedRow).toHaveTextContent(updatedProduct.category)
-    expect(updatedRow).toHaveTextContent(updatedProduct.description)
-    expect(updatedRow).toHaveTextContent(
-      new Intl.NumberFormat('tr-TR', {
-        style: 'currency',
-        currency: 'TRY',
-      }).format(Number(updatedProduct.price)),
-    )
-    expect(updatedRow).toHaveTextContent(String(updatedProduct.stock))
-    expect(updatedRow).toHaveTextContent('Güncellendi')
-    expect(fetch).toHaveBeenLastCalledWith(
-      `/api/v1/products/${newProduct.id}`,
-      expect.objectContaining({
-        method: 'PUT',
-        headers: expect.objectContaining({ Authorization: 'Bearer admin-token' }),
-      }),
-    )
   })
 
-  it('requires confirmation and removes only the deleted product from the catalog', async () => {
-    const remainingProduct = createTestProduct()
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(
-        jsonResponse({
-          access_token: 'admin-token',
-          token_type: 'bearer',
-          expires_in: 1800,
-          is_admin: true,
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({ message: 'Welcome', featured_categories: [] }),
-      )
-      .mockResolvedValueOnce(jsonResponse(productList([sampleProduct, remainingProduct])))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }))
-
+  it('does not send a delete request when an admin cancels the confirmation', async () => {
+    setupApi({ isAdmin: true })
+    vi.mocked(confirm).mockReturnValue(false)
     const user = userEvent.setup()
     render(<App />)
-    await user.type(screen.getByLabelText('E-posta adresi'), 'admin@example.com')
-    await user.type(screen.getByLabelText('Parola'), 'correct-password')
-    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
 
-    const deletedRow = await screen.findByRole('row', {
-      name: new RegExp(sampleProduct.name),
-    })
-    vi.mocked(confirm).mockReturnValueOnce(false)
-    await user.click(screen.getByRole('button', { name: `Sil ${sampleProduct.name}` }))
-    expect(fetch).toHaveBeenCalledTimes(3)
-    expect(deletedRow).toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: `Sil ${sampleProduct.name}` }))
 
-    await user.click(screen.getByRole('button', { name: `Sil ${sampleProduct.name}` }))
-    await waitFor(() => expect(deletedRow).not.toBeInTheDocument())
-
-    expect(
-      screen.getByRole('row', { name: new RegExp(remainingProduct.name) }),
-    ).toBeInTheDocument()
-    expect(screen.getByText('1 ürün')).toBeInTheDocument()
-    expect(fetch).toHaveBeenLastCalledWith(
+    expect(fetch).not.toHaveBeenCalledWith(
       `/api/v1/products/${sampleProduct.id}`,
-      expect.objectContaining({
-        method: 'DELETE',
-        headers: expect.objectContaining({ Authorization: 'Bearer admin-token' }),
-      }),
+      expect.objectContaining({ method: 'DELETE' }),
     )
   })
 
-  it('keeps the product visible and shows an error when deletion fails', async () => {
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(
-        jsonResponse({
-          access_token: 'admin-token',
-          token_type: 'bearer',
-          expires_in: 1800,
-          is_admin: true,
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({ message: 'Welcome', featured_categories: [] }),
-      )
-      .mockResolvedValueOnce(jsonResponse(productList()))
-      .mockResolvedValueOnce(
-        jsonResponse({ detail: 'Private server detail.' }, 500),
-      )
-
-    const user = userEvent.setup()
-    render(<App />)
-    await user.type(screen.getByLabelText('E-posta adresi'), 'admin@example.com')
-    await user.type(screen.getByLabelText('Parola'), 'correct-password')
-    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
-
-    const productRow = await screen.findByRole('row', {
-      name: new RegExp(sampleProduct.name),
-    })
-    await user.click(screen.getByRole('button', { name: `Sil ${sampleProduct.name}` }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Ürün silinemedi. Lütfen tekrar dene.',
-    )
-    expect(screen.getByRole('alert')).not.toHaveTextContent('Private server detail.')
-    expect(productRow).toBeInTheDocument()
-  })
-
-  it.each([401, 404])(
-    'keeps the product visible and shows a safe message when deletion returns %i',
-    async (status) => {
-      vi.mocked(fetch)
-        .mockResolvedValueOnce(
-          jsonResponse({
-            access_token: 'admin-token',
-            token_type: 'bearer',
-            expires_in: 1800,
-            is_admin: true,
-          }),
-        )
-        .mockResolvedValueOnce(
-          jsonResponse({ message: 'Welcome', featured_categories: [] }),
-        )
-        .mockResolvedValueOnce(jsonResponse(productList()))
-        .mockResolvedValueOnce(
-          jsonResponse({ detail: 'Private server detail.' }, status),
-        )
-
-      const user = userEvent.setup()
-      render(<App />)
-      await user.type(screen.getByLabelText('E-posta adresi'), 'admin@example.com')
-      await user.type(screen.getByLabelText('Parola'), 'correct-password')
-      await user.click(screen.getByRole('button', { name: /giriş yap/i }))
-
-      const productRow = await screen.findByRole('row', {
-        name: new RegExp(sampleProduct.name),
-      })
-      await user.click(screen.getByRole('button', { name: `Sil ${sampleProduct.name}` }))
-
-      expect(await screen.findByRole('alert')).toHaveTextContent(
-        'Ürün silinemedi. Lütfen tekrar dene.',
-      )
-      expect(screen.getByRole('alert')).not.toHaveTextContent('Private server detail.')
-      expect(productRow).toBeInTheDocument()
-    },
-  )
-
-  it('shows a connection error and keeps the product visible when deletion cannot reach the API', async () => {
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(
-        jsonResponse({
-          access_token: 'admin-token',
-          token_type: 'bearer',
-          expires_in: 1800,
-          is_admin: true,
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({ message: 'Welcome', featured_categories: [] }),
-      )
-      .mockResolvedValueOnce(jsonResponse(productList()))
-      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
-
-    const user = userEvent.setup()
-    render(<App />)
-    await user.type(screen.getByLabelText('E-posta adresi'), 'admin@example.com')
-    await user.type(screen.getByLabelText('Parola'), 'correct-password')
-    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
-
-    const productRow = await screen.findByRole('row', {
-      name: new RegExp(sampleProduct.name),
-    })
-    await user.click(screen.getByRole('button', { name: `Sil ${sampleProduct.name}` }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Sunucuya bağlanılamadı. Ürün silinemedi; tekrar deneyin.',
-    )
-    expect(productRow).toBeInTheDocument()
-  })
-
-  it('disables the delete action and sends only one request while deletion is pending', async () => {
-    let resolveDeletion: (response: Response) => void = () => {
-      throw new Error('Delete request was not initialized.')
-    }
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(
-        jsonResponse({
-          access_token: 'admin-token',
-          token_type: 'bearer',
-          expires_in: 1800,
-          is_admin: true,
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({ message: 'Welcome', featured_categories: [] }),
-      )
-      .mockResolvedValueOnce(jsonResponse(productList()))
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            resolveDeletion = resolve
-          }),
-      )
-
-    const user = userEvent.setup()
-    render(<App />)
-    await user.type(screen.getByLabelText('E-posta adresi'), 'admin@example.com')
-    await user.type(screen.getByLabelText('Parola'), 'correct-password')
-    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
-
-    await screen.findByRole('row', { name: new RegExp(sampleProduct.name) })
-    await user.click(screen.getByRole('button', { name: `Sil ${sampleProduct.name}` }))
-
-    const deletingButton = screen.getByRole('button', {
-      name: `Sil ${sampleProduct.name}`,
-    })
-    expect(deletingButton).toBeDisabled()
-    expect(fetch).toHaveBeenCalledTimes(4)
-
-    resolveDeletion(new Response(null, { status: 204 }))
-    await waitFor(() =>
-      expect(
-        screen.queryByRole('row', { name: new RegExp(sampleProduct.name) }),
-      ).not.toBeInTheDocument(),
-    )
-  })
-
-  it('shows an understandable message for incorrect credentials', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(
-      new Response(JSON.stringify({ detail: 'Geçersiz e-posta veya parola.' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    )
-
+  it('keeps a product in the catalog and shows an error when deletion fails', async () => {
+    setupApi({ isAdmin: true, deleteError: jsonResponse({ detail: 'not found' }, 404) })
     const user = userEvent.setup()
     render(<App />)
 
-    await user.type(screen.getByLabelText('E-posta adresi'), 'customer@example.com')
-    await user.type(screen.getByLabelText('Parola'), 'incorrect-password')
-    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
+    await user.click(await screen.findByRole('button', { name: `Sil ${sampleProduct.name}` }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'E-posta adresi veya parola hatalı. Bilgilerini kontrol edip tekrar dene.',
-    )
+    expect(await screen.findByRole('alert')).toHaveTextContent('Ürün silinemedi.')
+    expect(screen.getByRole('row', { name: new RegExp(sampleProduct.name) })).toBeInTheDocument()
   })
 
-  it.each([
-    [422, 'E-posta adresi veya parola biçimi geçersiz.'],
-    [503, 'Giriş sırasında bir sorun oluştu. Lütfen tekrar dene.'],
-  ])('shows a useful message when the login API returns %i', async (status, message) => {
-    vi.mocked(fetch).mockResolvedValueOnce(
-      new Response(JSON.stringify({ detail: 'Private server detail.' }), {
-        status,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    )
-
-    const user = userEvent.setup()
-    render(<App />)
-
-    await user.type(screen.getByRole('textbox', { name: 'E-posta adresi' }), 'customer@example.com')
-    await user.type(screen.getByLabelText('Parola', { exact: true }), 'incorrect-password')
-    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(message)
-    expect(screen.getByRole('alert')).not.toHaveTextContent('Private server detail.')
-  })
-
-  it('shows a connection message when the API cannot be reached', async () => {
-    vi.mocked(fetch).mockRejectedValueOnce(new TypeError('Failed to fetch'))
-
-    const user = userEvent.setup()
-    render(<App />)
-
-    await user.type(screen.getByRole('textbox', { name: 'E-posta adresi' }), 'customer@example.com')
-    await user.type(screen.getByLabelText('Parola', { exact: true }), 'correct-password')
-    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Sunucuya bağlanılamadı.',
-    )
-  })
-
-  it('blocks empty and malformed form input before sending a request', async () => {
-    const user = userEvent.setup()
-    render(<App />)
-
-    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
-
-    expect(fetch).not.toHaveBeenCalled()
-    expect(screen.getByRole('textbox', { name: 'E-posta adresi' })).toBeInvalid()
-
-    await user.type(screen.getByRole('textbox', { name: 'E-posta adresi' }), 'not-an-email')
-    await user.type(screen.getByLabelText('Parola', { exact: true }), 'password')
-    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
-
-    expect(fetch).not.toHaveBeenCalled()
-    expect(screen.getByRole('textbox', { name: 'E-posta adresi' })).toBeInvalid()
-  })
-
-  it('keeps the submit button disabled while login and home requests are pending', async () => {
-    let resolveLogin: (response: Response) => void = () => {
-      throw new Error('Login request was not initialized.')
-    }
-    let resolveHome: (response: Response) => void = () => {
-      throw new Error('Home request was not initialized.')
-    }
-    vi.mocked(fetch)
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            resolveLogin = resolve
-          }),
-      )
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            resolveHome = resolve
-          }),
-      )
-      .mockResolvedValueOnce(jsonResponse(productList()))
-
-    const user = userEvent.setup()
-    render(<App />)
-
-    await user.type(screen.getByRole('textbox', { name: 'E-posta adresi' }), 'customer@example.com')
-    await user.type(screen.getByLabelText('Parola', { exact: true }), 'correct-password')
-    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
-
-    const submitButton = screen.getByRole('button', { name: /giriş yapılıyor/i })
-    expect(submitButton).toBeDisabled()
-
-    resolveLogin(jsonResponse({
-      access_token: 'signed-token',
-      token_type: 'bearer',
-      expires_in: 1800,
-    }))
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
-    expect(submitButton).toBeDisabled()
-
-    resolveHome(jsonResponse({ message: 'Welcome', featured_categories: [] }))
-    expect(await screen.findByRole('heading', { name: 'Welcome.' })).toBeInTheDocument()
-    expect(await screen.findByRole('table', { name: 'Ürün listesi' })).toBeInTheDocument()
-  })
-
-  it('keeps the login form available if the protected home request fails', async () => {
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(
-        jsonResponse({
-          access_token: 'signed-token',
-          token_type: 'bearer',
-          expires_in: 1800,
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({ detail: 'Kimlik doğrulaması gerekli.' }, 401),
-      )
-
-    const user = userEvent.setup()
-    render(<App />)
-
-    await user.type(screen.getByRole('textbox', { name: 'E-posta adresi' }), 'customer@example.com')
-    await user.type(screen.getByLabelText('Parola', { exact: true }), 'correct-password')
-    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Giriş başarılı ancak ana sayfa açılamadı.',
-    )
-    expect(screen.getByRole('heading', { name: 'Merhaba.' })).toBeInTheDocument()
-  })
-
-  it('shows an empty product state when the catalog has no products', async () => {
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(
-        jsonResponse({
-          access_token: 'signed-token',
-          token_type: 'bearer',
-          expires_in: 1800,
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({ message: 'Welcome', featured_categories: [] }),
-      )
-      .mockResolvedValueOnce(jsonResponse(productList([])))
-
-    const user = userEvent.setup()
-    render(<App />)
-    await user.type(screen.getByLabelText('E-posta adresi'), 'customer@example.com')
-    await user.type(screen.getByLabelText('Parola'), 'correct-password')
-    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
-
-    expect(await screen.findByText('Henüz listelenecek ürün yok.')).toBeInTheDocument()
-    expect(screen.queryByRole('table', { name: 'Ürün listesi' })).not.toBeInTheDocument()
-  })
-
-  it('announces product loading until the catalog request completes', async () => {
-    let resolveProducts: (response: Response) => void = () => {
-      throw new Error('Product request was not initialized.')
-    }
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(
-        jsonResponse({
-          access_token: 'signed-token',
-          token_type: 'bearer',
-          expires_in: 1800,
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({ message: 'Welcome', featured_categories: [] }),
-      )
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            resolveProducts = resolve
-          }),
-      )
-
-    const user = userEvent.setup()
-    render(<App />)
-    await user.type(screen.getByLabelText('E-posta adresi'), 'customer@example.com')
-    await user.type(screen.getByLabelText('Parola'), 'correct-password')
-    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
-
-    expect(await screen.findByRole('heading', { name: 'Welcome.' })).toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent('Ürünler yükleniyor...')
-    expect(screen.queryByRole('table', { name: 'Ürün listesi' })).not.toBeInTheDocument()
-
-    resolveProducts(jsonResponse(productList()))
-    expect(await screen.findByRole('table', { name: 'Ürün listesi' })).toBeInTheDocument()
-  })
-
-  it('shows product API errors and lets the customer retry', async () => {
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(
-        jsonResponse({
-          access_token: 'signed-token',
-          token_type: 'bearer',
-          expires_in: 1800,
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({ message: 'Welcome', featured_categories: [] }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({ detail: 'Private server detail.' }, 503),
-      )
-      .mockResolvedValueOnce(jsonResponse(productList()))
-
-    const user = userEvent.setup()
-    render(<App />)
-    await user.type(screen.getByLabelText('E-posta adresi'), 'customer@example.com')
-    await user.type(screen.getByLabelText('Parola'), 'correct-password')
-    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Ürünler yüklenemedi. Lütfen tekrar dene.',
-    )
-    expect(screen.getByRole('alert')).not.toHaveTextContent('Private server detail.')
-    await user.click(screen.getByRole('button', { name: 'Tekrar dene' }))
-    expect(await screen.findByRole('table', { name: 'Ürün listesi' })).toBeInTheDocument()
-  })
-
-  it('shows a connection-specific message when the product service is unavailable', async () => {
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(
-        jsonResponse({
-          access_token: 'signed-token',
-          token_type: 'bearer',
-          expires_in: 1800,
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({ message: 'Welcome', featured_categories: [] }),
-      )
-      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
-
-    const user = userEvent.setup()
-    render(<App />)
-    await user.type(screen.getByLabelText('E-posta adresi'), 'customer@example.com')
-    await user.type(screen.getByLabelText('Parola'), 'correct-password')
-    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Ürünlere şu anda ulaşılamıyor.',
-    )
-  })
-
-  it.each(['resolved', 'rejected'] as const)(
-    'ignores a product request that is %s after logout',
-    async (outcome) => {
-      let resolveProducts: (response: Response) => void = () => {
-        throw new Error('Product request was not initialized.')
+  it('shows a connection error when delete fails due to a network error', async () => {
+    setupApi({ isAdmin: true })
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input).endsWith(`/${sampleProduct.id}`) && init?.method === 'DELETE') {
+        throw new TypeError('network failure')
       }
-      let rejectProducts: (error: Error) => void = () => {
-        throw new Error('Product request was not initialized.')
+      if (String(input) === '/api/v1/auth/me') {
+        return jsonResponse({ email: 'admin@example.com', is_admin: true })
       }
-      vi.mocked(fetch)
-        .mockResolvedValueOnce(
-          jsonResponse({
-            access_token: 'signed-token',
-            token_type: 'bearer',
-            expires_in: 1800,
-          }),
-        )
-        .mockResolvedValueOnce(
-          jsonResponse({ message: 'Welcome', featured_categories: [] }),
-        )
-        .mockImplementationOnce(
-          () =>
-            new Promise((resolve, reject) => {
-              resolveProducts = resolve
-              rejectProducts = reject
-            }),
-        )
-
-      const user = userEvent.setup()
-      render(<App />)
-      await user.type(screen.getByLabelText('E-posta adresi'), 'customer@example.com')
-      await user.type(screen.getByLabelText('Parola'), 'correct-password')
-      await user.click(screen.getByRole('button', { name: /giriş yap/i }))
-      await screen.findByRole('heading', { name: 'Welcome.' })
-      await screen.findByRole('status')
-      await user.click(screen.getByRole('button', { name: /çıkış yap/i }))
-
-      if (outcome === 'resolved') {
-        resolveProducts(jsonResponse(productList()))
-      } else {
-        rejectProducts(new TypeError('Failed to fetch'))
+      if (String(input) === '/api/v1/home') {
+        return jsonResponse({ message: 'Welcome', featured_categories: [] })
       }
-
-      await new Promise((resolve) => setTimeout(resolve, 0))
-      expect(screen.getByRole('heading', { name: 'Merhaba.' })).toBeInTheDocument()
-    },
-  )
-
-  it('can reveal and hide the password without submitting the form', async () => {
+      return jsonResponse(productList())
+    })
     const user = userEvent.setup()
     render(<App />)
 
-    const passwordInput = screen.getByLabelText('Parola', { exact: true })
-    await user.type(passwordInput, 'private-password')
-    await user.click(screen.getByRole('button', { name: 'Parolayı göster' }))
+    await user.click(await screen.findByRole('button', { name: `Sil ${sampleProduct.name}` }))
 
-    expect(passwordInput).toHaveAttribute('type', 'text')
-    expect(screen.getByRole('button', { name: 'Parolayı gizle' })).toBeInTheDocument()
-    expect(fetch).not.toHaveBeenCalled()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Sunucuya bağlanılamadı.')
+  })
 
-    await user.click(screen.getByRole('button', { name: 'Parolayı gizle' }))
-    expect(passwordInput).toHaveAttribute('type', 'password')
+  it('reports a logout redirect failure without hiding the authenticated page', async () => {
+    setupApi()
+    vi.mocked(endSession).mockRejectedValue(new Error('logout failed'))
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: /çıkış yap/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Oturum kapatılamadı.')
+    expect(screen.getByRole('heading', { name: 'Alışverişe hoş geldiniz.' })).toBeInTheDocument()
+  })
+
+  it('passes validated product data to the API while creating from the admin catalog', async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession)
+    setupApi({ isAdmin: true })
+    const user = userEvent.setup()
+    render(<App />)
+    const newProduct = createTestProduct()
+
+    await user.click(await screen.findByRole('button', { name: '+ Ürün ekle' }))
+    fireEvent.change(screen.getByLabelText('Ürün adı'), { target: { value: newProduct.name } })
+    fireEvent.change(screen.getByLabelText('Kategori'), { target: { value: newProduct.category } })
+    fireEvent.change(screen.getByLabelText('Açıklama'), { target: { value: newProduct.description } })
+    fireEvent.change(screen.getByLabelText('Fiyat (TL)'), { target: { value: newProduct.price } })
+    fireEvent.change(screen.getByLabelText('Stok adedi'), { target: { value: newProduct.stock } })
+    await user.click(screen.getByRole('button', { name: 'Ürünü kaydet' }))
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        '/api/v1/products',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify(productRequest(newProduct)),
+        }),
+      )
+    })
   })
 })

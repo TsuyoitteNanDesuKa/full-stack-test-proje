@@ -13,8 +13,7 @@ dependencies = [
     "fastapi>=0.115,<1",
     "pydantic-settings>=2.8,<3",
     "psycopg[binary]>=3.2,<4",
-    "PyJWT>=2.10,<3",
-    "pwdlib[argon2]>=0.2,<1",
+    "PyJWT[crypto]>=2.10,<3",
     "sqlalchemy>=2.0,<3",
     "uvicorn[standard]>=0.34,<1",
 ]
@@ -28,10 +27,6 @@ dev = [
     "ruff>=0.11,<1",
 ]
 
-[project.scripts]
-shop-create-user = "shop_api.create_user:main"
-shop-set-admin = "shop_api.set_admin:main"
-
 [tool.hatch.build.targets.wheel]
 packages = ["src/shop_api"]
 
@@ -41,7 +36,6 @@ pythonpath = ["src"]
 
 [tool.coverage.run]
 branch = true
-omit = ["*/shop_api/create_user.py", "*/shop_api/set_admin.py"]
 
 [tool.coverage.report]
 fail_under = 95

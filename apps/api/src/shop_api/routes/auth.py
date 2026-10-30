@@ -1,43 +1,21 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends
 
-from shop_api.database import get_db
-from shop_api.models import User
-from shop_api.schemas import LoginRequest, TokenResponse
-from shop_api.security import create_access_token, normalize_email, verify_password
+from shop_api.dependencies import get_current_user
+from shop_api.schemas import CurrentUserResponse
+from shop_api.security import AuthenticatedUser
 
 router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
 
 
-@router.post("/login", response_model=TokenResponse)
-def login(
-    payload: LoginRequest,
-    request: Request,
-    db: Annotated[Session, Depends(get_db)],
-) -> TokenResponse:
-    user = db.scalar(select(User).where(User.email == normalize_email(str(payload.email))))
-    password_is_valid = verify_password(
-        payload.password.get_secret_value(),
-        user.password_hash if user is not None else None,
-    )
-    if user is None or not user.is_active or not password_is_valid:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Geçersiz e-posta veya parola.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    expires_in = request.app.state.access_token_expire_minutes * 60
-    token = create_access_token(
-        user.id,
-        request.app.state.secret_key,
-        request.app.state.access_token_expire_minutes,
-    )
-    return TokenResponse(
-        access_token=token,
-        expires_in=expires_in,
-        is_admin=user.is_admin,
+@router.get("/me", response_model=CurrentUserResponse)
+def get_me(
+    current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+) -> CurrentUserResponse:
+    return CurrentUserResponse(
+        subject=current_user.subject,
+        email=current_user.email,
+        roles=sorted(current_user.roles),
+        is_admin=current_user.is_admin,
     )

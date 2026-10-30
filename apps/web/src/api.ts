@@ -1,7 +1,7 @@
-export interface TokenResponse {
-  access_token: string
-  token_type: 'bearer'
-  expires_in: number
+export interface CurrentUserResponse {
+  subject: string
+  email: string | null
+  roles: string[]
   is_admin: boolean
 }
 
@@ -73,10 +73,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T
 }
 
-export function login(email: string, password: string): Promise<TokenResponse> {
-  return request<TokenResponse>('/api/v1/auth/login', {
-    method: 'POST',
-    body: JSON.stringify({ email, password }),
+export function getCurrentUser(token: string): Promise<CurrentUserResponse> {
+  return request<CurrentUserResponse>('/api/v1/auth/me', {
+    headers: { Authorization: `Bearer ${token}` },
   })
 }
 

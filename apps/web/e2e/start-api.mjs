@@ -55,7 +55,6 @@ function runUv(args) {
 
 try {
   runUv(['run', 'alembic', 'upgrade', 'head'])
-  runUv(['run', 'python', '../web/e2e/seed_test_user.py'])
 } catch (error) {
   cleanup()
   throw error
