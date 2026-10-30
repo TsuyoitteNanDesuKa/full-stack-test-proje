@@ -1,5 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, createProduct, getHome, getProducts, login, updateProduct } from './api'
+import {
+  ApiError,
+  createProduct,
+  deleteProduct,
+  getHome,
+  getProducts,
+  login,
+  updateProduct,
+} from './api'
+import { createTestProduct, productRequest } from './test/testData'
+
+const apiTestProduct = createTestProduct()
+const apiTestProductRequest = productRequest(apiTestProduct)
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -90,15 +102,7 @@ describe('storefront API client', () => {
   it('sends the bearer token and pagination to the product listing endpoint', async () => {
     const body = {
       products: [
-        {
-          id: 1,
-          name: 'Lavanta El Kremi',
-          category: 'Kişisel Bakım',
-          description: 'Nemlendirici el kremi.',
-          price: '129.90',
-          stock: 24,
-          updated_at: null,
-        },
+        apiTestProduct,
       ],
       total: 1,
       limit: 10,
@@ -148,25 +152,11 @@ describe('storefront API client', () => {
   })
 
   it('creates a product with the admin bearer token', async () => {
-    const product = {
-      id: 8,
-      name: 'Yeni Ürün',
-      category: 'Ev ve Yaşam',
-      description: 'El yapımı dekoratif ürün.',
-      price: '299.90',
-      stock: 7,
-    }
-    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(product, 201))
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(apiTestProduct, 201))
 
     await expect(
-      createProduct('admin-token', {
-        name: 'Yeni Ürün',
-        category: 'Ev ve Yaşam',
-        description: 'El yapımı dekoratif ürün.',
-        price: '299.90',
-        stock: 7,
-      }),
-    ).resolves.toEqual(product)
+      createProduct('admin-token', apiTestProductRequest),
+    ).resolves.toEqual(apiTestProduct)
     expect(fetch).toHaveBeenCalledWith(
       '/api/v1/products',
       expect.objectContaining({
@@ -175,13 +165,7 @@ describe('storefront API client', () => {
           'Content-Type': 'application/json',
           Authorization: 'Bearer admin-token',
         },
-        body: JSON.stringify({
-          name: 'Yeni Ürün',
-          category: 'Ev ve Yaşam',
-          description: 'El yapımı dekoratif ürün.',
-          price: '299.90',
-          stock: 7,
-        }),
+        body: JSON.stringify(apiTestProductRequest),
       }),
     )
   })
@@ -193,11 +177,7 @@ describe('storefront API client', () => {
 
     await expect(
       createProduct('customer-token', {
-        name: 'Yeni Ürün',
-        category: 'Ev ve Yaşam',
-        description: 'Ürün açıklaması.',
-        price: '29.90',
-        stock: 1,
+        ...apiTestProductRequest,
       }),
     ).rejects.toMatchObject({
       name: 'ApiError',
@@ -206,27 +186,15 @@ describe('storefront API client', () => {
   })
 
   it('updates every product field using the admin bearer token', async () => {
-    const updatedProduct = {
-      id: 8,
-      name: 'Değiştirilen Ürün',
-      category: 'Ev ve Yaşam',
-      description: 'Güncellenmiş ürün açıklaması.',
-      price: '349.90',
-      stock: 11,
-      updated_at: '2026-10-29T10:00:00',
-    }
-    const payload = {
-      name: 'Değiştirilen Ürün',
-      category: 'Ev ve Yaşam',
-      description: 'Güncellenmiş ürün açıklaması.',
-      price: '349.90',
-      stock: 11,
-    }
+    const updatedProduct = createTestProduct()
+    const payload = productRequest(updatedProduct)
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(updatedProduct))
 
-    await expect(updateProduct('admin-token', 8, payload)).resolves.toEqual(updatedProduct)
+    await expect(
+      updateProduct('admin-token', updatedProduct.id, payload),
+    ).resolves.toEqual(updatedProduct)
     expect(fetch).toHaveBeenCalledWith(
-      '/api/v1/products/8',
+      `/api/v1/products/${updatedProduct.id}`,
       expect.objectContaining({
         method: 'PUT',
         headers: {
@@ -244,17 +212,41 @@ describe('storefront API client', () => {
     )
 
     await expect(
-      updateProduct('admin-token', 404, {
-        name: 'Yeni Ürün',
-        category: 'Ev ve Yaşam',
-        description: 'Ürün açıklaması.',
-        price: '29.90',
-        stock: 1,
-      }),
+      updateProduct('admin-token', 404, apiTestProductRequest),
     ).rejects.toMatchObject({
       name: 'ApiError',
       status: 404,
       message: 'Ürün bulunamadı.',
+    } satisfies Partial<ApiError>)
+  })
+
+  it('deletes a product with the admin bearer token and accepts an empty response', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 204 }))
+
+    await expect(deleteProduct('admin-token', apiTestProduct.id)).resolves.toBeUndefined()
+    expect(fetch).toHaveBeenCalledWith(
+      `/api/v1/products/${apiTestProduct.id}`,
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer admin-token',
+        },
+      }),
+    )
+  })
+
+  it('preserves product deletion failures for the caller', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ detail: 'Bu işlem için yönetici yetkisi gereklidir.' }, 403),
+    )
+
+    await expect(
+      deleteProduct('customer-token', apiTestProduct.id),
+    ).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 403,
+      message: 'Bu işlem için yönetici yetkisi gereklidir.',
     } satisfies Partial<ApiError>)
   })
 })

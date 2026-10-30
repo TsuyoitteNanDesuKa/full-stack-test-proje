@@ -954,6 +954,26 @@
   background: #f5f6f1;
 }
 
+.delete-product-button {
+  margin-left: 6px;
+  padding: 7px 10px;
+  border: 1px solid #ead8d3;
+  border-radius: 4px;
+  background: #fff;
+  color: #9a5144;
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.delete-product-button:hover:not(:disabled) {
+  background: #fbf1ef;
+}
+
+.delete-product-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .product-category {
   display: inline-block;
   padding: 5px 8px;

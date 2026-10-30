@@ -171,6 +171,74 @@ Bu plan, test pratiğini merkeze alır. Her aşamada önce test edilebilir gerek
 
 **Tamamlanma ölçütü:** Test hedefleri ve sonuçları ölçülebilir; bilinen sınırlamalar ve sürüm riskleri açıkça raporlanır.
 
+## v1.0 çıkış kapısı ve incremental ürün yol haritası
+
+Özellikler küçük, bağımsız dikey dilimler halinde gereksinim → API/veri modeli → UI → katmanlı test → sürümleme sırasıyla eklenir. Bir sonraki dilime, önceki dilimin kabul kriterleri ve regresyon testleri geçmeden başlanmaz.
+
+### Öncelik 0 — v1.0 öncesi CRUD negatif test kapanışı
+
+Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test koşulları tamamlanıp tüm kalite kapıları geçmelidir:
+
+- [x] Update API'sinde her ürün alanı için geçersiz değer matrisi; başarısız güncelleme sonrasında tüm alanlar ve `updated_at` değişmemeli.
+- [x] Admin düzenleme formunda geçersiz alan matrisi; istek gönderilmemeli, kayıt değişmemeli ve kullanıcıya doğrulama hatası gösterilmeli.
+- [x] DELETE endpoint'inde geçersiz bearer token; silme UI'sında `401` ve `404` yanıtları güvenli biçimde gösterilmeli, ürün katalogda kalmalı.
+- [x] Silme isteği beklerken eylem devre dışı olmalı ve yinelenen DELETE gönderilmemeli.
+- [x] Backend ve frontend tam test/coverage, lint, TypeScript build ve Playwright E2E geçmeli; gereksinim-test izlenebilirliği güncel olmalı.
+- [ ] Tag öncesi çalışma ağacı ve release notları incelenmeli; test/build raporları üretilen artefakt olarak saklanmalı.
+
+**Çıkış ölçütü:** Tüm maddeler yeşil, kritik iş kuralı boşluğu yok, `docs/requirements.md` gereksinim durumu tamamlandı ve `v1.0.0` etiketi/özet sürüm notu hazırlanabilir.
+
+### Öncelik 1 — REQ-006: Müşteri sepeti
+
+**Amaç:** Giriş yapmış müşteri ürünleri sepete ekleyebilsin, miktarı değiştirebilsin ve sepetten çıkarabilsin.
+
+- Ürün ve miktarı içeren kullanıcıya ait sepet/kalem modeli; miktar pozitif tam sayı olmalı.
+- Sepete ekleme, güncelleme ve silme API'leri; kullanıcı yalnızca kendi sepetini değiştirebilmeli.
+- Ürün bulunamama, sıfır/negatif/kesirli miktar, stok sınırını aşma, başka kullanıcının sepetine erişme ve eşzamanlı stok değişimi negatif koşulları tanımlanmalı.
+- UI'da sepet özeti ve boş/yükleniyor/hata durumları; katalogdan sepete ekleme ile miktar ve kaldırma akışı.
+- Unit/API/DB, component ve kritik yol için E2E testleri; test DB izolasyonu ve migration doğrulaması.
+
+**Çıkış ölçütü:** Müşteri kendi sepetini güvenilir biçimde düzenler; hatalı veya yetkisiz değişiklikler kalıcılaşmaz; stok ve miktar kuralları backend'de atomik olarak korunur.
+
+### Öncelik 2 — REQ-007: Sipariş oluşturma
+
+**Amaç:** Müşteri sepetini doğrulayarak siparişe dönüştürebilsin; sipariş geçmişi satın alma anındaki ürün/fiyat bilgisini korusun.
+
+- Sipariş ve sipariş kalemleri; ürün adı/fiyat/adet gibi satın alma anındaki değerlerin snapshot'ı, toplam tutar ve açık sipariş durumları.
+- Checkout öncesi sepet, stok ve fiyat doğrulaması; sipariş ve stok güncellemesi tek transaction içinde yapılmalı.
+- Boş sepet, silinmiş ürün, yetersiz/değişmiş stok, istemcinin değiştirdiği fiyat/toplam, yinelenen gönderim ve transaction hatası negatif koşulları.
+- Sipariş onay özeti ve sipariş geçmişi; yükleniyor/başarı/hata durumları.
+- API/DB transaction, business-rule unit, component ve gerçek API ile E2E senaryoları.
+
+**Çıkış ölçütü:** Sipariş ya tüm kalemleriyle ve stok etkisiyle oluşur ya da hiçbir değişiklik kalıcılaşmaz; sipariş tutarı istemci girdisine güvenmez ve daha sonra ürün değişse/silinse bile geçmiş tutar korunur.
+
+### Öncelik 3 — REQ-008: Ödeme entegrasyonu
+
+**Amaç:** Sipariş, gerçek kart verisini uygulama sunucusuna almadan güvenilir bir ödeme sağlayıcısı üzerinden ödenebilsin.
+
+- Önce sağlayıcıdan bağımsız ödeme arayüzü ve sağlayıcının sandbox/hosted checkout akışı; kart numarası veya güvenlik kodu uygulama veritabanı/loglarında tutulmamalı.
+- Ödeme başlatma, beklemede/başarılı/başarısız durumları ve kullanıcıya sonuç ekranı; sipariş ve ödeme durum geçişleri açıkça tanımlanmalı.
+- İmzalı webhook doğrulaması, idempotency, tekrar/ters sıra/bozuk webhook, zaman aşımı, sağlayıcı hatası, iptal ve tutar uyuşmazlığı senaryoları.
+- Sağlayıcı çağrıları adapter contract testleri ve sandbox E2E ile doğrulanmalı; testlerde gerçek ödeme bilgisi kullanılmamalı.
+
+**Çıkış ölçütü:** Yinelenen veya doğrulanmamış bildirim ikinci kez tahsilat/sipariş geçişi yaratmaz; uygulama, sağlayıcı sonucu kesinleşene kadar siparişi tutarlı bir bekleme durumunda gösterir.
+
+### Öncelik 4 — REQ-009: Sipariş takibi ve operasyonel tamamlayıcılar
+
+- Müşteri sipariş geçmişi ve durum ayrıntıları; admin sipariş işleme yetkileri ayrı gereksinimle tanımlanmalı.
+- İptal, iade ve geri ödeme politikaları; stok iadesi ve ödeme sağlayıcı durumlarıyla transaction/idempotency kuralları belirlenmeli.
+- Erişim kontrolü, audit izi, hata kurtarma, erişilebilirlik ve temel performans testleri eklenmeli.
+
+**Çıkış ölçütü:** Sipariş/ödeme yaşam döngüsü izlenebilir; her durum değişimi yetkili, tekrara dayanıklı ve müşteri/admin görünümünde tutarlıdır.
+
+### Her incremental dilim için ortak Definition of Done
+
+1. Gereksinim ve kabul kriterleri pozitif, negatif, sınır ve rol/erişim koşullarını içerir.
+2. Veri modeli ve API sözleşmesi migration ve uyumluluk etkisiyle birlikte incelenir.
+3. İş kuralları unit/API/DB katmanlarında, kullanıcı akışları component seviyesinde; yalnızca kritik uçtan uca yollar Playwright'ta doğrulanır.
+4. Hata, yeniden deneme, idempotency ve eşzamanlılık davranışları riskine uygun test edilir.
+5. Test, lint, type-check/build, coverage ve E2E kalite kapıları geçer; gereksinim ve roadmap durumu güncellenir.
+
 ## Teknoloji öğrenme sırası
 
 1. Git, terminal, HTTP ve temel SQL.

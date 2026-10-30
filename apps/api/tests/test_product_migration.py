@@ -2,6 +2,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
+from factories import make_test_label, product_payload
 from sqlalchemy import create_engine, text
 
 from shop_api.config import get_settings
@@ -19,6 +20,14 @@ def test_product_constraints_migration_backfills_normalized_name_keys(
     alembic_config = Config(str(api_path / "alembic.ini"))
     alembic_config.set_main_option("script_location", str(api_path / "migrations"))
     engine = create_engine(database_url)
+    legacy_base_name = make_test_label("Legacy")
+    legacy_name = f"  {'   '.join(legacy_base_name.split('-'))}  "
+    legacy_name_key = " ".join(legacy_base_name.split("-")).casefold()
+    legacy_product = product_payload(
+        name=legacy_name,
+        category=make_test_label("Category"),
+        description=f"Legacy description {make_test_label('Catalog')}",
+    )
 
     try:
         command.upgrade(alembic_config, "0002_add_products_and_admin")
@@ -29,13 +38,7 @@ def test_product_constraints_migration_backfills_normalized_name_keys(
                     "(name, category, description, price, stock) "
                     "VALUES (:name, :category, :description, :price, :stock)"
                 ),
-                {
-                    "name": "  Legacy   Product  ",
-                    "category": "Legacy",
-                    "description": "A valid legacy product description.",
-                    "price": "12.50",
-                    "stock": 3,
-                },
+                legacy_product,
             )
 
         command.upgrade(alembic_config, "head")
@@ -43,14 +46,12 @@ def test_product_constraints_migration_backfills_normalized_name_keys(
         with engine.connect() as connection:
             assert (
                 connection.scalar(text("SELECT name_key FROM products WHERE id = 1"))
-                == "legacy product"
+                == legacy_name_key
             )
             assert connection.scalar(text("SELECT updated_at FROM products WHERE id = 1")) is None
         command.downgrade(alembic_config, "0002_add_products_and_admin")
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT name FROM products WHERE id = 1")) == (
-                "  Legacy   Product  "
-            )
+            assert connection.scalar(text("SELECT name FROM products WHERE id = 1")) == legacy_name
             columns = connection.execute(text("PRAGMA table_info(products)")).all()
             assert "name_key" not in {column[1] for column in columns}
             assert "updated_at" not in {column[1] for column in columns}

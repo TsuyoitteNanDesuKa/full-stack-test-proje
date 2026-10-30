@@ -2,20 +2,16 @@ from datetime import datetime
 from decimal import Decimal
 
 import pytest
+from factories import product_payload
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from shop_api.models import Product, User
+from shop_api.schemas import product_name_key
 
-PRODUCT_PAYLOAD = {
-    "name": "Lavanta El Kremi",
-    "category": "Kişisel Bakım",
-    "description": "Günlük kullanım için nemlendirici el kremi.",
-    "price": "129.90",
-    "stock": 24,
-}
+PRODUCT_PAYLOAD = product_payload()
 
 
 def access_token(client: TestClient, user: User) -> str:
@@ -29,6 +25,15 @@ def access_token(client: TestClient, user: User) -> str:
 
 def test_list_products_requires_authentication(client: TestClient) -> None:
     response = client.get("/api/v1/products")
+
+    assert response.status_code == 401
+
+
+def test_delete_product_rejects_invalid_bearer_token(client: TestClient) -> None:
+    response = client.delete(
+        "/api/v1/products/1",
+        headers={"Authorization": "Bearer invalid"},
+    )
 
     assert response.status_code == 401
 
@@ -63,7 +68,7 @@ def test_admin_can_create_product_and_customer_can_list_it(
     assert created_product == {
         "id": 1,
         **PRODUCT_PAYLOAD,
-        "price": "129.90",
+        "price": PRODUCT_PAYLOAD["price"],
         "updated_at": None,
     }
 
@@ -93,7 +98,7 @@ def test_product_name_is_unique_after_case_and_whitespace_normalization(
     )
     duplicate_response = client.post(
         "/api/v1/products",
-        json={**PRODUCT_PAYLOAD, "name": "  LAVANTA   EL KREMI  "},
+        json={**PRODUCT_PAYLOAD, "name": f"  {PRODUCT_PAYLOAD['name'].upper()}  "},
         headers=headers,
     )
 
@@ -111,12 +116,12 @@ def test_product_name_is_unique_after_unicode_nfc_normalization(
     headers = {"Authorization": f"Bearer {access_token(client, admin)}"}
     first_response = client.post(
         "/api/v1/products",
-        json={**PRODUCT_PAYLOAD, "name": "Café Sabunu"},
+        json={**PRODUCT_PAYLOAD, "name": f"Café {PRODUCT_PAYLOAD['name']}"},
         headers=headers,
     )
     duplicate_response = client.post(
         "/api/v1/products",
-        json={**PRODUCT_PAYLOAD, "name": "Cafe\u0301 Sabunu"},
+        json={**PRODUCT_PAYLOAD, "name": f"Cafe\u0301 {PRODUCT_PAYLOAD['name']}"},
         headers=headers,
     )
 
@@ -138,7 +143,7 @@ def test_concurrent_duplicate_product_name_returns_conflict(
                 Product.__table__.insert(),
                 {
                     **PRODUCT_PAYLOAD,
-                    "name_key": "lavanta el kremi",
+                    "name_key": product_name_key(str(PRODUCT_PAYLOAD["name"])),
                 },
             )
         raise IntegrityError("INSERT products", {}, Exception("unique constraint"))
@@ -199,6 +204,76 @@ def test_customer_cannot_create_products(
     )
 
 
+def test_admin_can_delete_product_and_removed_product_is_no_longer_listed(
+    client: TestClient,
+    admin: User,
+    customer: User,
+) -> None:
+    admin_headers = {"Authorization": f"Bearer {access_token(client, admin)}"}
+    customer_headers = {"Authorization": f"Bearer {access_token(client, customer)}"}
+    create_response = client.post(
+        "/api/v1/products",
+        json=PRODUCT_PAYLOAD,
+        headers=admin_headers,
+    )
+    product_id = create_response.json()["id"]
+
+    delete_response = client.delete(
+        f"/api/v1/products/{product_id}",
+        headers=admin_headers,
+    )
+
+    assert create_response.status_code == 201
+    assert delete_response.status_code == 204
+    assert delete_response.content == b""
+    assert client.get("/api/v1/products", headers=admin_headers).json() == {
+        "products": [],
+        "total": 0,
+        "limit": 20,
+        "offset": 0,
+    }
+    assert client.get("/api/v1/products", headers=customer_headers).json()["products"] == []
+
+    recreated_response = client.post(
+        "/api/v1/products",
+        json=PRODUCT_PAYLOAD,
+        headers=admin_headers,
+    )
+    assert recreated_response.status_code == 201
+
+
+def test_delete_product_requires_admin_and_existing_product(
+    client: TestClient,
+    admin: User,
+    customer: User,
+) -> None:
+    admin_headers = {"Authorization": f"Bearer {access_token(client, admin)}"}
+    customer_headers = {"Authorization": f"Bearer {access_token(client, customer)}"}
+    created = client.post(
+        "/api/v1/products",
+        json=PRODUCT_PAYLOAD,
+        headers=admin_headers,
+    )
+    product_id = created.json()["id"]
+
+    unauthenticated_response = client.delete(f"/api/v1/products/{product_id}")
+    customer_response = client.delete(
+        f"/api/v1/products/{product_id}",
+        headers=customer_headers,
+    )
+    missing_product_response = client.delete(
+        f"/api/v1/products/{product_id + 1}",
+        headers=admin_headers,
+    )
+
+    assert unauthenticated_response.status_code == 401
+    assert customer_response.status_code == 403
+    assert missing_product_response.status_code == 404
+    assert client.get("/api/v1/products", headers=admin_headers).json()["products"] == [
+        created.json()
+    ]
+
+
 def test_admin_can_update_all_product_fields_and_customers_see_the_updated_product(
     client: TestClient,
     admin: User,
@@ -207,13 +282,7 @@ def test_admin_can_update_all_product_fields_and_customers_see_the_updated_produ
     admin_headers = {"Authorization": f"Bearer {access_token(client, admin)}"}
     customer_headers = {"Authorization": f"Bearer {access_token(client, customer)}"}
     created = client.post("/api/v1/products", json=PRODUCT_PAYLOAD, headers=admin_headers)
-    updated_payload = {
-        "name": "Güncellenmiş Lavanta Kremi",
-        "category": "Kişisel Bakım",
-        "description": "Yeni açıklama ile güncellenmiş ürün.",
-        "price": "159.90",
-        "stock": 31,
-    }
+    updated_payload = product_payload()
 
     response = client.put(
         f"/api/v1/products/{created.json()['id']}",
@@ -225,7 +294,7 @@ def test_admin_can_update_all_product_fields_and_customers_see_the_updated_produ
     updated_product = response.json()
     assert {
         key: updated_product[key] for key in ("name", "category", "description", "price", "stock")
-    } == {**updated_payload, "price": "159.90"}
+    } == {**updated_payload, "price": f"{float(str(updated_payload['price'])):.2f}"}
     assert datetime.fromisoformat(updated_product["updated_at"])
     listed_product = client.get("/api/v1/products", headers=customer_headers).json()["products"][0]
     assert listed_product == updated_product
@@ -237,7 +306,7 @@ def test_admin_can_update_product_without_changing_its_name(
 ) -> None:
     headers = {"Authorization": f"Bearer {access_token(client, admin)}"}
     created = client.post("/api/v1/products", json=PRODUCT_PAYLOAD, headers=headers)
-    updated_payload = {**PRODUCT_PAYLOAD, "stock": 30}
+    updated_payload = {**PRODUCT_PAYLOAD, "stock": product_payload()["stock"]}
 
     response = client.put(
         f"/api/v1/products/{created.json()['id']}",
@@ -247,7 +316,7 @@ def test_admin_can_update_product_without_changing_its_name(
 
     assert response.status_code == 200
     assert response.json()["name"] == PRODUCT_PAYLOAD["name"]
-    assert response.json()["stock"] == 30
+    assert response.json()["stock"] == updated_payload["stock"]
     assert response.json()["updated_at"] is not None
 
 
@@ -257,11 +326,8 @@ def test_admin_cannot_update_product_to_another_products_name(
 ) -> None:
     headers = {"Authorization": f"Bearer {access_token(client, admin)}"}
     first = client.post("/api/v1/products", json=PRODUCT_PAYLOAD, headers=headers)
-    second = client.post(
-        "/api/v1/products",
-        json={**PRODUCT_PAYLOAD, "name": "Başka Ürün"},
-        headers=headers,
-    )
+    second_payload = product_payload()
+    second = client.post("/api/v1/products", json=second_payload, headers=headers)
 
     response = client.put(
         f"/api/v1/products/{second.json()['id']}",
@@ -273,20 +339,64 @@ def test_admin_cannot_update_product_to_another_products_name(
     assert response.status_code == 409
     assert (
         client.get("/api/v1/products", headers=headers).json()["products"][1]["name"]
-        == "Başka Ürün"
+        == second_payload["name"]
     )
 
 
+@pytest.mark.parametrize(
+    "updates",
+    [
+        pytest.param({"name": "P"}, id="name-shorter-than-minimum"),
+        pytest.param({"name": " P "}, id="name-too-short-after-normalization"),
+        pytest.param({"name": "P" * 33}, id="name-longer-than-maximum"),
+        pytest.param({"name": "Ürün!"}, id="name-contains-unsupported-punctuation"),
+        pytest.param({"name": " "}, id="name-is-only-whitespace"),
+        pytest.param({"category": "C"}, id="category-shorter-than-minimum"),
+        pytest.param(
+            {"category": " C "},
+            id="category-too-short-after-normalization",
+        ),
+        pytest.param({"category": "C" * 41}, id="category-longer-than-maximum"),
+        pytest.param(
+            {"category": "Bakım!"},
+            id="category-contains-unsupported-punctuation",
+        ),
+        pytest.param({"description": "D" * 9}, id="description-shorter-than-minimum"),
+        pytest.param(
+            {"description": "         x"},
+            id="description-too-short-after-trimming",
+        ),
+        pytest.param({"description": "D" * 501}, id="description-longer-than-maximum"),
+        pytest.param(
+            {"description": "Geçersiz\x00 açıklama"},
+            id="description-control-character",
+        ),
+        pytest.param({"price": "0"}, id="zero-price"),
+        pytest.param({"price": "-0.01"}, id="negative-price"),
+        pytest.param({"price": "1.999"}, id="price-has-too-many-decimal-places"),
+        pytest.param({"price": "1000000.00"}, id="price-exceeds-maximum"),
+        pytest.param({"price": "not-a-price"}, id="price-is-not-numeric"),
+        pytest.param({"price": True}, id="price-must-not-be-boolean"),
+        pytest.param({"stock": -1}, id="negative-stock"),
+        pytest.param({"stock": 1000000}, id="stock-exceeds-maximum"),
+        pytest.param({"stock": 1.5}, id="fractional-stock"),
+        pytest.param({"stock": "24"}, id="stock-must-be-an-integer"),
+        pytest.param({"name": 24}, id="name-must-be-a-string"),
+        pytest.param({"category": 24}, id="category-must-be-a-string"),
+        pytest.param({"description": 24}, id="description-must-be-a-string"),
+    ],
+)
 def test_invalid_product_update_does_not_change_existing_product(
     client: TestClient,
     admin: User,
+    updates: dict[str, object],
 ) -> None:
     headers = {"Authorization": f"Bearer {access_token(client, admin)}"}
     created = client.post("/api/v1/products", json=PRODUCT_PAYLOAD, headers=headers)
 
     response = client.put(
         f"/api/v1/products/{created.json()['id']}",
-        json={**PRODUCT_PAYLOAD, "price": "0"},
+        json={**PRODUCT_PAYLOAD, **updates},
         headers=headers,
     )
 
@@ -326,10 +436,10 @@ def test_concurrent_duplicate_name_update_returns_conflict(
     headers = {"Authorization": f"Bearer {access_token(client, admin)}"}
     original = client.post(
         "/api/v1/products",
-        json={**PRODUCT_PAYLOAD, "name": "Mevcut Ürün"},
+        json=product_payload(),
         headers=headers,
     ).json()
-    update_payload = {**PRODUCT_PAYLOAD, "name": "Yeni Ürün Adı"}
+    update_payload = product_payload()
 
     def commit_duplicate(session: Session) -> None:
         session.rollback()
@@ -338,7 +448,7 @@ def test_concurrent_duplicate_name_update_returns_conflict(
                 Product.__table__.insert(),
                 {
                     **update_payload,
-                    "name_key": "yeni ürün adı",
+                    "name_key": product_name_key(str(update_payload["name"])),
                 },
             )
         raise IntegrityError("UPDATE products", {}, Exception("unique constraint"))
@@ -352,7 +462,7 @@ def test_concurrent_duplicate_name_update_returns_conflict(
 
     assert response.status_code == 409
     product_list = client.get("/api/v1/products", headers=headers).json()["products"]
-    assert product_list[0]["name"] == "Mevcut Ürün"
+    assert product_list[0]["name"] == original["name"]
     assert product_list[0]["updated_at"] is None
 
 
@@ -454,12 +564,8 @@ def test_database_constraints_reject_invalid_products(
     updates: dict[str, object],
 ) -> None:
     product_data: dict[str, object] = {
-        "name": "Geçerli Ürün",
-        "name_key": "geçerli ürün",
-        "category": "Kişisel Bakım",
-        "description": "Yeterince uzun ürün açıklaması.",
-        "price": Decimal("129.90"),
-        "stock": 24,
+        **PRODUCT_PAYLOAD,
+        "name_key": product_name_key(str(PRODUCT_PAYLOAD["name"])),
     }
     product_data.update(updates)
     if "name" in updates:
@@ -479,23 +585,16 @@ def test_database_enforces_product_name_key_uniqueness(engine) -> None:
     with session_factory() as session:
         session.add(
             Product(
-                name="Lavanta El Kremi",
-                name_key="lavanta el kremi",
-                category="Kişisel Bakım",
-                description="Günlük kullanım için nemlendirici el kremi.",
-                price=Decimal("129.90"),
-                stock=24,
+                **PRODUCT_PAYLOAD,
+                name_key=product_name_key(str(PRODUCT_PAYLOAD["name"])),
             )
         )
         session.commit()
+        duplicate_payload = product_payload(name=str(PRODUCT_PAYLOAD["name"]).upper())
         session.add(
             Product(
-                name="LAVANTA EL KREMİ",
-                name_key="lavanta el kremi",
-                category="Kişisel Bakım",
-                description="İkinci ürün açıklaması, yeterli uzunlukta.",
-                price=Decimal("99.90"),
-                stock=1,
+                **duplicate_payload,
+                name_key=product_name_key(str(PRODUCT_PAYLOAD["name"])),
             )
         )
         with pytest.raises(IntegrityError):
@@ -509,14 +608,11 @@ def test_list_products_supports_stable_pagination(
     admin: User,
 ) -> None:
     token = access_token(client, admin)
-    for product_number in range(3):
+    pagination_products = [product_payload() for _ in range(3)]
+    for product in pagination_products:
         response = client.post(
             "/api/v1/products",
-            json={
-                **PRODUCT_PAYLOAD,
-                "name": f"Ürün {product_number + 1}",
-                "price": str(Decimal("10.00") + product_number),
-            },
+            json=product,
             headers={"Authorization": f"Bearer {token}"},
         )
         assert response.status_code == 201
@@ -530,7 +626,7 @@ def test_list_products_supports_stable_pagination(
     assert response.json()["total"] == 3
     assert response.json()["limit"] == 1
     assert response.json()["offset"] == 1
-    assert response.json()["products"][0]["name"] == "Ürün 2"
+    assert response.json()["products"][0]["name"] == pagination_products[1]["name"]
 
 
 @pytest.mark.parametrize("query", ["limit=0", "limit=101", "offset=-1"])

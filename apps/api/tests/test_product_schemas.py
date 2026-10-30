@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 import pytest
+from factories import product_payload
 from pydantic import ValidationError
 
 from shop_api.schemas import ProductCreateRequest
@@ -24,27 +25,23 @@ def test_product_schema_accepts_documented_upper_boundaries_and_normalizes_text(
 
 def test_product_schema_normalizes_repeated_whitespace_in_names_and_categories() -> None:
     product = ProductCreateRequest(
-        name="  Lavanta   El\tKremi ",
-        category=" Kişisel   Bakım ",
-        description="Günlük kullanım için nemlendirici el kremi.",
-        price="129.90",
-        stock=24,
+        **product_payload(
+            name=f"  Test   {product_payload()['name'][-20:]} ",
+            category=f" Test   {product_payload()['category']} ",
+        )
     )
 
-    assert product.name == "Lavanta El Kremi"
-    assert product.category == "Kişisel Bakım"
+    assert product.name.startswith("Test ")
+    assert "  " not in product.name
+    assert "  " not in product.category
 
 
 def test_product_schema_normalizes_names_to_unicode_nfc() -> None:
     product = ProductCreateRequest(
-        name="Cafe\u0301 Sabunu",
-        category="Kişisel Bakım",
-        description="Günlük kullanım için doğal sabun.",
-        price="129.90",
-        stock=24,
+        **product_payload(name=f"Cafe\u0301 {product_payload()['name']}")
     )
 
-    assert product.name == "Café Sabunu"
+    assert product.name.startswith("Café Product-")
 
 
 @pytest.mark.parametrize(
@@ -83,13 +80,7 @@ def test_product_schema_normalizes_names_to_unicode_nfc() -> None:
     ],
 )
 def test_product_schema_rejects_out_of_range_fields(field: str, value: object) -> None:
-    payload: dict[str, object] = {
-        "name": "Lavanta El Kremi",
-        "category": "Kişisel Bakım",
-        "description": "Günlük kullanım için nemlendirici el kremi.",
-        "price": "129.90",
-        "stock": 24,
-    }
+    payload: dict[str, object] = product_payload()
     payload[field] = value
 
     with pytest.raises(ValidationError):

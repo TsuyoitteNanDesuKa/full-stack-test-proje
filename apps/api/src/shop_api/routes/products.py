@@ -121,3 +121,23 @@ def update_product(
         raise
     db.refresh(product)
     return ProductResponse.model_validate(product)
+
+
+@router.delete(
+    "/{product_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_product(
+    product_id: int,
+    _admin_user: Annotated[User, Depends(get_admin_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    product = db.get(Product, product_id)
+    if product is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ürün bulunamadı.",
+        )
+
+    db.delete(product)
+    db.commit()

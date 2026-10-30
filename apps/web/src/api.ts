@@ -66,6 +66,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(errorBody.detail ?? 'İstek tamamlanamadı.', response.status)
   }
 
+  if (response.status === 204) {
+    return undefined as T
+  }
+
   return (await response.json()) as T
 }
 
@@ -113,5 +117,12 @@ export function updateProduct(
     method: 'PUT',
     headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify(product),
+  })
+}
+
+export function deleteProduct(token: string, productId: number): Promise<void> {
+  return request<void>(`/api/v1/products/${productId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
   })
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
-import { ApiError, getHome, getProducts, login } from './api'
+import { ApiError, deleteProduct, getHome, getProducts, login } from './api'
 import type { Product } from './api'
 import ProductCreatePage from './ProductCreatePage'
 
@@ -261,6 +261,8 @@ function HomePage({
   const [retryCount, setRetryCount] = useState(0)
   const [isCreatingProduct, setIsCreatingProduct] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+  const [deletingProductId, setDeletingProductId] = useState<number | null>(null)
+  const [deleteError, setDeleteError] = useState('')
 
   useEffect(() => {
     let active = true
@@ -294,6 +296,33 @@ function HomePage({
     style: 'currency',
     currency: 'TRY',
   })
+
+  async function handleDeleteProduct(product: Product) {
+    if (
+      !window.confirm(
+        `"${product.name}" ürününü silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.`,
+      )
+    ) {
+      return
+    }
+
+    setDeleteError('')
+    setDeletingProductId(product.id)
+    try {
+      await deleteProduct(token, product.id)
+      setProducts((currentProducts) =>
+        currentProducts.filter((currentProduct) => currentProduct.id !== product.id),
+      )
+    } catch (deleteFailure) {
+      setDeleteError(
+        deleteFailure instanceof TypeError
+          ? 'Sunucuya bağlanılamadı. Ürün silinemedi; tekrar deneyin.'
+          : 'Ürün silinemedi. Lütfen tekrar dene.',
+      )
+    } finally {
+      setDeletingProductId(null)
+    }
+  }
 
   if ((isCreatingProduct || editingProduct !== null) && isAdmin) {
     return (
@@ -359,6 +388,11 @@ function HomePage({
             </button>
           )}
         </div>
+        {deleteError && (
+          <div className="products-error" role="alert">
+            <p>{deleteError}</p>
+          </div>
+        )}
         {isLoading ? (
           <p className="products-status" role="status">Ürünler yükleniyor...</p>
         ) : error ? (
@@ -423,6 +457,15 @@ function HomePage({
                           type="button"
                         >
                           Düzenle
+                        </button>
+                        <button
+                          aria-label={`Sil ${product.name}`}
+                          className="delete-product-button"
+                          disabled={deletingProductId === product.id}
+                          onClick={() => void handleDeleteProduct(product)}
+                          type="button"
+                        >
+                          {deletingProductId === product.id ? 'Siliniyor...' : 'Sil'}
                         </button>
                       </td>
                     )}

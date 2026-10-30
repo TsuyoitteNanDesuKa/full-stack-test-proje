@@ -2,24 +2,53 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ProductCreatePage from './ProductCreatePage'
+import { createTestProduct, productRequest } from './test/testData'
 
-const createdProduct = {
-  id: 8,
-  name: 'Yeni Ürün',
-  category: 'Ev ve Yaşam',
-  description: 'El yapımı dekoratif ürün.',
-  price: '299.90',
-  stock: 7,
-  updated_at: null,
-}
+const createdProduct = createTestProduct()
+const invalidProductFields: [string, string][] = [
+  ['Ürün adı', 'A'.repeat(33)],
+  ['Ürün adı', 'Geçersiz!'],
+  ['Kategori', 'K'.repeat(41)],
+  ['Kategori', 'Bakım!'],
+  ['Açıklama', 'Kısa'],
+  ['Açıklama', 'A'.repeat(501)],
+  ['Açıklama', 'Geçersiz\u0000 açıklama'],
+  ['Fiyat (TL)', '0'],
+  ['Fiyat (TL)', '1000000'],
+  ['Fiyat (TL)', ''],
+  ['Stok adedi', '-1'],
+  ['Stok adedi', '1000000'],
+  ['Stok adedi', ''],
+]
+const invalidProductUpdateFields: [string, string][] = [
+  ...invalidProductFields,
+  ['Ürün adı', 'P'],
+  ['Ürün adı', ' P '],
+  ['Ürün adı', ' '],
+  ['Kategori', 'C'],
+  ['Kategori', ' C '],
+  ['Açıklama', 'D'.repeat(9)],
+  ['Açıklama', '         x'],
+  ['Fiyat (TL)', '-0.01'],
+  ['Fiyat (TL)', '1.999'],
+  ['Fiyat (TL)', 'not-a-price'],
+  ['Stok adedi', '1.5'],
+]
 
-async function fillValidForm(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(screen.getByLabelText('Ürün adı'), 'Yeni Ürün')
-  await user.type(screen.getByLabelText('Kategori'), 'Ev ve Yaşam')
-  await user.type(screen.getByLabelText('Açıklama'), 'El yapımı dekoratif ürün.')
-  await user.type(screen.getByLabelText('Fiyat (TL)'), '299.90')
-  await user.type(screen.getByLabelText('Stok adedi'), '7')
-  return user
+function fillValidForm(product = createdProduct) {
+  fireEvent.change(screen.getByLabelText('Ürün adı'), { target: { value: product.name } })
+  fireEvent.change(screen.getByLabelText('Kategori'), {
+    target: { value: product.category },
+  })
+  fireEvent.change(screen.getByLabelText('Açıklama'), {
+    target: { value: product.description },
+  })
+  fireEvent.change(screen.getByLabelText('Fiyat (TL)'), {
+    target: { value: product.price },
+  })
+  fireEvent.change(screen.getByLabelText('Stok adedi'), {
+    target: { value: String(product.stock) },
+  })
 }
 
 describe('admin product creation page', () => {
@@ -43,7 +72,7 @@ describe('admin product creation page', () => {
     render(
       <ProductCreatePage token="admin-token" onCancel={onCancel} onSaved={onSaved} />,
     )
-    await fillValidForm(user)
+    fillValidForm()
 
     await user.click(screen.getByRole('button', { name: 'Ürünü kaydet' }))
 
@@ -57,11 +86,8 @@ describe('admin product creation page', () => {
           Authorization: 'Bearer admin-token',
         }),
         body: JSON.stringify({
-          name: 'Yeni Ürün',
-          category: 'Ev ve Yaşam',
-          description: 'El yapımı dekoratif ürün.',
-          price: '299.9',
-          stock: 7,
+          ...productRequest(createdProduct),
+          price: String(Number(createdProduct.price)),
         }),
       }),
     )
@@ -79,11 +105,20 @@ describe('admin product creation page', () => {
     render(
       <ProductCreatePage token="admin-token" onCancel={onCancel} onSaved={onSaved} />,
     )
-    await user.type(screen.getByLabelText('Ürün adı'), 'Cafe\u0301 Sabunu')
-    await user.type(screen.getByLabelText('Kategori'), 'Ev ve Yaşam')
-    await user.type(screen.getByLabelText('Açıklama'), 'El yapımı dekoratif ürün.')
-    await user.type(screen.getByLabelText('Fiyat (TL)'), '299.90')
-    await user.type(screen.getByLabelText('Stok adedi'), '7')
+    const nfcName = `Cafe\u0301 ${createTestProduct().name.slice(-20)}`
+    fireEvent.change(screen.getByLabelText('Ürün adı'), { target: { value: nfcName } })
+    fireEvent.change(screen.getByLabelText('Kategori'), {
+      target: { value: createdProduct.category },
+    })
+    fireEvent.change(screen.getByLabelText('Açıklama'), {
+      target: { value: createdProduct.description },
+    })
+    fireEvent.change(screen.getByLabelText('Fiyat (TL)'), {
+      target: { value: createdProduct.price },
+    })
+    fireEvent.change(screen.getByLabelText('Stok adedi'), {
+      target: { value: String(createdProduct.stock) },
+    })
 
     await user.click(screen.getByRole('button', { name: 'Ürünü kaydet' }))
 
@@ -91,26 +126,19 @@ describe('admin product creation page', () => {
       '/api/v1/products',
       expect.objectContaining({
         body: JSON.stringify({
-          name: 'Café Sabunu',
-          category: 'Ev ve Yaşam',
-          description: 'El yapımı dekoratif ürün.',
-          price: '299.9',
-          stock: 7,
+          ...productRequest(createdProduct),
+          name: nfcName.normalize('NFC'),
+          price: String(Number(createdProduct.price)),
         }),
       }),
     )
   })
 
   it('pre-fills every product field and sends all edits to the update endpoint', async () => {
-    const updatedProduct = {
-      ...createdProduct,
-      name: 'Değiştirilen Ürün',
-      category: 'Kişisel Bakım',
-      description: 'Güncellenmiş ürün açıklaması.',
-      price: '349.90',
-      stock: 11,
-      updated_at: '2026-10-29T10:00:00',
-    }
+    const updatedProduct = createTestProduct({
+      id: createdProduct.id,
+      updated_at: new Date().toISOString(),
+    })
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(JSON.stringify(updatedProduct), {
         status: 200,
@@ -128,35 +156,37 @@ describe('admin product creation page', () => {
     )
 
     expect(screen.getByRole('heading', { name: 'Ürünü düzenle' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Ürün adı')).toHaveValue('Yeni Ürün')
-    expect(screen.getByLabelText('Kategori')).toHaveValue('Ev ve Yaşam')
-    expect(screen.getByLabelText('Açıklama')).toHaveValue('El yapımı dekoratif ürün.')
-    expect(screen.getByLabelText('Fiyat (TL)')).toHaveValue(299.9)
-    expect(screen.getByLabelText('Stok adedi')).toHaveValue(7)
+    expect(screen.getByLabelText('Ürün adı')).toHaveValue(createdProduct.name)
+    expect(screen.getByLabelText('Kategori')).toHaveValue(createdProduct.category)
+    expect(screen.getByLabelText('Açıklama')).toHaveValue(createdProduct.description)
+    expect(screen.getByLabelText('Fiyat (TL)')).toHaveValue(Number(createdProduct.price))
+    expect(screen.getByLabelText('Stok adedi')).toHaveValue(createdProduct.stock)
 
-    await user.clear(screen.getByLabelText('Ürün adı'))
-    await user.type(screen.getByLabelText('Ürün adı'), 'Değiştirilen Ürün')
-    await user.clear(screen.getByLabelText('Kategori'))
-    await user.type(screen.getByLabelText('Kategori'), 'Kişisel Bakım')
-    await user.clear(screen.getByLabelText('Açıklama'))
-    await user.type(screen.getByLabelText('Açıklama'), 'Güncellenmiş ürün açıklaması.')
-    await user.clear(screen.getByLabelText('Fiyat (TL)'))
-    await user.type(screen.getByLabelText('Fiyat (TL)'), '349.90')
-    await user.clear(screen.getByLabelText('Stok adedi'))
-    await user.type(screen.getByLabelText('Stok adedi'), '11')
+    fireEvent.change(screen.getByLabelText('Ürün adı'), {
+      target: { value: updatedProduct.name },
+    })
+    fireEvent.change(screen.getByLabelText('Kategori'), {
+      target: { value: updatedProduct.category },
+    })
+    fireEvent.change(screen.getByLabelText('Açıklama'), {
+      target: { value: updatedProduct.description },
+    })
+    fireEvent.change(screen.getByLabelText('Fiyat (TL)'), {
+      target: { value: updatedProduct.price },
+    })
+    fireEvent.change(screen.getByLabelText('Stok adedi'), {
+      target: { value: String(updatedProduct.stock) },
+    })
     await user.click(screen.getByRole('button', { name: 'Değişiklikleri kaydet' }))
 
     expect(onSaved).toHaveBeenCalledWith(updatedProduct)
     expect(fetch).toHaveBeenCalledWith(
-      '/api/v1/products/8',
+      `/api/v1/products/${createdProduct.id}`,
       expect.objectContaining({
         method: 'PUT',
         body: JSON.stringify({
-          name: 'Değiştirilen Ürün',
-          category: 'Kişisel Bakım',
-          description: 'Güncellenmiş ürün açıklaması.',
-          price: '349.9',
-          stock: 11,
+          ...productRequest(updatedProduct),
+          price: String(Number(updatedProduct.price)),
         }),
       }),
     )
@@ -178,8 +208,10 @@ describe('admin product creation page', () => {
         onSaved={onSaved}
       />,
     )
-    await user.clear(screen.getByLabelText('Ürün adı'))
-    await user.type(screen.getByLabelText('Ürün adı'), 'Var olan başka ürün')
+    const conflictingName = createTestProduct().name
+    fireEvent.change(screen.getByLabelText('Ürün adı'), {
+      target: { value: conflictingName },
+    })
     await user.click(screen.getByRole('button', { name: 'Değişiklikleri kaydet' }))
 
     const alert = await screen.findByRole('alert')
@@ -248,9 +280,9 @@ describe('admin product creation page', () => {
     expect(fetch).not.toHaveBeenCalled()
     expect(screen.getByLabelText('Ürün adı')).toBeInvalid()
 
-    await user.type(screen.getByLabelText('Ürün adı'), 'Yeni Ürün')
-    await user.type(screen.getByLabelText('Kategori'), 'Ev ve Yaşam')
-    await user.type(screen.getByLabelText('Açıklama'), 'Açıklama')
+    await user.type(screen.getByLabelText('Ürün adı'), createdProduct.name)
+    await user.type(screen.getByLabelText('Kategori'), createdProduct.category)
+    await user.type(screen.getByLabelText('Açıklama'), createdProduct.description)
     await user.type(screen.getByLabelText('Fiyat (TL)'), '0')
     await user.type(screen.getByLabelText('Stok adedi'), '-1')
     await user.click(screen.getByRole('button', { name: 'Ürünü kaydet' }))
@@ -264,13 +296,13 @@ describe('admin product creation page', () => {
     render(
       <ProductCreatePage token="admin-token" onCancel={onCancel} onSaved={onSaved} />,
     )
-    await user.type(screen.getByLabelText('Ürün adı'), 'Yeni Ürün')
-    await user.type(screen.getByLabelText('Kategori'), 'Ev ve Yaşam')
+    await user.type(screen.getByLabelText('Ürün adı'), createdProduct.name)
+    await user.type(screen.getByLabelText('Kategori'), createdProduct.category)
     fireEvent.change(screen.getByLabelText('Açıklama'), {
       target: { value: '         x' },
     })
-    await user.type(screen.getByLabelText('Fiyat (TL)'), '299.90')
-    await user.type(screen.getByLabelText('Stok adedi'), '7')
+    await user.type(screen.getByLabelText('Fiyat (TL)'), createdProduct.price)
+    await user.type(screen.getByLabelText('Stok adedi'), String(createdProduct.stock))
 
     await user.click(screen.getByRole('button', { name: 'Ürünü kaydet' }))
 
@@ -295,42 +327,59 @@ describe('admin product creation page', () => {
     expect(screen.getByLabelText('Stok adedi')).toHaveAttribute('max', '999999')
   })
 
-  it.each([
-    ['Ürün adı', 'A'.repeat(33)],
-    ['Ürün adı', 'Geçersiz!'],
-    ['Kategori', 'K'.repeat(41)],
-    ['Kategori', 'Bakım!'],
-    ['Açıklama', 'Kısa'],
-    ['Açıklama', 'A'.repeat(501)],
-    ['Açıklama', 'Geçersiz\u0000 açıklama'],
-    ['Fiyat (TL)', '0'],
-    ['Fiyat (TL)', '1000000'],
-    ['Fiyat (TL)', ''],
-    ['Stok adedi', '-1'],
-    ['Stok adedi', '1000000'],
-    ['Stok adedi', ''],
-  ])('blocks invalid %s value %s before the API request', async (field, invalidValue) => {
-    render(
-      <ProductCreatePage token="admin-token" onCancel={onCancel} onSaved={onSaved} />,
-    )
+  it.each(invalidProductFields)(
+    'blocks invalid %s value %s before the API request',
+    async (field, invalidValue) => {
+      render(
+        <ProductCreatePage
+          token="admin-token"
+          onCancel={onCancel}
+          onSaved={onSaved}
+        />,
+      )
 
-    fireEvent.change(screen.getByLabelText('Ürün adı'), { target: { value: 'Yeni Ürün' } })
-    fireEvent.change(screen.getByLabelText('Kategori'), { target: { value: 'Ev ve Yaşam' } })
-    fireEvent.change(screen.getByLabelText('Açıklama'), {
-      target: { value: 'El yapımı dekoratif ürün.' },
-    })
-    fireEvent.change(screen.getByLabelText('Fiyat (TL)'), { target: { value: '299.90' } })
-    fireEvent.change(screen.getByLabelText('Stok adedi'), { target: { value: '7' } })
-    fireEvent.change(screen.getByLabelText(field), { target: { value: invalidValue } })
+      fillValidForm()
+      fireEvent.change(screen.getByLabelText(field), {
+        target: { value: invalidValue },
+      })
+      fireEvent.submit(
+        screen.getByRole('button', { name: 'Ürünü kaydet' }).closest('form')!,
+      )
 
-    fireEvent.submit(screen.getByRole('button', { name: 'Ürünü kaydet' }).closest('form')!)
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Ürün bilgilerini kontrol edip tekrar dene.',
+      )
+      expect(fetch).not.toHaveBeenCalled()
+      expect(onSaved).not.toHaveBeenCalled()
+    },
+  )
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Ürün bilgilerini kontrol edip tekrar dene.',
-    )
-    expect(fetch).not.toHaveBeenCalled()
-    expect(onSaved).not.toHaveBeenCalled()
-  })
+  it.each(invalidProductUpdateFields)(
+    'blocks invalid %s value %s when editing before the API request',
+    async (field, invalidValue) => {
+      render(
+        <ProductCreatePage
+          product={createdProduct}
+          token="admin-token"
+          onCancel={onCancel}
+          onSaved={onSaved}
+        />,
+      )
+
+      fireEvent.change(screen.getByLabelText(field), {
+        target: { value: invalidValue },
+      })
+      fireEvent.submit(
+        screen.getByRole('button', { name: 'Değişiklikleri kaydet' }).closest('form')!,
+      )
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Ürün bilgilerini kontrol edip tekrar dene.',
+      )
+      expect(fetch).not.toHaveBeenCalled()
+      expect(onSaved).not.toHaveBeenCalled()
+    },
+  )
 
   it.each([
     [401, 'Oturum süren dolmuş. Çıkış yapıp yeniden giriş yap.'],
@@ -349,7 +398,7 @@ describe('admin product creation page', () => {
     render(
       <ProductCreatePage token="admin-token" onCancel={onCancel} onSaved={onSaved} />,
     )
-    await fillValidForm(user)
+    fillValidForm()
 
     await user.click(screen.getByRole('button', { name: 'Ürünü kaydet' }))
 
@@ -365,7 +414,7 @@ describe('admin product creation page', () => {
     render(
       <ProductCreatePage token="admin-token" onCancel={onCancel} onSaved={onSaved} />,
     )
-    await fillValidForm(user)
+    fillValidForm()
 
     await user.click(screen.getByRole('button', { name: 'Ürünü kaydet' }))
 
@@ -378,7 +427,7 @@ describe('admin product creation page', () => {
     render(
       <ProductCreatePage token="admin-token" onCancel={onCancel} onSaved={onSaved} />,
     )
-    await fillValidForm(user)
+    fillValidForm()
 
     await user.click(screen.getByRole('button', { name: 'Ürünü kaydet' }))
 
@@ -401,7 +450,7 @@ describe('admin product creation page', () => {
     render(
       <ProductCreatePage token="admin-token" onCancel={onCancel} onSaved={onSaved} />,
     )
-    await fillValidForm(user)
+    fillValidForm()
 
     await user.click(screen.getByRole('button', { name: 'Ürünü kaydet' }))
     expect(screen.getByRole('button', { name: 'Ürün ekleniyor...' })).toBeDisabled()

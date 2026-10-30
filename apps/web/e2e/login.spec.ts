@@ -5,9 +5,12 @@ import {
   testEmail,
   testPassword,
 } from './test-credentials'
+import { createTestProduct, productRequest } from '../src/test/testData'
 
-test.describe('REQ-001 login, REQ-002 catalog, REQ-003 product creation, and REQ-004 editing', () => {
+test.describe('REQ-001 login, REQ-002 catalog, REQ-003 creation, REQ-004 editing, and REQ-005 deletion', () => {
   test('admin logs in and adds a product from the product page', async ({ page }) => {
+    const newProduct = createTestProduct()
+    const changedProduct = createTestProduct()
     await page.goto('/')
     await page.getByLabel('E-posta adresi').fill(testAdminEmail)
     await page.getByLabel('Parola', { exact: true }).fill(testAdminPassword)
@@ -43,7 +46,11 @@ test.describe('REQ-001 login, REQ-002 catalog, REQ-003 product creation, and REQ
     )
     expect(createRequestCount).toBe(0)
 
-    await page.getByLabel('Ürün adı').fill('Admin UI Test Ürünü')
+    await page.getByLabel('Ürün adı').fill(newProduct.name)
+    await page.getByLabel('Kategori').fill(newProduct.category)
+    await page.getByLabel('Açıklama').fill(newProduct.description)
+    await page.getByLabel('Fiyat (TL)').fill(newProduct.price)
+    await page.getByLabel('Stok adedi').fill(String(newProduct.stock))
     const createResponsePromise = page.waitForResponse(
       (response) =>
         response.url().endsWith('/api/v1/products') &&
@@ -55,22 +62,36 @@ test.describe('REQ-001 login, REQ-002 catalog, REQ-003 product creation, and REQ
     expect(createResponse.status()).toBe(201)
     const createdProduct = await createResponse.json()
     await expect(page.getByRole('table', { name: 'Ürün listesi' })).toContainText(
-      'Admin UI Test Ürünü',
+      newProduct.name,
     )
-    await page.getByRole('button', { name: 'Düzenle Admin UI Test Ürünü' }).click()
+    await page.getByRole('button', { name: `Düzenle ${newProduct.name}` }).click()
     await expect(page.getByRole('heading', { name: 'Ürünü düzenle' })).toBeVisible()
-    await expect(page.getByLabel('Ürün adı')).toHaveValue('Admin UI Test Ürünü')
-    await expect(page.getByLabel('Kategori')).toHaveValue('Test Kategorisi')
-    await expect(page.getByLabel('Açıklama')).toHaveValue(
-      'Admin sayfasından eklenen test ürünü.',
+    await expect(page.getByLabel('Ürün adı')).toHaveValue(newProduct.name)
+    await expect(page.getByLabel('Kategori')).toHaveValue(newProduct.category)
+    await expect(page.getByLabel('Açıklama')).toHaveValue(newProduct.description)
+    await expect(page.getByLabel('Fiyat (TL)')).toHaveValue(newProduct.price)
+    await expect(page.getByLabel('Stok adedi')).toHaveValue(String(newProduct.stock))
+    let updateRequestCount = 0
+    page.on('request', (request) => {
+      if (
+        request.url().endsWith(`/api/v1/products/${createdProduct.id}`) &&
+        request.method() === 'PUT'
+      ) {
+        updateRequestCount += 1
+      }
+    })
+    await page.getByLabel('Ürün adı').fill('Invalid!')
+    await page.getByRole('button', { name: 'Değişiklikleri kaydet' }).click()
+    await expect(page.getByRole('alert')).toContainText(
+      'Ürün bilgilerini kontrol edip tekrar dene.',
     )
-    await expect(page.getByLabel('Fiyat (TL)')).toHaveValue('89.90')
-    await expect(page.getByLabel('Stok adedi')).toHaveValue('6')
-    await page.getByLabel('Ürün adı').fill('Admin UI Güncellenmiş Ürün')
-    await page.getByLabel('Kategori').fill('Kişisel Bakım')
-    await page.getByLabel('Açıklama').fill('Admin tarafından düzenlenen ürün açıklaması.')
-    await page.getByLabel('Fiyat (TL)').fill('99.90')
-    await page.getByLabel('Stok adedi').fill('12')
+    expect(updateRequestCount).toBe(0)
+
+    await page.getByLabel('Ürün adı').fill(changedProduct.name)
+    await page.getByLabel('Kategori').fill(changedProduct.category)
+    await page.getByLabel('Açıklama').fill(changedProduct.description)
+    await page.getByLabel('Fiyat (TL)').fill(changedProduct.price)
+    await page.getByLabel('Stok adedi').fill(String(changedProduct.stock))
     const updateResponsePromise = page.waitForResponse(
       (response) =>
         response.url().endsWith(`/api/v1/products/${createdProduct.id}`) &&
@@ -82,24 +103,25 @@ test.describe('REQ-001 login, REQ-002 catalog, REQ-003 product creation, and REQ
     expect(updateResponse.status()).toBe(200)
     const updatedProduct = await updateResponse.json()
     expect(updatedProduct).toMatchObject({
-      name: 'Admin UI Güncellenmiş Ürün',
-      category: 'Kişisel Bakım',
-      description: 'Admin tarafından düzenlenen ürün açıklaması.',
-      price: '99.90',
-      stock: 12,
+      ...productRequest(changedProduct),
     })
     expect(updatedProduct.updated_at).toBeTruthy()
-    const updatedRow = page.getByRole('row', { name: /Admin UI Güncellenmiş Ürün/ })
+    const updatedRow = page.getByRole('row', { name: new RegExp(changedProduct.name) })
     await expect(updatedRow).toContainText('Güncellendi')
-    await expect(updatedRow).toContainText('₺99,90')
-    await expect(updatedRow).toContainText('12')
+    await expect(updatedRow).toContainText(
+      new Intl.NumberFormat('tr-TR', {
+        style: 'currency',
+        currency: 'TRY',
+      }).format(Number(changedProduct.price)),
+    )
+    await expect(updatedRow).toContainText(String(changedProduct.stock))
 
     await page.getByRole('button', { name: '+ Ürün ekle' }).click()
-    await page.getByLabel('Ürün adı').fill('admin ui güncellenmiş ürün')
-    await page.getByLabel('Kategori').fill('Test Kategorisi')
-    await page.getByLabel('Açıklama').fill('Aynı ürün adı yeniden eklenmemelidir.')
-    await page.getByLabel('Fiyat (TL)').fill('89.90')
-    await page.getByLabel('Stok adedi').fill('6')
+    await page.getByLabel('Ürün adı').fill(changedProduct.name.toLowerCase())
+    await page.getByLabel('Kategori').fill(newProduct.category)
+    await page.getByLabel('Açıklama').fill(newProduct.description)
+    await page.getByLabel('Fiyat (TL)').fill(newProduct.price)
+    await page.getByLabel('Stok adedi').fill(String(newProduct.stock))
     const duplicateResponsePromise = page.waitForResponse(
       (response) =>
         response.url().endsWith('/api/v1/products') &&
@@ -112,6 +134,27 @@ test.describe('REQ-001 login, REQ-002 catalog, REQ-003 product creation, and REQ
     await expect(page.getByRole('alert')).toContainText(
       'Bu ürün adı katalogda zaten kullanılıyor.',
     )
+
+    await page.getByRole('button', { name: 'Ürün listesine dön' }).click()
+    const deleteResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/v1/products/${createdProduct.id}`) &&
+        response.request().method() === 'DELETE',
+    )
+    page.once('dialog', (dialog) => {
+      expect(dialog.message()).toContain(changedProduct.name)
+      void dialog.accept()
+    })
+    await page.getByRole('button', { name: `Sil ${changedProduct.name}` }).click()
+    const deleteResponse = await deleteResponsePromise
+
+    expect(deleteResponse.status()).toBe(204)
+    await expect(
+      page.getByRole('row', { name: new RegExp(changedProduct.name) }),
+    ).toHaveCount(0)
+    await expect(page.getByRole('table', { name: 'Ürün listesi' })).not.toContainText(
+      changedProduct.name,
+    )
   })
 
   test('logs into the real API and lists products created through the API', async ({
@@ -119,6 +162,9 @@ test.describe('REQ-001 login, REQ-002 catalog, REQ-003 product creation, and REQ
     request,
   }) => {
     const apiBase = 'http://127.0.0.1:8001/api/v1'
+    const apiProduct = createTestProduct()
+    const apiUpdatedProduct = createTestProduct()
+    const unauthorizedProduct = createTestProduct()
     const adminLogin = await request.post(`${apiBase}/auth/login`, {
       data: { email: testAdminEmail, password: testAdminPassword },
     })
@@ -126,13 +172,7 @@ test.describe('REQ-001 login, REQ-002 catalog, REQ-003 product creation, and REQ
     const loginData: { access_token: string } = await adminLogin.json()
     const token = loginData.access_token
     const createProduct = await request.post(`${apiBase}/products`, {
-      data: {
-        name: 'E2E Lavanta El Kremi',
-        category: 'Kişisel Bakım',
-        description: 'API üzerinden oluşturulan test ürünü.',
-        price: '129.90',
-        stock: 24,
-      },
+      data: productRequest(apiProduct),
       headers: { Authorization: `Bearer ${token}` },
     })
     expect(createProduct.status()).toBe(201)
@@ -140,13 +180,7 @@ test.describe('REQ-001 login, REQ-002 catalog, REQ-003 product creation, and REQ
     const updateResponse = await request.put(
       `${apiBase}/products/${createdProduct.id}`,
       {
-        data: {
-          name: 'E2E Güncellenmiş El Kremi',
-          category: 'Kişisel Bakım',
-          description: 'Yönetici tarafından güncellenen ürün.',
-          price: '149.90',
-          stock: 18,
-        },
+        data: productRequest(apiUpdatedProduct),
         headers: { Authorization: `Bearer ${token}` },
       },
     )
@@ -157,14 +191,15 @@ test.describe('REQ-001 login, REQ-002 catalog, REQ-003 product creation, and REQ
     })
     expect(customerLogin.status()).toBe(200)
     const customerLoginData: { access_token: string } = await customerLogin.json()
-    const customerProductWrite = await request.post(`${apiBase}/products`, {
-      data: {
-        name: 'Yetkisiz Ürün',
-        category: 'Test',
-        description: 'Müşteri hesabıyla oluşturulmamalı.',
-        price: '1.00',
-        stock: 1,
+    const customerProductDelete = await request.delete(
+      `${apiBase}/products/${createdProduct.id}`,
+      {
+        headers: { Authorization: `Bearer ${customerLoginData.access_token}` },
       },
+    )
+    expect(customerProductDelete.status()).toBe(403)
+    const customerProductWrite = await request.post(`${apiBase}/products`, {
+      data: productRequest(unauthorizedProduct),
       headers: { Authorization: `Bearer ${customerLoginData.access_token}` },
     })
     expect(customerProductWrite.status()).toBe(403)
@@ -203,14 +238,21 @@ test.describe('REQ-001 login, REQ-002 catalog, REQ-003 product creation, and REQ
     await expect(
       page.getByRole('heading', { name: 'Alışverişe hoş geldiniz.' }),
     ).toBeVisible()
+    await expect(page.getByRole('columnheader', { name: 'İşlem' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /^Sil / })).toHaveCount(0)
     await expect(page.getByRole('table', { name: 'Ürün listesi' })).toContainText(
-      'E2E Güncellenmiş El Kremi',
+      apiUpdatedProduct.name,
     )
-    const updatedRow = page.getByRole('row', { name: /E2E Güncellenmiş El Kremi/ })
+    const updatedRow = page.getByRole('row', { name: new RegExp(apiUpdatedProduct.name) })
     await expect(updatedRow).toContainText('Güncellendi')
-    await expect(updatedRow).toContainText('Yönetici tarafından güncellenen ürün.')
-    await expect(updatedRow).toContainText('₺149,90')
-    await expect(updatedRow).toContainText('18')
+    await expect(updatedRow).toContainText(apiUpdatedProduct.description)
+    await expect(updatedRow).toContainText(
+      new Intl.NumberFormat('tr-TR', {
+        style: 'currency',
+        currency: 'TRY',
+      }).format(Number(apiUpdatedProduct.price)),
+    )
+    await expect(updatedRow).toContainText(String(apiUpdatedProduct.stock))
     await expect(page.getByText(testEmail, { exact: false })).toBeVisible()
     expect(await page.evaluate(() => localStorage.length)).toBe(0)
     expect(await page.evaluate(() => sessionStorage.length)).toBe(0)

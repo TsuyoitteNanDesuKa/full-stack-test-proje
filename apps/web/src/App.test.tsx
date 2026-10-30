@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import type { Product } from './api'
+import { createTestProduct } from './test/testData'
 
 function jsonResponse(body: unknown, status = 200): Response {
   const responseBody =
@@ -15,15 +16,7 @@ function jsonResponse(body: unknown, status = 200): Response {
   })
 }
 
-const sampleProduct: Product = {
-  id: 1,
-  name: 'Lavanta El Kremi',
-  category: 'Kişisel Bakım',
-  description: 'Günlük kullanım için nemlendirici el kremi.',
-  price: '129.90',
-  stock: 24,
-  updated_at: null,
-}
+const sampleProduct: Product = createTestProduct()
 
 function productList(products: typeof sampleProduct[] = [sampleProduct]) {
   return { products, total: products.length, limit: 20, offset: 0 }
@@ -32,6 +25,7 @@ function productList(products: typeof sampleProduct[] = [sampleProduct]) {
 describe('customer login', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn())
+    vi.stubGlobal('confirm', vi.fn(() => true))
   })
 
   it('shows the storefront after logging in and fetching the home page', async () => {
@@ -81,11 +75,17 @@ describe('customer login', () => {
     expect(screen.getByText('customer@example.com olarak giriş yaptın. Sana iyi gelecek şeyler burada başlıyor.')).toBeInTheDocument()
     expect(await screen.findByRole('table', { name: 'Ürün listesi' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '+ Ürün ekle' })).not.toBeInTheDocument()
-    const productRow = screen.getByRole('row', { name: /Lavanta El Kremi/ })
-    expect(productRow).toHaveTextContent('Kişisel Bakım')
-    expect(productRow).toHaveTextContent('Günlük kullanım için nemlendirici el kremi.')
-    expect(productRow).toHaveTextContent('₺129,90')
-    expect(productRow).toHaveTextContent('24')
+    expect(screen.queryByRole('button', { name: /^Sil / })).not.toBeInTheDocument()
+    const productRow = screen.getByRole('row', { name: new RegExp(sampleProduct.name) })
+    expect(productRow).toHaveTextContent(sampleProduct.category)
+    expect(productRow).toHaveTextContent(sampleProduct.description)
+    expect(productRow).toHaveTextContent(
+      new Intl.NumberFormat('tr-TR', {
+        style: 'currency',
+        currency: 'TRY',
+      }).format(Number(sampleProduct.price)),
+    )
+    expect(productRow).toHaveTextContent(String(sampleProduct.stock))
     expect(productRow).toHaveTextContent('Güncellendi')
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -118,6 +118,13 @@ describe('customer login', () => {
   })
 
   it('lets an administrator create and update products in the catalog', async () => {
+    const newProduct = createTestProduct({
+      id: (sampleProduct.id % 100_000) + 1,
+    })
+    const updatedProduct = createTestProduct({
+      id: newProduct.id,
+      updated_at: new Date().toISOString(),
+    })
     vi.mocked(fetch)
       .mockResolvedValueOnce(
         jsonResponse({
@@ -132,28 +139,10 @@ describe('customer login', () => {
       )
       .mockResolvedValueOnce(jsonResponse(productList()))
       .mockResolvedValueOnce(
-        jsonResponse(
-          {
-            ...sampleProduct,
-            id: 2,
-            name: 'Yeni Yönetici Ürünü',
-            price: '299.90',
-          },
-          201,
-        ),
+        jsonResponse(newProduct, 201),
       )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          ...sampleProduct,
-          id: 2,
-          name: 'Güncellenmiş Yönetici Ürünü',
-          category: 'Ev ve Yaşam',
-          description: 'Güncellenen ürün açıklaması.',
-          price: '399.90',
-          stock: 31,
-          updated_at: '2026-10-29T10:00:00',
-        }),
-      )
+      .mockResolvedValueOnce(jsonResponse(updatedProduct))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
 
     const user = userEvent.setup()
     render(<App />)
@@ -165,56 +154,279 @@ describe('customer login', () => {
     await user.click(await screen.findByRole('button', { name: '+ Ürün ekle' }))
     expect(screen.getByRole('heading', { name: 'Yeni ürün ekle' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Ürün listesine dön' }))
-    expect(await screen.findByRole('row', { name: /Lavanta El Kremi/ })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('row', { name: new RegExp(sampleProduct.name) }),
+    ).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '+ Ürün ekle' }))
 
-    await user.type(screen.getByLabelText('Ürün adı'), 'Yeni Yönetici Ürünü')
-    await user.type(screen.getByLabelText('Kategori'), 'Kişisel Bakım')
-    await user.type(screen.getByLabelText('Açıklama'), 'Günlük kullanım ürünü.')
-    await user.type(screen.getByLabelText('Fiyat (TL)'), '299.90')
-    await user.type(screen.getByLabelText('Stok adedi'), '24')
+    fireEvent.change(screen.getByLabelText('Ürün adı'), {
+      target: { value: newProduct.name },
+    })
+    fireEvent.change(screen.getByLabelText('Kategori'), {
+      target: { value: newProduct.category },
+    })
+    fireEvent.change(screen.getByLabelText('Açıklama'), {
+      target: { value: newProduct.description },
+    })
+    fireEvent.change(screen.getByLabelText('Fiyat (TL)'), {
+      target: { value: newProduct.price },
+    })
+    fireEvent.change(screen.getByLabelText('Stok adedi'), {
+      target: { value: String(newProduct.stock) },
+    })
     await user.click(screen.getByRole('button', { name: 'Ürünü kaydet' }))
 
     expect(await screen.findByRole('table', { name: 'Ürün listesi' })).toHaveTextContent(
-      'Yeni Yönetici Ürünü',
+      newProduct.name,
     )
-    expect(
-      screen.getByRole('row', { name: /Yeni Yönetici Ürünü/ }),
-    ).not.toHaveTextContent('Güncellendi')
-    await user.click(screen.getByRole('button', { name: 'Düzenle Yeni Yönetici Ürünü' }))
-    expect(screen.getByLabelText('Ürün adı')).toHaveValue('Yeni Yönetici Ürünü')
-    expect(screen.getByLabelText('Kategori')).toHaveValue('Kişisel Bakım')
-    expect(screen.getByLabelText('Açıklama')).toHaveValue(
-      'Günlük kullanım için nemlendirici el kremi.',
+    const newProductRow = screen.getByRole('row', { name: new RegExp(newProduct.name) })
+    expect(newProductRow).not.toHaveTextContent('Güncellendi')
+    await user.click(
+      screen.getByRole('button', { name: `Düzenle ${newProduct.name}` }),
     )
-    expect(screen.getByLabelText('Fiyat (TL)')).toHaveValue(299.9)
-    expect(screen.getByLabelText('Stok adedi')).toHaveValue(24)
-    await user.clear(screen.getByLabelText('Ürün adı'))
-    await user.type(screen.getByLabelText('Ürün adı'), 'Güncellenmiş Yönetici Ürünü')
-    await user.clear(screen.getByLabelText('Kategori'))
-    await user.type(screen.getByLabelText('Kategori'), 'Ev ve Yaşam')
-    await user.clear(screen.getByLabelText('Açıklama'))
-    await user.type(screen.getByLabelText('Açıklama'), 'Güncellenen ürün açıklaması.')
-    await user.clear(screen.getByLabelText('Fiyat (TL)'))
-    await user.type(screen.getByLabelText('Fiyat (TL)'), '399.90')
-    await user.clear(screen.getByLabelText('Stok adedi'))
-    await user.type(screen.getByLabelText('Stok adedi'), '31')
+    expect(screen.getByLabelText('Ürün adı')).toHaveValue(newProduct.name)
+    expect(screen.getByLabelText('Kategori')).toHaveValue(newProduct.category)
+    expect(screen.getByLabelText('Açıklama')).toHaveValue(newProduct.description)
+    expect(screen.getByLabelText('Fiyat (TL)')).toHaveValue(Number(newProduct.price))
+    expect(screen.getByLabelText('Stok adedi')).toHaveValue(newProduct.stock)
+    fireEvent.change(screen.getByLabelText('Ürün adı'), {
+      target: { value: updatedProduct.name },
+    })
+    fireEvent.change(screen.getByLabelText('Kategori'), {
+      target: { value: updatedProduct.category },
+    })
+    fireEvent.change(screen.getByLabelText('Açıklama'), {
+      target: { value: updatedProduct.description },
+    })
+    fireEvent.change(screen.getByLabelText('Fiyat (TL)'), {
+      target: { value: updatedProduct.price },
+    })
+    fireEvent.change(screen.getByLabelText('Stok adedi'), {
+      target: { value: String(updatedProduct.stock) },
+    })
     await user.click(screen.getByRole('button', { name: 'Değişiklikleri kaydet' }))
 
     const updatedRow = await screen.findByRole('row', {
-      name: /Güncellenmiş Yönetici Ürünü/,
+      name: new RegExp(updatedProduct.name),
     })
-    expect(updatedRow).toHaveTextContent('Ev ve Yaşam')
-    expect(updatedRow).toHaveTextContent('Güncellenen ürün açıklaması.')
-    expect(updatedRow).toHaveTextContent('₺399,90')
-    expect(updatedRow).toHaveTextContent('31')
+    expect(updatedRow).toHaveTextContent(updatedProduct.category)
+    expect(updatedRow).toHaveTextContent(updatedProduct.description)
+    expect(updatedRow).toHaveTextContent(
+      new Intl.NumberFormat('tr-TR', {
+        style: 'currency',
+        currency: 'TRY',
+      }).format(Number(updatedProduct.price)),
+    )
+    expect(updatedRow).toHaveTextContent(String(updatedProduct.stock))
     expect(updatedRow).toHaveTextContent('Güncellendi')
     expect(fetch).toHaveBeenLastCalledWith(
-      '/api/v1/products/2',
+      `/api/v1/products/${newProduct.id}`,
       expect.objectContaining({
         method: 'PUT',
         headers: expect.objectContaining({ Authorization: 'Bearer admin-token' }),
       }),
+    )
+  })
+
+  it('requires confirmation and removes only the deleted product from the catalog', async () => {
+    const remainingProduct = createTestProduct()
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        jsonResponse({
+          access_token: 'admin-token',
+          token_type: 'bearer',
+          expires_in: 1800,
+          is_admin: true,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ message: 'Welcome', featured_categories: [] }),
+      )
+      .mockResolvedValueOnce(jsonResponse(productList([sampleProduct, remainingProduct])))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+
+    const user = userEvent.setup()
+    render(<App />)
+    await user.type(screen.getByLabelText('E-posta adresi'), 'admin@example.com')
+    await user.type(screen.getByLabelText('Parola'), 'correct-password')
+    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
+
+    const deletedRow = await screen.findByRole('row', {
+      name: new RegExp(sampleProduct.name),
+    })
+    vi.mocked(confirm).mockReturnValueOnce(false)
+    await user.click(screen.getByRole('button', { name: `Sil ${sampleProduct.name}` }))
+    expect(fetch).toHaveBeenCalledTimes(3)
+    expect(deletedRow).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: `Sil ${sampleProduct.name}` }))
+    await waitFor(() => expect(deletedRow).not.toBeInTheDocument())
+
+    expect(
+      screen.getByRole('row', { name: new RegExp(remainingProduct.name) }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('1 ürün')).toBeInTheDocument()
+    expect(fetch).toHaveBeenLastCalledWith(
+      `/api/v1/products/${sampleProduct.id}`,
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: expect.objectContaining({ Authorization: 'Bearer admin-token' }),
+      }),
+    )
+  })
+
+  it('keeps the product visible and shows an error when deletion fails', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        jsonResponse({
+          access_token: 'admin-token',
+          token_type: 'bearer',
+          expires_in: 1800,
+          is_admin: true,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ message: 'Welcome', featured_categories: [] }),
+      )
+      .mockResolvedValueOnce(jsonResponse(productList()))
+      .mockResolvedValueOnce(
+        jsonResponse({ detail: 'Private server detail.' }, 500),
+      )
+
+    const user = userEvent.setup()
+    render(<App />)
+    await user.type(screen.getByLabelText('E-posta adresi'), 'admin@example.com')
+    await user.type(screen.getByLabelText('Parola'), 'correct-password')
+    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
+
+    const productRow = await screen.findByRole('row', {
+      name: new RegExp(sampleProduct.name),
+    })
+    await user.click(screen.getByRole('button', { name: `Sil ${sampleProduct.name}` }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Ürün silinemedi. Lütfen tekrar dene.',
+    )
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Private server detail.')
+    expect(productRow).toBeInTheDocument()
+  })
+
+  it.each([401, 404])(
+    'keeps the product visible and shows a safe message when deletion returns %i',
+    async (status) => {
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(
+          jsonResponse({
+            access_token: 'admin-token',
+            token_type: 'bearer',
+            expires_in: 1800,
+            is_admin: true,
+          }),
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({ message: 'Welcome', featured_categories: [] }),
+        )
+        .mockResolvedValueOnce(jsonResponse(productList()))
+        .mockResolvedValueOnce(
+          jsonResponse({ detail: 'Private server detail.' }, status),
+        )
+
+      const user = userEvent.setup()
+      render(<App />)
+      await user.type(screen.getByLabelText('E-posta adresi'), 'admin@example.com')
+      await user.type(screen.getByLabelText('Parola'), 'correct-password')
+      await user.click(screen.getByRole('button', { name: /giriş yap/i }))
+
+      const productRow = await screen.findByRole('row', {
+        name: new RegExp(sampleProduct.name),
+      })
+      await user.click(screen.getByRole('button', { name: `Sil ${sampleProduct.name}` }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Ürün silinemedi. Lütfen tekrar dene.',
+      )
+      expect(screen.getByRole('alert')).not.toHaveTextContent('Private server detail.')
+      expect(productRow).toBeInTheDocument()
+    },
+  )
+
+  it('shows a connection error and keeps the product visible when deletion cannot reach the API', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        jsonResponse({
+          access_token: 'admin-token',
+          token_type: 'bearer',
+          expires_in: 1800,
+          is_admin: true,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ message: 'Welcome', featured_categories: [] }),
+      )
+      .mockResolvedValueOnce(jsonResponse(productList()))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+
+    const user = userEvent.setup()
+    render(<App />)
+    await user.type(screen.getByLabelText('E-posta adresi'), 'admin@example.com')
+    await user.type(screen.getByLabelText('Parola'), 'correct-password')
+    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
+
+    const productRow = await screen.findByRole('row', {
+      name: new RegExp(sampleProduct.name),
+    })
+    await user.click(screen.getByRole('button', { name: `Sil ${sampleProduct.name}` }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Sunucuya bağlanılamadı. Ürün silinemedi; tekrar deneyin.',
+    )
+    expect(productRow).toBeInTheDocument()
+  })
+
+  it('disables the delete action and sends only one request while deletion is pending', async () => {
+    let resolveDeletion: (response: Response) => void = () => {
+      throw new Error('Delete request was not initialized.')
+    }
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        jsonResponse({
+          access_token: 'admin-token',
+          token_type: 'bearer',
+          expires_in: 1800,
+          is_admin: true,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ message: 'Welcome', featured_categories: [] }),
+      )
+      .mockResolvedValueOnce(jsonResponse(productList()))
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveDeletion = resolve
+          }),
+      )
+
+    const user = userEvent.setup()
+    render(<App />)
+    await user.type(screen.getByLabelText('E-posta adresi'), 'admin@example.com')
+    await user.type(screen.getByLabelText('Parola'), 'correct-password')
+    await user.click(screen.getByRole('button', { name: /giriş yap/i }))
+
+    await screen.findByRole('row', { name: new RegExp(sampleProduct.name) })
+    await user.click(screen.getByRole('button', { name: `Sil ${sampleProduct.name}` }))
+
+    const deletingButton = screen.getByRole('button', {
+      name: `Sil ${sampleProduct.name}`,
+    })
+    expect(deletingButton).toBeDisabled()
+    expect(fetch).toHaveBeenCalledTimes(4)
+
+    resolveDeletion(new Response(null, { status: 204 }))
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('row', { name: new RegExp(sampleProduct.name) }),
+      ).not.toBeInTheDocument(),
     )
   })
 
