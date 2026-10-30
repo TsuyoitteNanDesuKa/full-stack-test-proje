@@ -85,10 +85,7 @@ describe('admin product creation page', () => {
         headers: expect.objectContaining({
           Authorization: 'Bearer admin-token',
         }),
-        body: JSON.stringify({
-          ...productRequest(createdProduct),
-          price: String(Number(createdProduct.price)),
-        }),
+        body: JSON.stringify(productRequest(createdProduct)),
       }),
     )
     expect(onCancel).not.toHaveBeenCalled()
@@ -128,7 +125,6 @@ describe('admin product creation page', () => {
         body: JSON.stringify({
           ...productRequest(createdProduct),
           name: nfcName.normalize('NFC'),
-          price: String(Number(createdProduct.price)),
         }),
       }),
     )

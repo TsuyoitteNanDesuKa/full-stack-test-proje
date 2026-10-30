@@ -2,6 +2,7 @@
   "realm": "shop",
   "enabled": true,
   "displayName": "Liva",
+  "loginTheme": "liva",
   "registrationAllowed": true,
   "registrationEmailAsUsername": true,
   "loginWithEmailAllowed": true,
@@ -61,7 +62,7 @@
           "protocolMapper": "oidc-audience-mapper",
           "consentRequired": false,
           "config": {
-            "included.client.audience": "shop-api",
+            "included.custom.audience": "shop-api",
             "id.token.claim": "false",
             "access.token.claim": "true"
           }

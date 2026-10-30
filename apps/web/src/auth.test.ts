@@ -87,6 +87,16 @@ describe('Keycloak OIDC client', () => {
     expect(oidcMocks.getUser).toHaveBeenCalledOnce()
   })
 
+  it('processes a concurrent OIDC callback only once', async () => {
+    window.history.replaceState({}, '', '/?code=one-time-code&state=state-value')
+
+    await Promise.all([getCurrentSession(), getCurrentSession()])
+
+    expect(oidcMocks.signinRedirectCallback).toHaveBeenCalledOnce()
+    expect(oidcMocks.getUser).toHaveBeenCalledTimes(2)
+    expect(window.location.search).toBe('')
+  })
+
   it('clears a failed OIDC callback from the URL before surfacing the failure', async () => {
     window.history.replaceState({}, '', '/?code=bad-code&state=state-value')
     oidcMocks.signinRedirectCallback.mockRejectedValueOnce(new Error('invalid state'))

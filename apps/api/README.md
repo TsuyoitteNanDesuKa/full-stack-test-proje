@@ -19,6 +19,8 @@ docker compose up -d keycloak
 
 The `shop` realm, `shop-web` public OIDC client, buyer/seller/admin roles, and API audience mapper are imported from `infra/keycloak/realm-export.json`. The public realm issuer is `http://localhost:8080/realms/shop`.
 
+The `liva` login theme is mounted from `infra/keycloak/themes/liva` and uses generic duplicate-account errors to avoid revealing whether an email is registered. Realm import only initializes a new realm; it does not overwrite configuration in an existing persistent Keycloak volume. For an existing realm, select `liva` as the Login theme under Admin Console → Realm settings → Themes. Removing the volume also deletes its realm data and users.
+
 From this directory, configure the API and database:
 
 ```powershell

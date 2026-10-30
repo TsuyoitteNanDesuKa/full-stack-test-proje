@@ -56,6 +56,8 @@ uv run uvicorn shop_api.main:create_app --factory --reload
 
 Realm ve `shop-web` public OIDC istemcisi `infra/keycloak/realm-export.json` dosyasından ilk Keycloak başlangıcında içe aktarılır. Keycloak hazır olduğunda alıcı kayıt ve giriş ekranı `http://localhost:8080` üzerinden sunulur. `SHOP_OIDC_ISSUER` ve audience varsayılanları yerel realm ile eşleşir.
 
+Keycloak `liva` login theme'i `infra/keycloak/themes/liva` dizininden salt okunur bağlanır; yinelenen hesap hataları e-posta varlığını açıklamayan genel mesaj gösterir. Keycloak realm'i kalıcı Docker volume'ünde tutulur; sonraki başlangıçlarda realm import'u mevcut realm ayarlarını güncellemez. Önceden başlatılmış realm için Admin Console → Realm settings → Themes ekranından Login theme olarak `liva` seçip kaydedin. Volume'ü silmek test kullanıcılarını ve realm verisini de siler.
+
 ```powershell
 Set-Location apps/web
 npm ci

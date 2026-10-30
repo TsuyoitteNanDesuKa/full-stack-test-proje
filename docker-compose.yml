@@ -13,6 +13,7 @@ services:
     volumes:
       - keycloak_data:/opt/keycloak/data
       - ./infra/keycloak/realm-export.json:/opt/keycloak/data/import/shop-realm.json:ro
+      - ./infra/keycloak/themes/liva:/opt/keycloak/themes/liva:ro
 
 volumes:
   keycloak_data:

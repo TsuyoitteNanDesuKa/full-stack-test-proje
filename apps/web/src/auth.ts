@@ -21,6 +21,21 @@ const userManager = new UserManager({
   automaticSilentRenew: false,
 })
 
+let callbackPromise: Promise<void> | null = null
+
+function completeOidcCallback(): Promise<void> {
+  if (callbackPromise) {
+    return callbackPromise
+  }
+
+  const callback = userManager.signinRedirectCallback().then(() => undefined).finally(() => {
+    window.history.replaceState({}, document.title, window.location.pathname)
+    callbackPromise = null
+  })
+  callbackPromise = callback
+  return callback
+}
+
 export async function getCurrentSession(): Promise<AuthSession | null> {
   const query = new URLSearchParams(window.location.search)
   if (query.has('error')) {
@@ -29,11 +44,7 @@ export async function getCurrentSession(): Promise<AuthSession | null> {
   }
 
   if (query.has('code') && query.has('state')) {
-    try {
-      await userManager.signinRedirectCallback()
-    } finally {
-      window.history.replaceState({}, document.title, window.location.pathname)
-    }
+    await completeOidcCallback()
   }
 
   const user = await userManager.getUser()

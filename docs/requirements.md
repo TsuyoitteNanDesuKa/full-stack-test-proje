@@ -353,7 +353,7 @@ Yalnızca admin rolüne açık. Başarıda boş gövdeli `204 No Content`; bulun
 ## REQ-006 — Keycloak ile alıcı kaydı ve rol tabanlı kullanıcı yönetimi
 
 - **Öncelik:** P0 (v1.0 sonrası ilk özellik dilimi)
-- **Durum:** Alıcı registration/login dikey dilimi geliştiriliyor; kapsamlı kabul testi tamamlanmadan tamamlandı sayılmaz.
+- **Durum:** Alıcı kayıt/giriş dilimi tamamlandı. Unit/API/component ve gerçek Keycloak E2E testleri geçiyor; yinelenen e-posta için genel hata mesajı uygulanıp hesap keşfi engellendi.
 - **Kullanıcı hikâyesi:** Bir ziyaretçi olarak e-posta ve parolamla alıcı hesabı oluşturmak, giriş yapmak ve alışverişe başlamak istiyorum. Mağaza yöneticisi olarak da alıcı, satıcı ve admin yetkilerinin güvenli biçimde ayrılmasını istiyorum.
 - **Ön koşul:** Keycloak yerel geliştirme ortamında çalışır; web istemcisi ve API için OIDC istemci yapılandırması vardır.
 
@@ -391,9 +391,9 @@ Roller kullanıcı kategorilerini anlatır; satıcı organizasyonu ve birden faz
 
 | Kimlik | Seviye | Durum | Beklenti |
 |---|---|---|---|
-| REQ-006-T1 | Keycloak entegrasyon/E2E | Geçerli alıcı kaydı | Keycloak kaydı başarıyla tamamlanır; yeni hesap `buyer` olur ve uygulamaya döner |
-| REQ-006-T2 | Keycloak entegrasyon/E2E negatif | Aynı e-posta ile ikinci kayıt | Tekil hesap kuralı korunur; güvenli hata döner |
-| REQ-006-T3 | Keycloak entegrasyon/E2E negatif | Eksik/bozuk e-posta veya zorunlu alan | Kayıt reddedilir; hesap/oturum yanlışlıkla oluşturulmaz |
+| REQ-006-T1 | Keycloak entegrasyon/E2E | Geçerli alıcı kaydı ve sonraki giriş | Keycloak kaydı ve yeniden giriş başarılıdır; yeni hesap yalnızca `buyer` olur |
+| REQ-006-T2 | Keycloak entegrasyon/E2E negatif | Aynı e-posta ile ikinci kayıt | Tekil hesap kuralı korunur, kullanıcıya genel hata gösterilir ve e-posta/hesap varlığı açıklanmaz |
+| REQ-006-T3 | Keycloak entegrasyon/E2E negatif | Eksik/bozuk e-posta, zorunlu alan veya eşleşmeyen parola | Kayıt reddedilir; alan hatası gösterilir, hesap/oturum oluşturulmaz |
 | REQ-006-T4 | Güvenlik/entegrasyon | Self-registration sırasında `seller`/`admin` rolü talep etme | Varsayılan rol `buyer` kalır; istemci rol yükseltemez |
 | REQ-006-T5 | API negatif | Yok, bozuk, süresi dolmuş veya yanlış `iss`/`aud` access token | `401`; korumalı veri/işlem açığa çıkmaz |
 | REQ-006-T6 | API yetki | Alıcı ürün create/update/delete ister | `403`; ürün verisi değişmez |
@@ -401,8 +401,11 @@ Roller kullanıcı kategorilerini anlatır; satıcı organizasyonu ve birden faz
 | REQ-006-T8 | Component/unit | OIDC kayıt/login yönlendirmesi, callback iptali/bozulması ve Keycloak erişim hatası | Yönlendirme doğru başlar; callback parametreleri temizlenir; hata başarı gibi gösterilmez |
 | REQ-006-T9 | E2E | Yeni e-posta ile tarayıcıdan kayıt ve giriş | Keycloak yönlendirmesi, alıcı oturumu ve katalog görünümü çalışır |
 | REQ-006-T10 | E2E negatif | Alıcıyla admin işlemi denemesi | Yönetim eylemi görünmez ve API isteği `403` ile reddedilir |
+| REQ-006-T11 | E2E gizlilik | Kayıt ve giriş sırasında uygulama API çağrıları | Alıcı parolası mağaza API'sine gönderilmez |
 
-**Test katmanı izlenebilirliği:** Barındırılan Keycloak kayıt formunun başarılı/negatif davranışları izole test realm'iyle entegrasyon ve E2E seviyelerinde; token doğrulama/rol kuralları unit ve API seviyelerinde; OIDC yönlendirme/callback davranışları component seviyesinde doğrulanmalıdır. Yerel uygulama parola formu sunmadığından kayıt formu component testleriyle taklit edilmemelidir. Testlerde gerçek kullanıcı parolası veya üretim hesabı kullanılmamalıdır.
+**Test katmanı izlenebilirliği:** Barındırılan Keycloak kayıt formunun başarılı/negatif davranışları gerçek yerel realm ile E2E seviyesinde; token doğrulama/rol kuralları unit ve API seviyelerinde; OIDC yönlendirme/callback davranışları component seviyesinde doğrulanmıştır. Yerel uygulama parola formu sunmadığından kayıt formu component testleriyle taklit edilmemelidir. E2E testleri benzersiz ve geçici hesap/parola kullanır; üretim hesabı kullanılmaz.
+
+**QA/güvenlik kararı:** Keycloak'ın varsayılan yinelenen kullanıcı/e-posta mesajı hesap keşfine (account enumeration) imkân verebildiğinden custom `liva` login theme ile genel hata mesajına dönüştürülmüştür. Bu davranış gerçek Keycloak E2E testiyle doğrulanır.
 
 **Sıralı kullanıcı yönetimi dilimleri:** Önce alıcı kayıt/login entegrasyonu tamamlanıp tüm katmanlarda kapsamlı test edilecek. Test kapısı geçmeden satıcı başvurusu geliştirilmeyecek. Ardından satıcı başvurusu ve işletme doğrulaması, bu dilimin kabul/test kapısından sonra admin rol atama akışı geliştirilecek. Bu sonraki iki akışın iş kuralları ayrı gereksinimlerde netleştirilecektir.
 
