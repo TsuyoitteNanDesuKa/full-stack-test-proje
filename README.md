@@ -67,17 +67,18 @@ npm run dev
 
 `http://localhost:5173` adresinde **Giriş yap** veya **Alıcı hesabı oluştur** seçilebilir. Uygulama parolayı almaz; Keycloak oturumundan dönen token'ı API'ye gönderir. Keycloak admin konsolu `http://localhost:8080/admin` adresindedir. Admin ürün işlemlerini yerel olarak denemek için bir test kullanıcısına `admin` realm rolünü yalnızca bu güvenilir konsoldan atayın; alıcılar kendileri rol yükseltemez. API dokümantasyonu `http://127.0.0.1:8000/docs` adresindedir. Ayrıntılar [backend README](./apps/api/README.md) ve [web README](./apps/web/README.md) içindedir.
 
-### Keycloak hesabı oluşturma E2E testi
+### Keycloak kayıt ve ürün CRUD E2E testleri
 
-Keycloak realm'ini başlatıp aşağıdaki komutla tarayıcı testini çalıştırın:
+Keycloak realm'ini başlatıp yerel bootstrap admin parolasını test sürecine verin. Değeri kaynak koda veya bu belgeye yazmayın:
 
 ```powershell
 $env:E2E_KEYCLOAK_E2E = "1"
+$env:E2E_KEYCLOAK_ADMIN_PASSWORD = Read-Host -Prompt "Local Keycloak bootstrap password"
 Set-Location apps/web
 npm run test:e2e
 ```
 
-Playwright testi benzersiz alıcı hesabını gerçek Keycloak kayıt ekranından oluşturur; parolalar test sırasında üretilir. Keycloak E2E testi varsayılan olarak atlanır; gerçek realm çalışırken açıkça etkinleştirilmelidir.
+Playwright testleri gerçek Keycloak kayıt/giriş ekranını kullanır; admin CRUD testi ayrıca geçici admin hesabı oluşturup `admin` rolü atar, buyer ve admin test hesaplarını temizler. Ürün veritabanı da izole geçici SQLite dosyasıdır. Keycloak E2E testleri varsayılan olarak atlanır; yalnızca yerel test realm'i çalışırken açıkça etkinleştirilmelidir.
 
 ## Önerilen teknoloji seti
 

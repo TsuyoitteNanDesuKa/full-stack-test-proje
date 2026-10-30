@@ -174,13 +174,13 @@ Yalnızca admin rolüne açık. İstek gövdesi `name`, `category`, `description
 | REQ-002-T6 | API | Token yok veya pagination parametresi geçersiz | Sırasıyla `401` veya `422` |
 | REQ-002-T7 | Component/integration | Ürün listesi yüklendi | Ad, kategori, açıklama, TRY fiyatı ve stok erişilebilir tabloda görünür |
 | REQ-002-T8 | Component | Boş katalog veya ürün API hatası | Boş durum veya yeniden denenebilir hata gösterilir |
-| REQ-002-T9 | E2E | Admin API ile örnek ürün ekle, müşteri olarak giriş yap | Ürün korumalı katalog endpoint'inden okunup tabloda gösterilir |
+| REQ-002-T9 | E2E | Admin ürün ekler, buyer olarak giriş yapılır | Ürün korumalı katalog endpoint'inden okunup tabloda gösterilir; yönetim eylemleri yalnızca admin'e görünür |
 | REQ-002-T10 | E2E | Hatalı giriş | Ana sayfa ve ürün endpoint'lerine istek gönderilmez |
 | REQ-002-T11 | Unit | `ProductCreateRequest` şema sınırları | Geçerli üst sınırlar kabul; uzunluk/fiyat/stok dışı değerler reddedilir |
 | REQ-002-T12 | Frontend unit | Ürün istemcisi API hatası | HTTP hata durumu ve mesajı çağırana aktarılır |
 | REQ-002-T13 | Component | Ürün listesi beklemede | Erişilebilir yükleniyor durumu tablo gelene kadar görünür |
 
-**Test katmanı izlenebilirliği:** Şema alanlarının sınır/birim doğrulaması `apps/api/tests/test_product_schemas.py` (unit); kimlik doğrulama, admin yetkisi, SQLite kalıcılığı, API yanıtları ve sayfalama `apps/api/tests/test_products.py` (API/entegrasyon); query/header ve API hata aktarımı `apps/web/src/api.test.ts` (istemci unit); tablo, yükleniyor/boş/hata/yeniden deneme davranışları `apps/web/src/App.test.tsx` (component/frontend entegrasyonu); admin ile API'den ürün ekleyip müşteri UI'ında listeleme ve yetki reddi `apps/web/e2e/login.spec.ts` (gerçek tarayıcı E2E). Lint, TypeScript build ve coverage eşikleri CI statik/kalite kapılarıdır.
+**Test katmanı izlenebilirliği:** Şema alanlarının sınır/birim doğrulaması `apps/api/tests/test_product_schemas.py` (unit); kimlik doğrulama, admin yetkisi, SQLite kalıcılığı, API yanıtları ve sayfalama `apps/api/tests/test_products.py` (API/entegrasyon); query/header ve API hata aktarımı `apps/web/src/api.test.ts` (istemci unit); tablo, yükleniyor/boş/hata/yeniden deneme davranışları `apps/web/src/App.test.tsx` (component/frontend entegrasyonu); gerçek Keycloak ile admin ürün ekleme ve buyer'ın katalogda görüntülemesi `apps/web/e2e/admin-crud.spec.ts`, hatalı girişte mağaza API'lerine istek gönderilmemesi `apps/web/e2e/login.spec.ts` (gerçek tarayıcı E2E). Lint, TypeScript build ve coverage eşikleri CI statik/kalite kapılarıdır.
 
 ## REQ-003 — Admin girişi ve ürün ekleme
 
@@ -254,8 +254,9 @@ REQ-002'de tanımlanan endpoint kullanılır. İstek `Authorization: Bearer <adm
 | REQ-003-T17 | E2E | Biçim dışı ürün adı | Form reddeder, ürün API'sine POST gönderilmez |
 | REQ-003-T18 | E2E | Var olan adın farklı harf kullanımıyla tekrar eklenmesi | API `409`, admin sayfasında anlaşılır hata mesajı |
 | REQ-003-T19 | Migration | Eski ürün kayıtlarında alan genişliği ve normalize edilmiş ad anahtarı | Upgrade sırasında anahtar doldurulur; downgrade ürün alanlarını korur |
+| REQ-003-T20 | E2E regresyon | Admin ürünü ekler, yinelenen/geçersiz girdiyi reddeder, düzenler ve siler | Gerçek Keycloak rolü, tüm alanların güncellenmesi, güncelleme rozeti ve silme sonrası katalog kontrol edilir |
 
-**Test katmanı izlenebilirliği:** Alan şema/normalizasyon sınırları `apps/api/tests/test_product_schemas.py` (unit); migration backfill ve rollback `apps/api/tests/test_product_migration.py`; API `422`/`409` ve DB kalıcılığı `apps/api/tests/test_products.py` (API/entegrasyon); gövde/başlık/hata aktarımı `apps/web/src/api.test.ts` (istemci unit); form sınırları, olumsuz girdiler, başarı, iptal ve API hata mesajları `apps/web/src/ProductCreatePage.test.tsx`; rol bazlı görünürlük ve başarılı kayıt `apps/web/src/App.test.tsx`; tarayıcı alan reddi ve yinelenen ad `apps/web/e2e/login.spec.ts`. Lint, TypeScript ve coverage eşikleri CI kalite kapılarıdır.
+**Test katmanı izlenebilirliği:** Alan şema/normalizasyon sınırları `apps/api/tests/test_product_schemas.py` (unit); migration backfill ve rollback `apps/api/tests/test_product_migration.py`; API `422`/`409` ve DB kalıcılığı `apps/api/tests/test_products.py` (API/entegrasyon); gövde/başlık/hata aktarımı `apps/web/src/api.test.ts` (istemci unit); form sınırları, olumsuz girdiler, başarı, iptal ve API hata mesajları `apps/web/src/ProductCreatePage.test.tsx`; rol bazlı görünürlük ve başarılı kayıt `apps/web/src/App.test.tsx`; gerçek Keycloak admin CRUD, geçersiz/yinelenen ürün adı, düzenleme, güncel buyer kataloğu, buyer CRUD `403` ve silme `apps/web/e2e/admin-crud.spec.ts`; buyer kayıt ve giriş negatifleri `apps/web/e2e/login.spec.ts`. Lint, TypeScript ve coverage eşikleri CI kalite kapılarıdır.
 
 ## REQ-004 — Admin ürün güncelleme
 
@@ -302,7 +303,7 @@ Yalnızca admin rolüne açık, tüm ürün alanlarını bekleyen güncelleme en
 | REQ-004-T12 | Component negatif | Düzenleme formunda her alan için geçersiz değer | 24 girdinin her biri istek göndermez ve kayıt callback'ini çağırmaz |
 | REQ-004-T13 | E2E negatif | Tarayıcıda geçersiz ürün adıyla güncelleme | Doğrulama mesajı görünür; `PUT` isteği gönderilmez |
 
-**Test katmanı izlenebilirliği:** Güncelleme, rol, 26 sınıflı geçersiz alan matrisi, unique çakışma ve katalog okuma `apps/api/tests/test_products.py`; migration `apps/api/tests/test_product_migration.py`; `PUT` istemcisi `apps/web/src/api.test.ts`; düzenleme formunun 24 sınıflı geçersiz alan matrisi ve ürün satırı değişimi `apps/web/src/App.test.tsx` ile `apps/web/src/ProductCreatePage.test.tsx`; admin/müşteri tarayıcı akışları ve geçersiz düzenlemenin `PUT` göndermemesi `apps/web/e2e/login.spec.ts` ile doğrulanır.
+**Test katmanı izlenebilirliği:** Güncelleme, rol, 26 sınıflı geçersiz alan matrisi, unique çakışma ve katalog okuma `apps/api/tests/test_products.py`; migration `apps/api/tests/test_product_migration.py`; `PUT` istemcisi `apps/web/src/api.test.ts`; düzenleme formunun 24 sınıflı geçersiz alan matrisi ve ürün satırı değişimi `apps/web/src/App.test.tsx` ile `apps/web/src/ProductCreatePage.test.tsx`; tüm alanların güncellenmesi, update rozeti, buyer kataloğu ve geçersiz düzenlemenin `PUT` göndermemesi `apps/web/e2e/admin-crud.spec.ts` ile doğrulanır.
 
 ## REQ-005 — Admin ürün silme
 
@@ -348,7 +349,7 @@ Yalnızca admin rolüne açık. Başarıda boş gövdeli `204 No Content`; bulun
 | REQ-005-T12 | Component negatif | DELETE yanıtı `401` veya `404` | Güvenli hata görünür; ürün katalogda kalır |
 | REQ-005-T13 | Component | DELETE isteği beklemede | Eylem devre dışı; aynı kayıt için yinelenen istek gönderilmez |
 
-**Test katmanı izlenebilirliği:** Silme endpoint'i, rol/404/geçersiz belirteç kontrolleri ve silme sonrası katalog/benzersizlik doğrulamaları `apps/api/tests/test_products.py`; boş yanıt ve hata aktarımı `apps/web/src/api.test.ts`; onay/iptal, hedef satırın kaldırılması, `401`/`404` ve ağ hatasında korunması, bekleyen istekte tekrarın engellenmesi `apps/web/src/App.test.tsx`; admin ve müşteri tarayıcı akışları `apps/web/e2e/login.spec.ts` ile doğrulanır.
+**Test katmanı izlenebilirliği:** Silme endpoint'i, rol/404/geçersiz belirteç kontrolleri ve silme sonrası katalog/benzersizlik doğrulamaları `apps/api/tests/test_products.py`; boş yanıt ve hata aktarımı `apps/web/src/api.test.ts`; onay/iptal, hedef satırın kaldırılması, `401`/`404` ve ağ hatasında korunması, bekleyen istekte tekrarın engellenmesi `apps/web/src/App.test.tsx`; gerçek admin silme ve buyer'ın silme dahil tüm CRUD işlemlerinde `403` alması `apps/web/e2e/admin-crud.spec.ts` ile doğrulanır.
 
 ## REQ-006 — Keycloak ile alıcı kaydı ve rol tabanlı kullanıcı yönetimi
 
@@ -403,7 +404,7 @@ Roller kullanıcı kategorilerini anlatır; satıcı organizasyonu ve birden faz
 | REQ-006-T10 | E2E negatif | Alıcıyla admin işlemi denemesi | Yönetim eylemi görünmez ve API isteği `403` ile reddedilir |
 | REQ-006-T11 | E2E gizlilik | Kayıt ve giriş sırasında uygulama API çağrıları | Alıcı parolası mağaza API'sine gönderilmez |
 
-**Test katmanı izlenebilirliği:** Barındırılan Keycloak kayıt formunun başarılı/negatif davranışları gerçek yerel realm ile E2E seviyesinde; token doğrulama/rol kuralları unit ve API seviyelerinde; OIDC yönlendirme/callback davranışları component seviyesinde doğrulanmıştır. Yerel uygulama parola formu sunmadığından kayıt formu component testleriyle taklit edilmemelidir. E2E testleri benzersiz ve geçici hesap/parola kullanır; üretim hesabı kullanılmaz.
+**Test katmanı izlenebilirliği:** Barındırılan Keycloak kayıt formunun başarılı/negatif davranışları gerçek yerel realm ile E2E seviyesinde; token doğrulama/rol kuralları unit ve API seviyelerinde; OIDC yönlendirme/callback davranışları component seviyesinde doğrulanmıştır. Admin CRUD regresyonu gerçek Keycloak admin rolüyle, geçici ve test sonunda silinen hesaplarla doğrulanır; admin ve buyer ürün DB'si izole geçici SQLite dosyasıdır. Yerel uygulama parola formu sunmadığından kayıt formu component testleriyle taklit edilmemelidir. E2E testleri benzersiz ve geçici hesap/parola kullanır; üretim hesabı kullanılmaz.
 
 **QA/güvenlik kararı:** Keycloak'ın varsayılan yinelenen kullanıcı/e-posta mesajı hesap keşfine (account enumeration) imkân verebildiğinden custom `liva` login theme ile genel hata mesajına dönüştürülmüştür. Bu davranış gerçek Keycloak E2E testiyle doğrulanır.
 

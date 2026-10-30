@@ -1,8 +1,10 @@
 import { expect, test } from '@playwright/test'
 import type { Locator, Page, Response } from '@playwright/test'
 import { createTestProduct, productRequest } from '../src/test/testData'
+import { createKeycloakAdminClient } from './keycloakAdmin'
 
 const keycloakE2EEnabled = process.env.E2E_KEYCLOAK_E2E === '1'
+const temporaryBuyerEmails = new Map<string, string>()
 
 function createBuyerCredentials() {
   const uniqueId = `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`
@@ -72,11 +74,23 @@ test.describe('REQ-001 authentication and REQ-006 buyer registration', () => {
     'Set E2E_KEYCLOAK_E2E=1 and start the local Keycloak realm to run these tests.',
   )
 
+  test.afterEach(async ({ request }, testInfo) => {
+    const email = temporaryBuyerEmails.get(testInfo.testId)
+    if (!email) {
+      return
+    }
+
+    temporaryBuyerEmails.delete(testInfo.testId)
+    const keycloakAdmin = await createKeycloakAdminClient(request)
+    await keycloakAdmin.deleteUserByEmail(email)
+  })
+
   test('registers a buyer through Keycloak and denies product administration', async ({
     page,
     request,
-  }) => {
+  }, testInfo) => {
     const { email, password } = createBuyerCredentials()
+    temporaryBuyerEmails.set(testInfo.testId, email)
     const shopApiRequestBodies: string[] = []
     page.on('request', (requestEvent) => {
       if (requestEvent.url().includes('/api/v1/')) {
@@ -123,8 +137,9 @@ test.describe('REQ-001 authentication and REQ-006 buyer registration', () => {
     expect(deniedProductCreate.status()).toBe(403)
   })
 
-  test('rejects a second registration with an existing email', async ({ page }) => {
+  test('rejects a second registration with an existing email', async ({ page }, testInfo) => {
     const { email, password } = createBuyerCredentials()
+    temporaryBuyerEmails.set(testInfo.testId, email)
     const initialRegistrationForm = await fillRegistrationForm(page, email, password)
     const initialIdentityResponse = await submitRegistration(page, initialRegistrationForm)
     expect(initialIdentityResponse.status()).toBe(200)
@@ -146,6 +161,28 @@ test.describe('REQ-001 authentication and REQ-006 buyer registration', () => {
     ).toHaveCount(0)
     await expect(duplicateRegistrationForm).toBeVisible()
     await expect(page).toHaveURL(/login-actions\/registration/)
+  })
+
+  test('keeps an invalid login on Keycloak without calling protected shop APIs', async ({
+    page,
+  }) => {
+    const shopApiRequests: string[] = []
+    page.on('request', (requestEvent) => {
+      if (requestEvent.url().includes('/api/v1/')) {
+        shopApiRequests.push(requestEvent.url())
+      }
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: /giriş yap/i }).click()
+    await expect(page).toHaveURL(/localhost:8080/)
+    await page.locator('#username').fill(`missing-${Date.now()}@example.com`)
+    await page.locator('#password').fill(`LivaE2E-${Date.now()}-Invalid!Aa`)
+    await page.getByRole('button', { name: 'Sign In' }).click()
+
+    await expect(page.getByText(/invalid username or password/i)).toBeVisible()
+    await expect(page).toHaveURL(/login-actions\/authenticate/)
+    expect(shopApiRequests).toEqual([])
   })
 
   test('prevents submission when required fields are missing or the email is malformed', async ({

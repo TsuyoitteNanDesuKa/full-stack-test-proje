@@ -173,7 +173,7 @@ Bu plan, test pratiğini merkeze alır. Her aşamada önce test edilebilir gerek
 
 ## v1.0 çıkış kapısı ve incremental ürün yol haritası
 
-Özellikler küçük, bağımsız dikey dilimler halinde gereksinim → API/veri modeli → UI → katmanlı test → sürümleme sırasıyla eklenir. Bir sonraki dilime, önceki dilimin kabul kriterleri ve regresyon testleri geçmeden başlanmaz.
+Özellikler küçük, bağımsız dikey dilimler halinde gereksinim → API/veri modeli → UI → katmanlı test → sürümleme sırasıyla eklenir. Her özellik maddesinde geliştirme kapsamının hemen arkasında o özelliğe ait test geliştirme planı bulunur. Testler özellikten sonraya bırakılan genel bir iş değil, aynı dilimin zorunlu devamıdır; bir sonraki dilime ancak bütün ilgili kalite kapıları geçtikten sonra başlanır.
 
 ### Öncelik 0 — v1.0 öncesi CRUD negatif test kapanışı
 
@@ -184,6 +184,7 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 - [x] DELETE endpoint'inde geçersiz bearer token; silme UI'sında `401` ve `404` yanıtları güvenli biçimde gösterilmeli, ürün katalogda kalmalı.
 - [x] Silme isteği beklerken eylem devre dışı olmalı ve yinelenen DELETE gönderilmemeli.
 - [x] Backend ve frontend tam test/coverage, lint, TypeScript build ve Playwright E2E geçmeli; gereksinim-test izlenebilirliği güncel olmalı.
+- [x] Keycloak geçişi sonrası admin ürün ekleme/güncelleme/silme E2E regresyonlarını geri ekle; buyer'ın güncel ürünü gördüğünü ve create/update/delete işlemlerinde `403` aldığını doğrula. Geçersiz/çakışan form girdilerini, geçici Keycloak kullanıcılarının temizliğini ve izole ürün veritabanını kapsa.
 - [ ] Tag öncesi çalışma ağacı ve release notları incelenmeli; test/build raporları üretilen artefakt olarak saklanmalı.
 
 **Çıkış ölçütü:** Tüm maddeler yeşil, kritik iş kuralı boşluğu yok, `docs/requirements.md` gereksinim durumu tamamlandı ve `v1.0.0` etiketi/özet sürüm notu hazırlanabilir.
@@ -220,8 +221,15 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 - REQ-006 test kapısı geçtikten sonra satıcı başvurusu için alanları, işletme doğrulama seviyesini, durum geçişlerini ve ret/yeniden başvuru politikasını ayrı gereksinimle tanımla.
 - Başvuru verilerini alıcı kimliğine ve işletme profiline bağla; müşteri kişisel verisini minimumda tut ve saklama/erişim kurallarını belirt.
 - Başvuru durumları en az taslak/gönderildi/incelemede/onaylandı/reddedildi olarak modellenmeli; yalnızca onaylı başvuru `seller` rolü kazanmalı.
-- Tekrarlanan başvuru, eksik/uygunsuz işletme verisi, doğrulama hatası, ret ve yetkisiz başvuru erişimini test et.
-- Başvuru ekranı ile API/DB transaction, audit ve erişim kontrolü testlerini ekle.
+
+**Geliştirme tamamlandıktan hemen sonra — test geliştirme planı:**
+
+- **Unit:** Alan/format/sınır doğrulamaları, başvuru durum makinesi, izin verilen/geçersiz geçişler ve rol atama kararları.
+- **API/entegrasyon:** Alıcının kendi başvurusunu oluşturma/görüntüleme/güncellemesi; başka kullanıcı başvurusuna erişim; duplicate başvuru; eksik/uygunsuz işletme verisi; inceleme/onay/ret; her başarısız durumda kalıcılığın değişmediği.
+- **DB/migration:** Yeni başvuru ve işletme tabloları, ilişkiler, unique/foreign-key kısıtları, migration upgrade/downgrade ve transaction rollback.
+- **Component:** Başvuru formu doğrulaması, durum ekranları, yükleme/başarı/hata ve ret/yeniden başvuru davranışları.
+- **E2E:** Gerçek Keycloak alıcısıyla başvuru ve durum takibi; yetkisiz alıcının inceleme/onay yapamaması; onay öncesi `seller` claim/işlevi kazanılmaması; yetkili onaydan sonra rolün ve satıcı erişiminin etkili olması.
+- **Güvenlik/regresyon:** Hassas işletme verisinin log/API yanıtlarında sızmaması; alıcı kayıt, mevcut katalog ve admin ürün CRUD regresyonları.
 
 **Çıkış ölçütü:** İşletme başvurusu izlenebilir bir inceleme sürecinden geçer; onaysız kullanıcı satıcı yetkisi veya satıcı işlevleri kazanamaz.
 
@@ -234,8 +242,16 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 - Güvenilir ilk admin bootstrap yöntemi ve sonrasındaki admin atama/geri alma workflow'unu ayrı gereksinimle tanımla.
 - Admin rolü self-registration, profil düzenleme, istemci isteği veya satıcı başvuru onayıyla kendiliğinden verilememeli.
 - Yetkili atama yapan aktör, hedef kullanıcı, rol değişikliği, zaman ve sonuç audit kaydına alınmalı.
-- Admin atama/geri alma, son aktif admin'in kaldırılması, yetkisiz atama ve başarısız IdP erişimini test et.
 - Backend, tüm admin işlemlerinde Keycloak role claim'ini doğrulamaya devam etmeli.
+
+**Geliştirme tamamlandıktan hemen sonra — test geliştirme planı:**
+
+- **Unit:** Atama/geri alma iş kuralları, rol sınırları, son aktif admin koruması ve audit olaylarının oluşturulması.
+- **API/entegrasyon:** Güvenilir admin atama/geri alma endpoint veya servis sözleşmesi; alıcının/satıcının rol atayamaması; sahte/eksik hedef, yetkisiz çağrı ve IdP hata yanıtlarında güvenli davranış.
+- **Keycloak entegrasyon:** İzole test realm'inde yalnızca güvenilir yönetim kanalının rol atayabildiği, kaldırabildiği ve token yenilendiğinde claim'in güncellendiği doğrulanmalı. Test admin hesabı otomatik ve tekrarlanabilir biçimde yalnızca test ortamında hazırlanmalı; sabit/üretim credential'ı kullanılmamalı.
+- **Component:** Admin kullanıcı/rol yönetim ekranında onay, hata, yükleme ve başarılı atama/geri alma görünümü; ayrıcalıksız kullanıcıya yönetim eylemi gösterilmemesi.
+- **E2E/regresyon:** Admin atama ve geri alma tarayıcıdan gerçek Keycloak/API ile doğrulanmalı. Aynı test diliminde önceki CRUD kapsamı geri eklenerek admin'in ürün ekleme, düzenleme ve silmesi; buyer'ın bu eylemleri görememesi ve API'de `403` alması uçtan uca doğrulanmalı.
+- **Güvenlik/audit:** Yetki yükseltme denemeleri, son admin'in kaldırılması, audit kaydının aktör/hedef/zaman/sonuç bilgisi ve sırların loglara yazılmaması.
 
 **Çıkış ölçütü:** Admin yetkisi yalnızca güvenilir iş akışından verilir/alınır; her değişiklik denetlenebilir ve API'de etkili olur.
 
@@ -247,7 +263,14 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 - Sepete ekleme, güncelleme ve silme API'leri; kullanıcı yalnızca kendi sepetini değiştirebilmeli.
 - Ürün bulunamama, sıfır/negatif/kesirli miktar, stok sınırını aşma, başka kullanıcının sepetine erişme ve eşzamanlı stok değişimi negatif koşulları tanımlanmalı.
 - UI'da sepet özeti ve boş/yükleniyor/hata durumları; katalogdan sepete ekleme ile miktar ve kaldırma akışı.
-- Unit/API/DB, component ve kritik yol için E2E testleri; test DB izolasyonu ve migration doğrulaması.
+
+**Geliştirme tamamlandıktan hemen sonra — test geliştirme planı:**
+
+- **Unit:** Miktar, stok, fiyat/özet hesapları ve sepet iş kuralları; sınır değerleri.
+- **API/entegrasyon:** Ekle/güncelle/sil/listele; anonim erişim; başka kullanıcının sepeti; bulunmayan/silinmiş ürün; invalid miktar; duplicate kalem ve stok değişimi.
+- **DB/migration:** Kullanıcı-sepet-ürün ilişkileri, kısıtlar, migration upgrade/downgrade, transaction ve eşzamanlı güncellemeler.
+- **Component:** Katalogdan ekleme, sepet özeti, miktar güncelleme/kaldırma, boş/yükleniyor/hata ve API yanıtlarının UI'ya yansıması.
+- **E2E:** Buyer'ın gerçek akışta ürünü sepete ekleyip değiştirmesi/kaldırması; başka kullanıcı verisinin görünmemesi ve kritik yolun yenileme sonrası tutarlılığı.
 
 **Çıkış ölçütü:** Müşteri kendi sepetini güvenilir biçimde düzenler; hatalı veya yetkisiz değişiklikler kalıcılaşmaz; stok ve miktar kuralları backend'de atomik olarak korunur.
 
@@ -259,7 +282,14 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 - Checkout öncesi sepet, stok ve fiyat doğrulaması; sipariş ve stok güncellemesi tek transaction içinde yapılmalı.
 - Boş sepet, silinmiş ürün, yetersiz/değişmiş stok, istemcinin değiştirdiği fiyat/toplam, yinelenen gönderim ve transaction hatası negatif koşulları.
 - Sipariş onay özeti ve sipariş geçmişi; yükleniyor/başarı/hata durumları.
-- API/DB transaction, business-rule unit, component ve gerçek API ile E2E senaryoları.
+
+**Geliştirme tamamlandıktan hemen sonra — test geliştirme planı:**
+
+- **Unit:** Tutar/snapshot hesaplama, sipariş durum makinesi, stok ve checkout iş kuralları; yuvarlama ve sınır değerleri.
+- **API/entegrasyon:** Başarılı checkout ve tüm negatif koşullar; istemciden gelen fiyat/toplamı reddetme; idempotency; hatada stok/sepet/siparişin değişmemesi.
+- **DB/transaction:** Sipariş, kalem snapshot'ı ve stok güncellemesi atomikliği; rollback; migration ve ilişkisel kısıtlar.
+- **Component:** Onay özeti, submit tekrarını önleme, başarı ekranı, validation/API/bağlantı hataları.
+- **E2E:** Buyer sepetten sipariş verir, geçmişte siparişi görür; ürün sonradan güncellense/silinse snapshot korunur; tekrar gönderim ikinci sipariş oluşturmaz.
 
 **Çıkış ölçütü:** Sipariş ya tüm kalemleriyle ve stok etkisiyle oluşur ya da hiçbir değişiklik kalıcılaşmaz; sipariş tutarı istemci girdisine güvenmez ve daha sonra ürün değişse/silinse bile geçmiş tutar korunur.
 
@@ -270,7 +300,15 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 - Önce sağlayıcıdan bağımsız ödeme arayüzü ve sağlayıcının sandbox/hosted checkout akışı; kart numarası veya güvenlik kodu uygulama veritabanı/loglarında tutulmamalı.
 - Ödeme başlatma, beklemede/başarılı/başarısız durumları ve kullanıcıya sonuç ekranı; sipariş ve ödeme durum geçişleri açıkça tanımlanmalı.
 - İmzalı webhook doğrulaması, idempotency, tekrar/ters sıra/bozuk webhook, zaman aşımı, sağlayıcı hatası, iptal ve tutar uyuşmazlığı senaryoları.
-- Sağlayıcı çağrıları adapter contract testleri ve sandbox E2E ile doğrulanmalı; testlerde gerçek ödeme bilgisi kullanılmamalı.
+
+**Geliştirme tamamlandıktan hemen sonra — test geliştirme planı:**
+
+- **Unit:** Ödeme/sipariş durum geçişleri, imza doğrulama, idempotency ve tutar eşleştirme kuralları.
+- **Adapter contract/entegrasyon:** Sağlayıcı sandbox sözleşmesi, başarı/ret/zaman aşımı/bozuk yanıt; imzasız, bozuk, tekrarlı ve sıra dışı webhook; sağlayıcı hatasında state tutarlılığı.
+- **API/DB:** Ödeme başlatma yetkisi ve sahiplik, idempotency, transaction sınırları, webhook tekrarında tek durum geçişi; kart verisinin DB/log/yanıt içinde bulunmadığı doğrulanmalı.
+- **Component:** Hosted checkout'a yönlendirme, beklemede/başarılı/başarısız/iptal ekranları ve tekrar deneme durumları.
+- **E2E:** Sandbox/hosted checkout ile baştan sona ödeme ve webhook sonucu; yalnızca sentetik sandbox bilgileri kullanılmalı, gerçek kart verisi kullanılmamalı.
+- **Güvenlik/regresyon:** Webhook imzası atlatılamamalı; farklı sipariş/kullanıcıya ait ödeme güncellenememeli; önceki checkout akışı korunmalı.
 
 **Çıkış ölçütü:** Yinelenen veya doğrulanmamış bildirim ikinci kez tahsilat/sipariş geçişi yaratmaz; uygulama, sağlayıcı sonucu kesinleşene kadar siparişi tutarlı bir bekleme durumunda gösterir.
 
@@ -278,7 +316,14 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 
 - Müşteri sipariş geçmişi ve durum ayrıntıları; admin sipariş işleme yetkileri ayrı gereksinimle tanımlanmalı.
 - İptal, iade ve geri ödeme politikaları; stok iadesi ve ödeme sağlayıcı durumlarıyla transaction/idempotency kuralları belirlenmeli.
-- Erişim kontrolü, audit izi, hata kurtarma, erişilebilirlik ve temel performans testleri eklenmeli.
+
+**Geliştirme tamamlandıktan hemen sonra — test geliştirme planı:**
+
+- **Unit:** İzin verilen sipariş/ödeme geçişleri, iptal/iade/geri ödeme ve stok iadesi iş kuralları.
+- **API/entegrasyon/DB:** Müşteri sahipliği, admin işlem yetkisi, idempotency, audit, transaction/rollback, sağlayıcıyla tutarlı durum ve hata kurtarma.
+- **Component:** Müşteri/admin durum görünümleri, işlem onayları, beklemede/hata ve erişilebilirlik davranışları.
+- **E2E:** Müşterinin sipariş takibi; yetkili admin operasyonu; yetkisiz kullanıcı değişikliği reddi; iptal/iade gibi kritik yaşam döngüsü akışları.
+- **Kalite/regresyon:** Audit bütünlüğü, erişilebilirlik ve risk bazlı performans ölçümleri; önceki sipariş/ödeme akışlarının regresyonları.
 
 **Çıkış ölçütü:** Sipariş/ödeme yaşam döngüsü izlenebilir; her durum değişimi yetkili, tekrara dayanıklı ve müşteri/admin görünümünde tutarlıdır.
 
@@ -286,9 +331,11 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 
 1. Gereksinim ve kabul kriterleri pozitif, negatif, sınır ve rol/erişim koşullarını içerir.
 2. Veri modeli ve API sözleşmesi migration ve uyumluluk etkisiyle birlikte incelenir.
-3. İş kuralları unit/API/DB katmanlarında, kullanıcı akışları component seviyesinde; yalnızca kritik uçtan uca yollar Playwright'ta doğrulanır.
-4. Hata, yeniden deneme, idempotency ve eşzamanlılık davranışları riskine uygun test edilir.
-5. Test, lint, type-check/build, coverage ve E2E kalite kapıları geçer; gereksinim ve roadmap durumu güncellenir.
+3. Geliştirme tamamlanır tamamlanmaz ilgili testler aynı dilimde yazılır: iş kuralları unit; endpoint/rol/validasyon API; kalıcılık migration/DB entegrasyon; UI durumları component; kullanıcı açısından kritik ve rol sınırlarını kapsayan yollar Playwright E2E.
+4. Her geliştirme maddesinin altında bu katmanlara ait somut test senaryoları ve beklenen sonuçlar ROADMAP/gereksinim belgesinde yer alır; “sonra test edilir” şeklinde kapsam dışına atılamaz.
+5. Hata, yeniden deneme, idempotency, eşzamanlılık, yetkisiz erişim ve güvenlik sınırları riskine uygun negatif test edilir.
+6. Yeni kullanıcı/rol kullanan E2E dilimlerinde izole test realm'i, güvenli ve tekrarlanabilir test hesabı/rol hazırlığı ile temizlik stratejisi önceden planlanır; üretim hesabı/credential kullanılmaz.
+7. Test, lint, type-check/build, coverage ve E2E kalite kapıları geçer; gereksinim-test izlenebilirliği ve roadmap durumu güncellenir. Bu kapı geçmeden sonraki özelliğe başlanmaz.
 
 ## Teknoloji öğrenme sırası
 
