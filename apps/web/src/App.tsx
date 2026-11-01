@@ -3,7 +3,9 @@ import './App.css'
 import { deleteProduct, getCurrentUser, getHome, getProducts } from './api'
 import type { Product } from './api'
 import { beginLogin, beginRegistration, endSession, getCurrentSession } from './auth'
+import AdminSellerApplicationsPanel from './AdminSellerApplicationsPanel'
 import ProductCreatePage from './ProductCreatePage'
+import SellerApplicationPanel from './SellerApplicationPanel'
 
 function BrandMark() {
   return (
@@ -114,6 +116,7 @@ function HomePage({
   message,
   token,
   isAdmin,
+  roles = [],
   onLogout,
   sessionError,
 }: {
@@ -121,6 +124,7 @@ function HomePage({
   message: string
   token: string
   isAdmin: boolean
+  roles: string[]
   onLogout: () => void
   sessionError: string | null
 }) {
@@ -132,6 +136,8 @@ function HomePage({
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [deletingProductId, setDeletingProductId] = useState<number | null>(null)
   const [deleteError, setDeleteError] = useState('')
+  const [showSellerApplications, setShowSellerApplications] = useState(false)
+  const canCreateProducts = isAdmin || roles.includes('seller')
 
   useEffect(() => {
     let active = true
@@ -193,7 +199,7 @@ function HomePage({
     }
   }
 
-  if ((isCreatingProduct || editingProduct !== null) && isAdmin) {
+  if ((isCreatingProduct || editingProduct !== null) && canCreateProducts) {
     return (
       <ProductCreatePage
         key={editingProduct?.id ?? 'new'}
@@ -215,6 +221,27 @@ function HomePage({
         product={editingProduct ?? undefined}
         token={token}
       />
+    )
+  }
+
+  if (showSellerApplications && isAdmin) {
+    return (
+      <main className="store-home">
+        <header className="store-header">
+          <a className="brand store-brand" href="/" aria-label="Liva ana sayfa">
+            <BrandMark />
+            <span>liva</span>
+          </a>
+          <button
+            className="retry-button"
+            onClick={() => setShowSellerApplications(false)}
+            type="button"
+          >
+            Mağazaya dön
+          </button>
+        </header>
+        <AdminSellerApplicationsPanel token={token} />
+      </main>
     )
   }
 
@@ -240,7 +267,21 @@ function HomePage({
         </span>
         <h1>{message}<span>.</span></h1>
         <p>{email} olarak giriş yaptın. Sana iyi gelecek şeyler burada başlıyor.</p>
+        {roles.includes('seller') && (
+          <p className="application-notice" role="status">Satıcı hesabın aktif.</p>
+        )}
       </section>
+      {isAdmin ? (
+        <button
+          className="retry-button"
+          onClick={() => setShowSellerApplications(true)}
+          type="button"
+        >
+          Satıcı başvurularını yönet
+        </button>
+      ) : (
+        <SellerApplicationPanel token={token} />
+      )}
       <section aria-labelledby="products-heading" className="products-section">
         <div className="products-heading-row">
           <div>
@@ -250,7 +291,7 @@ function HomePage({
           {!isLoading && !error && (
             <span className="products-count">{products.length} ürün</span>
           )}
-          {isAdmin && (
+          {canCreateProducts && (
             <button
               className="add-product-button"
               onClick={() => setIsCreatingProduct(true)}
@@ -298,7 +339,7 @@ function HomePage({
                   <th scope="col">Açıklama</th>
                   <th scope="col">Fiyat</th>
                   <th scope="col">Stok</th>
-                  {isAdmin && <th scope="col">İşlem</th>}
+                  {canCreateProducts && <th scope="col">İşlem</th>}
                 </tr>
               </thead>
               <tbody>
@@ -320,25 +361,29 @@ function HomePage({
                     <td className="product-description">{product.description}</td>
                     <td className="product-price">{formatter.format(Number(product.price))}</td>
                     <td>{product.stock}</td>
-                    {isAdmin && (
+                    {canCreateProducts && (
                       <td>
-                        <button
-                          aria-label={`Düzenle ${product.name}`}
-                          className="edit-product-button"
-                          onClick={() => setEditingProduct(product)}
-                          type="button"
-                        >
-                          Düzenle
-                        </button>
-                        <button
-                          aria-label={`Sil ${product.name}`}
-                          className="delete-product-button"
-                          disabled={deletingProductId === product.id}
-                          onClick={() => void handleDeleteProduct(product)}
-                          type="button"
-                        >
-                          {deletingProductId === product.id ? 'Siliniyor...' : 'Sil'}
-                        </button>
+                        {(isAdmin || product.can_manage) && (
+                          <>
+                            <button
+                              aria-label={`Düzenle ${product.name}`}
+                              className="edit-product-button"
+                              onClick={() => setEditingProduct(product)}
+                              type="button"
+                            >
+                              Düzenle
+                            </button>
+                            <button
+                              aria-label={`Sil ${product.name}`}
+                              className="delete-product-button"
+                              disabled={deletingProductId === product.id}
+                              onClick={() => void handleDeleteProduct(product)}
+                              type="button"
+                            >
+                              {deletingProductId === product.id ? 'Siliniyor...' : 'Sil'}
+                            </button>
+                          </>
+                        )}
                       </td>
                     )}
                   </tr>
@@ -359,6 +404,7 @@ function App() {
     message: string
     token: string
     isAdmin: boolean
+    roles: string[]
   } | null>(null)
   const [isInitializing, setIsInitializing] = useState(true)
   const [authError, setAuthError] = useState<string | null>(null)
@@ -383,6 +429,7 @@ function App() {
             message: homeResponse.message,
             token: session.accessToken,
             isAdmin: identity.is_admin,
+            roles: identity.roles,
           })
         }
       } catch {
@@ -407,6 +454,7 @@ function App() {
       <HomePage
         email={home.email}
         isAdmin={home.isAdmin}
+        roles={home.roles}
         message={home.message}
         sessionError={authError}
         onLogout={() => {

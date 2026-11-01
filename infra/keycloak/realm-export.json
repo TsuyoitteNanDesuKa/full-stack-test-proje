@@ -21,7 +21,7 @@
       },
       {
         "name": "seller",
-        "description": "Seller role reserved for a future approval workflow"
+        "description": "Granted only after an approved seller application"
       },
       {
         "name": "admin",
@@ -68,6 +68,19 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "shop-api-admin",
+      "name": "Liva API seller role provisioner",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "clientAuthenticatorType": "client-secret"
     }
   ]
 }

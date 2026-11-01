@@ -7,12 +7,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from shop_api.database import get_db
-from shop_api.dependencies import get_admin_user, get_current_user
-from shop_api.models import Product
+from shop_api.dependencies import get_current_user
+from shop_api.models import Product, SellerApplication
 from shop_api.schemas import (
     ProductCreateRequest,
     ProductListResponse,
     ProductResponse,
+    SellerApplicationStatus,
     product_name_key,
 )
 from shop_api.security import AuthenticatedUser
@@ -22,7 +23,7 @@ router = APIRouter(prefix="/api/v1/products", tags=["products"])
 
 @router.get("", response_model=ProductListResponse)
 def list_products(
-    _current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -30,7 +31,7 @@ def list_products(
     total = db.scalar(select(func.count()).select_from(Product)) or 0
     products = db.scalars(select(Product).order_by(Product.id).offset(offset).limit(limit)).all()
     return ProductListResponse(
-        products=[ProductResponse.model_validate(product) for product in products],
+        products=[_product_response(product, current_user) for product in products],
         total=total,
         limit=limit,
         offset=offset,
@@ -44,9 +45,10 @@ def list_products(
 )
 def create_product(
     payload: ProductCreateRequest,
-    _admin_user: Annotated[AuthenticatedUser, Depends(get_admin_user)],
+    current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> ProductResponse:
+    seller_subject = _seller_owner_for_write(current_user, db)
     name_key = product_name_key(payload.name)
     if db.scalar(select(Product.id).where(Product.name_key == name_key)) is not None:
         raise HTTPException(
@@ -54,7 +56,11 @@ def create_product(
             detail="Bu ürün adı katalogda zaten kullanılıyor.",
         )
 
-    product = Product(**payload.model_dump(), name_key=name_key)
+    product = Product(
+        **payload.model_dump(),
+        name_key=name_key,
+        seller_subject=seller_subject,
+    )
     db.add(product)
     try:
         db.commit()
@@ -67,18 +73,19 @@ def create_product(
             ) from None
         raise
     db.refresh(product)
-    return ProductResponse.model_validate(product)
+    return _product_response(product, current_user)
 
 
 @router.put("/{product_id}", response_model=ProductResponse)
 def update_product(
     product_id: int,
     payload: ProductCreateRequest,
-    _admin_user: Annotated[AuthenticatedUser, Depends(get_admin_user)],
+    current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> ProductResponse:
+    seller_subject = _seller_owner_for_write(current_user, db)
     product = db.get(Product, product_id)
-    if product is None:
+    if product is None or (not current_user.is_admin and product.seller_subject != seller_subject):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Ürün bulunamadı.",
@@ -121,7 +128,7 @@ def update_product(
             ) from None
         raise
     db.refresh(product)
-    return ProductResponse.model_validate(product)
+    return _product_response(product, current_user)
 
 
 @router.delete(
@@ -130,11 +137,12 @@ def update_product(
 )
 def delete_product(
     product_id: int,
-    _admin_user: Annotated[AuthenticatedUser, Depends(get_admin_user)],
+    current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> None:
+    seller_subject = _seller_owner_for_write(current_user, db)
     product = db.get(Product, product_id)
-    if product is None:
+    if product is None or (not current_user.is_admin and product.seller_subject != seller_subject):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Ürün bulunamadı.",
@@ -142,3 +150,36 @@ def delete_product(
 
     db.delete(product)
     db.commit()
+
+
+def _seller_owner_for_write(user: AuthenticatedUser, db: Session) -> str | None:
+    if user.is_admin:
+        return None
+    if "seller" not in user.roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bu işlem için onaylı satıcı veya yönetici yetkisi gereklidir.",
+        )
+
+    approved_application = db.scalar(
+        select(SellerApplication.id)
+        .where(SellerApplication.owner_subject == user.subject)
+        .where(SellerApplication.status == SellerApplicationStatus.APPROVED.value)
+    )
+    if approved_application is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Satıcı başvurunuz onaylanmadan ürün işlemi yapamazsınız.",
+        )
+    return user.subject
+
+
+def _product_response(
+    product: Product,
+    user: AuthenticatedUser,
+) -> ProductResponse:
+    return ProductResponse.model_validate(product).model_copy(
+        update={
+            "can_manage": user.is_admin or product.seller_subject == user.subject,
+        }
+    )

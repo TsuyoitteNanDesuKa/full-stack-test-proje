@@ -51,6 +51,20 @@ def test_public_registration_grants_only_the_buyer_role_by_default() -> None:
     assert realm["defaultRoles"] == ["buyer"]
 
 
+def test_seller_role_provisioner_is_a_confidential_service_account_client() -> None:
+    realm = load_realm()
+    admin_client = next(
+        client for client in realm["clients"] if client["clientId"] == "shop-api-admin"
+    )
+
+    assert admin_client["publicClient"] is False
+    assert admin_client["serviceAccountsEnabled"] is True
+    assert admin_client["standardFlowEnabled"] is False
+    assert admin_client["directAccessGrantsEnabled"] is False
+    assert admin_client["fullScopeAllowed"] is False
+    assert "secret" not in admin_client
+
+
 def test_web_client_uses_pkce_and_has_a_backend_audience_mapper() -> None:
     realm = load_realm()
     web_client = next(client for client in realm["clients"] if client["clientId"] == "shop-web")

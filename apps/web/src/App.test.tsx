@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import type { Product } from './api'
+import type { AdminSellerApplication, Product } from './api'
 import { createTestProduct, productRequest } from './test/testData'
 import { beginLogin, beginRegistration, endSession, getCurrentSession } from './auth'
 import type { AuthSession } from './auth'
@@ -47,19 +47,27 @@ function deferred<T>() {
 
 function setupApi(options: {
   isAdmin?: boolean
+  isSeller?: boolean
   email?: string
   products?: Product[]
+  sellerApplications?: AdminSellerApplication[]
   homeError?: Response
   deleteError?: Response
 } = {}) {
   const fetchMock = vi.mocked(fetch)
+  let sellerApplication: Record<string, unknown> | null = null
+  let sellerApplications = options.sellerApplications ?? []
   fetchMock.mockImplementation(async (input, init) => {
     const path = String(input)
     if (path === '/api/v1/auth/me') {
       return jsonResponse({
         subject: 'keycloak-user',
         email: options.email ?? 'customer@example.com',
-        roles: options.isAdmin ? ['admin', 'buyer'] : ['buyer'],
+        roles: [
+          ...(options.isAdmin ? ['admin'] : []),
+          'buyer',
+          ...(options.isSeller ? ['seller'] : []),
+        ],
         is_admin: options.isAdmin ?? false,
       })
     }
@@ -69,12 +77,73 @@ function setupApi(options: {
         featured_categories: [],
       })
     }
+    if (path === '/api/v1/seller-applications/me' && init?.method === 'PUT') {
+      sellerApplication = {
+        ...JSON.parse(String(init.body)),
+        id: 501,
+        status: 'draft',
+        applicant_note: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+      return jsonResponse(sellerApplication)
+    }
+    if (path === '/api/v1/seller-applications/me') {
+      return jsonResponse(sellerApplication)
+    }
+    if (path === '/api/v1/seller-applications' && init?.method === 'POST') {
+      sellerApplication = {
+        ...JSON.parse(String(init.body)),
+        id: 501,
+        status: 'draft',
+        applicant_note: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+      return jsonResponse(sellerApplication, 201)
+    }
+    if (path === '/api/v1/seller-applications/me/submit') {
+      sellerApplication = { ...sellerApplication, status: 'submitted' }
+      return jsonResponse(sellerApplication)
+    }
+    if (path === '/api/v1/seller-applications/me/withdraw') {
+      sellerApplication = { ...sellerApplication, status: 'withdrawn' }
+      return jsonResponse(sellerApplication)
+    }
+    if (path === '/api/v1/seller-applications') {
+      return jsonResponse(sellerApplications)
+    }
+    if (/^\/api\/v1\/seller-applications\/\d+\/review$/.test(path)) {
+      const applicationId = Number(path.split('/')[4])
+      const current = sellerApplications.find((item) => item.id === applicationId)
+      if (!current) return jsonResponse({ detail: 'not found' }, 404)
+      const review = JSON.parse(String(init?.body)) as {
+        action: string
+      }
+      const nextStatus =
+        review.action === 'begin_review'
+          ? 'under_review'
+          : review.action === 'approve'
+            ? 'approved'
+            : review.action === 'reject'
+              ? 'rejected'
+              : 'changes_requested'
+      const updated = { ...current, status: nextStatus as AdminSellerApplication['status'] }
+      sellerApplications = sellerApplications.map((item) =>
+        item.id === applicationId ? updated : item,
+      )
+      return jsonResponse(updated)
+    }
     if (path.startsWith('/api/v1/products?')) {
       return jsonResponse(productList(options.products))
     }
     if (path === '/api/v1/products' && init?.method === 'POST') {
       const payload = JSON.parse(String(init.body)) as Product
-      return jsonResponse({ ...payload, id: 700 }, 201)
+      return jsonResponse({
+        ...payload,
+        id: 700,
+        can_manage: options.isAdmin === true || options.isSeller === true,
+      }, 201)
     }
     const productId = Number(path.split('/').at(-1))
     if (path.endsWith(`/${productId}`) && init?.method === 'PUT') {
@@ -185,10 +254,62 @@ describe('Keycloak authentication and storefront', () => {
       accessToken: 'buyer-token',
       email: '',
     })
+
     setupApi({ email: '' })
     render(<App />)
 
     expect(await screen.findByText(/Hesabın olarak giriş yaptın/)).toBeInTheDocument()
+  })
+
+  it('lets a buyer submit a seller application and shows its review status', async () => {
+    setupApi()
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Satıcı olarak başvur' }))
+    await user.type(await screen.findByLabelText('Yasal ad / unvan'), 'Enes Aysel')
+    await user.type(screen.getByLabelText('Mağaza adı'), 'Liva Botanicals')
+    await user.type(screen.getByLabelText('İletişim telefonu'), '05551234567')
+    await user.type(screen.getByLabelText('İl'), 'İstanbul')
+    await user.type(screen.getByLabelText('İlçe'), 'Kadıköy')
+    await user.type(screen.getByLabelText('Ana ürün kategorisi'), 'Kişisel bakım')
+    await user.type(
+      screen.getByLabelText('İşletme / mağaza açıklaması'),
+      'Doğal bakım ürünleri',
+    )
+    await user.click(screen.getByRole('button', { name: 'Başvuruyu gönder' }))
+
+    expect(await screen.findByText('Gönderildi')).toBeInTheDocument()
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/seller-applications/me/submit',
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
+  it('lets a buyer withdraw an editable application', async () => {
+    setupApi()
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Satıcı olarak başvur' }))
+    await user.type(await screen.findByLabelText('Yasal ad / unvan'), 'Enes Aysel')
+    await user.type(screen.getByLabelText('Mağaza adı'), 'Liva Botanicals')
+    await user.type(screen.getByLabelText('İletişim telefonu'), '+905551234567')
+    await user.type(screen.getByLabelText('İl'), 'İstanbul')
+    await user.type(screen.getByLabelText('İlçe'), 'Kadıköy')
+    await user.type(screen.getByLabelText('Ana ürün kategorisi'), 'Kişisel bakım')
+    await user.type(
+      screen.getByLabelText('İşletme / mağaza açıklaması'),
+      'Doğal bakım ürünleri için yerel mağaza.',
+    )
+    await user.click(screen.getByRole('button', { name: 'Taslağı kaydet' }))
+    await user.click(await screen.findByRole('button', { name: 'Başvuruyu geri çek' }))
+
+    expect(await screen.findByText('Geri çekildi')).toBeInTheDocument()
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/seller-applications/me/withdraw',
+      expect.objectContaining({ method: 'POST' }),
+    )
   })
 
   it('shows a safe error if session restoration fails', async () => {
@@ -228,6 +349,9 @@ describe('Keycloak authentication and storefront', () => {
       }
       if (path === '/api/v1/home') {
         return jsonResponse({ message: 'Welcome', featured_categories: [] })
+      }
+      if (path === '/api/v1/seller-applications/me') {
+        return jsonResponse(null)
       }
       if (path.startsWith('/api/v1/products?')) {
         productCalls += 1
@@ -318,6 +442,9 @@ describe('Keycloak authentication and storefront', () => {
       if (String(input) === '/api/v1/auth/me') {
         return jsonResponse({ email: 'customer@example.com', is_admin: false })
       }
+      if (String(input) === '/api/v1/seller-applications/me') {
+        return jsonResponse(null)
+      }
       return jsonResponse({ message: 'Welcome', featured_categories: [] })
     })
     render(<App />)
@@ -392,6 +519,124 @@ describe('Keycloak authentication and storefront', () => {
     })
   })
 
+  it('lets a seller manage only owned products and start creating a listing', async () => {
+    const ownedProduct = createTestProduct({ id: 811, can_manage: true })
+    const otherSellerProduct = createTestProduct({ id: 812, can_manage: false })
+    setupApi({ isSeller: true, products: [ownedProduct, otherSellerProduct] })
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: '+ Ürün ekle' }))
+    expect(await screen.findByLabelText('Ürün adı')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Ürün listesine dön' }))
+    expect(
+      await screen.findByRole('button', { name: `Düzenle ${ownedProduct.name}` }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: `Düzenle ${otherSellerProduct.name}` }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: `Sil ${ownedProduct.name}` })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: `Sil ${otherSellerProduct.name}` }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('allows an admin to open the seller application review queue', async () => {
+    setupApi({ isAdmin: true })
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Satıcı başvurularını yönet' }))
+
+    expect(await screen.findByRole('heading', { name: 'Satıcı başvuruları' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        '/api/v1/seller-applications',
+        expect.objectContaining({
+          headers: expect.objectContaining({ Authorization: expect.any(String) }),
+        }),
+      )
+    })
+    await user.click(screen.getByRole('button', { name: 'Mağazaya dön' }))
+    expect(await screen.findByRole('table', { name: 'Ürün listesi' })).toBeInTheDocument()
+  })
+
+  it('moves an application through admin review and approval', async () => {
+    const application: AdminSellerApplication = {
+      id: 901,
+      owner_subject: 'buyer-subject',
+      applicant_type: 'company',
+      legal_name: 'Liva Kozmetik Ltd.',
+      representative_name: 'Enes Aysel',
+      store_name: 'Liva Care',
+      contact_phone: '05551234567',
+      city: 'İstanbul',
+      district: 'Kadıköy',
+      primary_category: 'Kişisel bakım',
+      business_description: 'Doğal bakım ürünleri',
+      status: 'submitted',
+      applicant_note: null,
+      admin_note: null,
+      reviewer_subject: null,
+      reviewed_at: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    setupApi({ isAdmin: true, sellerApplications: [application] })
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Satıcı başvurularını yönet' }))
+    expect(await screen.findByText('Liva Care')).toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: 'İncelemeye al' }))
+    expect(await screen.findByText('İnceleniyor')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Onayla' }))
+
+    expect(await screen.findByText('Onaylandı')).toBeInTheDocument()
+    const reviewRequests = vi.mocked(fetch).mock.calls.filter(([input]) =>
+      String(input).endsWith('/901/review'),
+    )
+    expect(reviewRequests).toHaveLength(2)
+    expect(JSON.parse(String(reviewRequests[0][1]?.body))).toEqual({
+      action: 'begin_review',
+    })
+    expect(JSON.parse(String(reviewRequests[1][1]?.body))).toEqual({
+      action: 'approve',
+    })
+  })
+
+  it('does not offer review decisions that are invalid while role provisioning is pending', async () => {
+    const application: AdminSellerApplication = {
+      id: 902,
+      owner_subject: 'buyer-subject',
+      applicant_type: 'company',
+      legal_name: 'Liva Kozmetik Ltd.',
+      representative_name: 'Enes Aysel',
+      store_name: 'Liva Care Pending',
+      contact_phone: '05551234567',
+      city: 'İstanbul',
+      district: 'Kadıköy',
+      primary_category: 'Kişisel bakım',
+      business_description: 'Doğal bakım ürünleri',
+      status: 'approval_pending',
+      applicant_note: null,
+      admin_note: null,
+      reviewer_subject: 'admin-subject',
+      reviewed_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    setupApi({ isAdmin: true, sellerApplications: [application] })
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Satıcı başvurularını yönet' }))
+    expect(await screen.findByText('Onay işlemi sürüyor')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Onayla' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Düzenleme iste' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Reddet' })).not.toBeInTheDocument()
+  })
+
   it('does not send a delete request when an admin cancels the confirmation', async () => {
     setupApi({ isAdmin: true })
     vi.mocked(confirm).mockReturnValue(false)
@@ -428,6 +673,9 @@ describe('Keycloak authentication and storefront', () => {
       }
       if (String(input) === '/api/v1/home') {
         return jsonResponse({ message: 'Welcome', featured_categories: [] })
+      }
+      if (String(input) === '/api/v1/seller-applications/me') {
+        return jsonResponse(null)
       }
       return jsonResponse(productList())
     })

@@ -378,7 +378,7 @@ describe('admin product creation page', () => {
 
   it.each([
     [401, 'Oturum süren dolmuş. Çıkış yapıp yeniden giriş yap.'],
-    [403, 'Bu işlem için yönetici yetkisi gereklidir.'],
+    [403, 'Bu işlem için onaylı satıcı veya yönetici hesabı gereklidir.'],
     [409, 'Bu ürün adı katalogda zaten kullanılıyor.'],
     [422, 'Ürün bilgilerini kontrol edip tekrar dene.'],
     [500, 'Ürün eklenemedi. Lütfen tekrar dene.'],

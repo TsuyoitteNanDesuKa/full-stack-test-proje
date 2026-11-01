@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from shop_api.config import Settings, get_settings
 from shop_api.database import create_database_engine
-from shop_api.routes import auth, home, products
+from shop_api.keycloak_admin import KeycloakRoleProvisioner
+from shop_api.routes import auth, home, products, seller_applications
 
 
 def create_app(settings: Settings | None = None, db_engine: Engine | None = None) -> FastAPI:
@@ -32,6 +33,8 @@ def create_app(settings: Settings | None = None, db_engine: Engine | None = None
     )
     app.state.oidc_issuer = app_settings.oidc_issuer
     app.state.oidc_audience = app_settings.oidc_audience
+    app.state.settings = app_settings
+    app.state.keycloak_role_provisioner = KeycloakRoleProvisioner(app_settings)
     app.state.jwks_client = PyJWKClient(app_settings.jwks_endpoint())
     app.state.session_factory = sessionmaker(
         bind=engine,
@@ -54,4 +57,5 @@ def create_app(settings: Settings | None = None, db_engine: Engine | None = None
     app.include_router(auth.router)
     app.include_router(home.router)
     app.include_router(products.router)
+    app.include_router(seller_applications.router)
     return app

@@ -13,7 +13,7 @@ Müşterilerin ürünleri bulup satın alabildiği bir çevrimiçi mağaza geli�
 - Alıcı, satıcı ve platform yöneticisi farklı iş profilleridir. Herkese açık kayıt yalnızca alıcı hesabı oluşturur; satıcı/yönetici rolü kullanıcı tarafından seçilemez veya yükseltilemez.
 - E-posta doğrulama ve parola sıfırlama daha sonraki dilimlere bırakılmıştır; ilk kayıt akışında e-posta doğrulaması zorunlu değildir.
 - Yerel geliştirme veritabanı SQLite'tır. PostgreSQL'e geçiş ayrı ortam çalışmasıdır.
-- Ana sayfa ve ürün kataloğu yalnızca doğrulanmış müşterilere sunulur. Ürün oluşturma, güncelleme ve silme işlemleri yönetici rolüyle sınırlandırılır.
+- Ana sayfa ve ürün kataloğu yalnızca doğrulanmış kullanıcılara sunulur. Ürün CRUD'u admin için mağaza genelinde, onaylı seller için yalnızca kendisine ait ürünlerde kullanılabilir.
 
 ## Gereksinim öncelikleri
 
@@ -28,7 +28,7 @@ Bu araştırma, sağlayıcıların kamuya açık müşteri/satıcı akışları 
 | Profil | Pazar yeri örüntüsü ve proje kararı |
 |---|---|
 | Alıcı | Trendyol'un herkese açık giriş/kayıt ekranı e-posta ile devam etme ve Google/Facebook ile devam etme seçeneklerini gösteriyor. Amazon'un tüketici hesapları da ayrı bir alışveriş hesabı deneyimi sunuyor. İlk dilimde kullanıcı e-posta ve parola ile kendi alıcı hesabını oluşturur; adres/ödeme bilgisi kayıt sırasında istenmez. |
-| Satıcı | Amazon'ın resmi satıcı kayıt rehberi, satıcı kaydını alıcı hesabından ayrı bir iş akışı olarak tanımlıyor; işletme, birincil irtibat, banka/ödeme bilgileri ve kimlik doğrulaması istiyor. Trendyol Partner/Satıcı portalı ayrı bir iş yüzeyi; erişilebilen herkese açık sayfalar iç rol ve doğrulama ayrıntılarını göstermiyor. Projede satıcı, bireysel giriş hesabından ziyade ileride bir satıcı/işletme profiline bağlanacak ayrıcalıklı aktör olacaktır. Satıcı başvurusu, işletme doğrulaması ve ekip üyeleri bu gereksinimin dışındadır. |
+| Satıcı | Amazon'ın resmi satıcı kayıt rehberi, satıcı kaydını alıcı hesabından ayrı bir iş akışı olarak tanımlıyor; işletme, birincil irtibat, banka/ödeme bilgileri ve kimlik doğrulaması istiyor. Trendyol Partner/Satıcı portalı ayrı bir iş yüzeyi; erişilebilen herkese açık sayfalar iç rol ve doğrulama ayrıntılarını göstermiyor. Projede alıcı hesabı satıcı başvurusu yapabilir; ilk dilimde belge toplamadan admin manuel incelemesi uygulanır. Onaylı satıcı, alıcı rolünü koruyarak yalnızca kendi ürünlerini yönetir. Formal KYC/KYB, ödeme ve satıcı ekipleri bu gereksinimin dışındadır. |
 | Platform yöneticisi | Pazar yerlerinde platform operasyonu ve moderasyonu alıcı/satıcı deneyimlerinden ayrıdır. Bu projede admin rolü yalnızca güvenilir yönetim kanalından atanır; herkese açık kayıtla admin olunamaz. Admin, mağaza genelindeki yönetim işlemlerini yapar; satıcıya ait ürün/işletme yetkileri ileride ayrı kurallarla tanımlanır. |
 
 **Kaynaklar (30 Ekim 2026'da erişilen kamuya açık sayfalar):**
@@ -128,7 +128,7 @@ Erişim belirteci yoksa veya geçersizse `401 Unauthorized` döndürülür.
 3. Boş katalog, yükleniyor ve ürünleri yükleyememe durumları kullanıcıya anlaşılır biçimde gösterilir; yükleme hatası tekrar denenebilir.
 4. Ürün listesi varsayılan olarak ilk 20 kaydı döndürür; `limit` 1–100, `offset` sıfır veya daha büyük olabilir. Sonuçlar ürün kimliğine göre kararlı sıradadır.
 5. Ürün listesi isteğinde geçerli müşteri belirteci zorunludur; yetkisiz veya geçersiz istek `401 Unauthorized` döndürür.
-6. Yönetici olmayan kullanıcı ürün oluşturamaz; `POST /api/v1/products` isteği `403 Forbidden` döndürür. Ürün eklemek için geçerli yönetici belirteci gerekir.
+6. Buyer ürün oluşturamaz; `POST /api/v1/products` isteği `403 Forbidden` döndürür. Admin tüm ürünleri, onaylı seller ise yalnızca kendisine ait ürünleri oluşturabilir/düzenleyebilir/silebilir.
 7. Ürün oluşturma alanları REQ-003'teki tür, uzunluk, biçim ve aralık kısıtlarına göre doğrulanır. Geçersiz veri `422` döndürür ve kaydedilmez.
 8. Örnek ürünler, aynı yöneticiye açık `POST /api/v1/products` endpoint'i kullanılarak eklenir ve listeleme endpoint'i ile doğrulanır.
 
@@ -160,7 +160,7 @@ Başarılı yanıt `200 OK`:
 
 #### `POST /api/v1/products`
 
-Yalnızca admin rolüne açık. İstek gövdesi `name`, `category`, `description`, `price` ve `stock` alanlarından oluşur; başarılı yanıt oluşturulan ürünü `201 Created` ile döndürür. Geçersiz veri `422`, admin olmayan kullanıcı `403`, token yok/geçersiz ise `401` alır.
+Admin ve onaylı seller rolüne açık. Seller ürününün sahibi doğrulanmış token `sub` değeridir; istemci owner belirleyemez. Yeni seller ürünü ortak katalogda hemen görünür. İstek gövdesi `name`, `category`, `description`, `price` ve `stock` alanlarından oluşur; başarılı yanıt `201 Created` döndürür. Geçersiz veri `422`, buyer `403`, token yok/geçersiz ise `401` alır.
 
 ### Doğrulama/test fikirleri
 
@@ -168,19 +168,21 @@ Yalnızca admin rolüne açık. İstek gövdesi `name`, `category`, `description
 |---|---|---|---|
 | REQ-002-T1 | API | Boş ürün kataloğu, geçerli müşteri belirteci | `200`, boş liste ve toplam 0 |
 | REQ-002-T2 | API | Geçerli admin gövdesiyle ürün oluşturma | `201`, saklanan ürün alanları döner |
-| REQ-002-T3 | API | Müşteri ürün oluşturmaya çalışır | `403`, ürün oluşturulmaz |
+| REQ-002-T3 | API | Buyer ürün oluşturmaya çalışır | `403`, ürün oluşturulmaz |
 | REQ-002-T4 | API | Ürün adı/kategori/açıklama/fiyat/stok sınırları geçersiz | `422`, ürün oluşturulmaz |
 | REQ-002-T5 | API | Ürünleri limit ve offset ile listeleme | Toplam sayısı ve kimliğe göre kararlı sayfa döner |
 | REQ-002-T6 | API | Token yok veya pagination parametresi geçersiz | Sırasıyla `401` veya `422` |
 | REQ-002-T7 | Component/integration | Ürün listesi yüklendi | Ad, kategori, açıklama, TRY fiyatı ve stok erişilebilir tabloda görünür |
 | REQ-002-T8 | Component | Boş katalog veya ürün API hatası | Boş durum veya yeniden denenebilir hata gösterilir |
-| REQ-002-T9 | E2E | Admin ürün ekler, buyer olarak giriş yapılır | Ürün korumalı katalog endpoint'inden okunup tabloda gösterilir; yönetim eylemleri yalnızca admin'e görünür |
+| REQ-002-T9 | E2E | Admin veya onaylı seller ürün ekler, buyer kataloğu görüntüler | Ürün ortak katalogda görünür; yönetim eylemleri yalnızca ilgili ürünün admin'i veya sahibi seller'ına görünür |
 | REQ-002-T10 | E2E | Hatalı giriş | Ana sayfa ve ürün endpoint'lerine istek gönderilmez |
 | REQ-002-T11 | Unit | `ProductCreateRequest` şema sınırları | Geçerli üst sınırlar kabul; uzunluk/fiyat/stok dışı değerler reddedilir |
 | REQ-002-T12 | Frontend unit | Ürün istemcisi API hatası | HTTP hata durumu ve mesajı çağırana aktarılır |
 | REQ-002-T13 | Component | Ürün listesi beklemede | Erişilebilir yükleniyor durumu tablo gelene kadar görünür |
+| REQ-002-T14 | API/E2E | Onaylı seller ürün oluşturur | Ürün owner token `sub` ile kaydedilir ve ortak katalogda hemen görünür |
+| REQ-002-T15 | API negatif | Onaysız veya seller rolü olmayan kullanıcı ürün oluşturur | `403`; ürün kalıcılaşmaz |
 
-**Test katmanı izlenebilirliği:** Şema alanlarının sınır/birim doğrulaması `apps/api/tests/test_product_schemas.py` (unit); kimlik doğrulama, admin yetkisi, SQLite kalıcılığı, API yanıtları ve sayfalama `apps/api/tests/test_products.py` (API/entegrasyon); query/header ve API hata aktarımı `apps/web/src/api.test.ts` (istemci unit); tablo, yükleniyor/boş/hata/yeniden deneme davranışları `apps/web/src/App.test.tsx` (component/frontend entegrasyonu); gerçek Keycloak ile admin ürün ekleme ve buyer'ın katalogda görüntülemesi `apps/web/e2e/admin-crud.spec.ts`, hatalı girişte mağaza API'lerine istek gönderilmemesi `apps/web/e2e/login.spec.ts` (gerçek tarayıcı E2E). Lint, TypeScript build ve coverage eşikleri CI statik/kalite kapılarıdır.
+**Test katmanı izlenebilirliği:** Şema alanlarının sınır/birim doğrulaması `apps/api/tests/test_product_schemas.py` (unit); kimlik doğrulama, admin/seller sahiplik yetkisi, SQLite kalıcılığı, API yanıtları ve sayfalama `apps/api/tests/test_products.py` (API/entegrasyon); başvuru ve Keycloak rol provisioning testleri REQ-007 kapsamında eklenir. Gerçek Keycloak E2E'de seller'ın yalnızca kendi ürün CRUD'u, buyer'ın salt-okunur katalog erişimi ve ortak katalogda anında yayın doğrulanır; admin CRUD regresyonu korunur.
 
 ## REQ-003 — Admin girişi ve ürün ekleme
 
@@ -206,7 +208,7 @@ Yalnızca admin rolüne açık. İstek gövdesi `name`, `category`, `description
 3. Admin girişinde ürün listesi sayfasında **Ürün ekle** butonu görünür; müşteri girişinde bu buton ve ürün ekleme ekranına erişim görünmez.
 4. Admin butona bastığında ürün adı, kategori, açıklama, TL fiyatı ve stok alanlarını içeren ayrı ürün ekleme sayfası açılır.
 5. Form her alan için yukarıdaki uzunluk, biçim ve aralıkları tarayıcıda doğrular; kısıt ihlalinde API isteği göndermez.
-6. Geçerli form admin erişim belirteciyle `POST /api/v1/products` endpoint'ini çağırır. Backend doğrulamayı ve admin yetkisini yeniden kontrol eder.
+6. Geçerli form admin veya onaylı seller erişim belirteciyle `POST /api/v1/products` endpoint'ini çağırır. Backend rolü ve seller başvuru onayını doğrular; seller ürününü token `sub` sahibine bağlar.
 7. `201 Created` yanıtında eklenen ürün katalog tablosuna eklenir ve admin ürün listesi ekranına döner.
 8. Form iptal edilirse kayıt isteği gönderilmez ve mevcut katalog ekranına dönülür.
 9. Yinelenen normalleştirilmiş ad `409 Conflict` ve kullanıcı dostu bir mesaj alır; diğer yetki, oturum, doğrulama, sunucu veya ağ hataları sunucu iç detaylarını açığa çıkarmayan mesajlarla gösterilir. İstek sürerken yinelenen gönderim engellenir.
@@ -283,7 +285,7 @@ REQ-002'de tanımlanan endpoint kullanılır. İstek `Authorization: Bearer <adm
 
 #### `PUT /api/v1/products/{id}`
 
-Yalnızca admin rolüne açık, tüm ürün alanlarını bekleyen güncelleme endpoint'i. İstek gövdesi REQ-003'te tanımlanan `name`, `category`, `description`, `price` ve `stock` alanlarını taşır. Yanıt `ProductResponse` içerir ve `updated_at` ISO-8601 zamanı döndürür. Ürün listesi ve ürün oluşturma yanıtlarında `updated_at` alanı bulunur; yeni ürün için `null` değerindedir.
+Admin tüm ürünleri, seller yalnızca kendi ürününü güncelleyebilir. Tüm ürün alanlarını bekler; REQ-003 validasyonları uygulanır. Yanıt `ProductResponse` içerir ve `updated_at` ISO-8601 zamanı döndürür.
 
 ### Doğrulama/test fikirleri
 
@@ -291,7 +293,7 @@ Yalnızca admin rolüne açık, tüm ürün alanlarını bekleyen güncelleme en
 |---|---|---|---|
 | REQ-004-T1 | API | Admin tüm alanları günceller | `200`, tüm değerler ve `updated_at` döner |
 | REQ-004-T2 | API/entegrasyon | Müşteri güncellenmiş ürünü listeler | Ürün alanları ve `updated_at` güncel yanıtlanır |
-| REQ-004-T3 | API | Token yok, müşteri rolü veya ürün ID'si yok | Sırasıyla `401`, `403`, `404`; veri değişmez |
+| REQ-004-T3 | API | Token yok, buyer, başka seller'a ait veya bulunmayan ürün | Sırasıyla `401`, `403`, `404`; veri değişmez |
 | REQ-004-T4 | API negatif | Geçersiz alan veya başka ürünle çakışan ad | `422`/`409`; mevcut ürün ve update zamanı korunur |
 | REQ-004-T5 | Unit | `updateProduct` istemci çağrısı | `PUT`, ürün ID'si, admin bearer token ve tüm gövde doğru gönderilir |
 | REQ-004-T6 | Component | Admin düzenleme akışı | Mevcut alanlar önceden doldurulur, başarı sonrası satır güncellenir |
@@ -302,6 +304,7 @@ Yalnızca admin rolüne açık, tüm ürün alanlarını bekleyen güncelleme en
 | REQ-004-T11 | API negatif | Her alan için şema geçersizliğiyle ürün güncelleme | 26 geçersiz değer sınıfı `422` alır; tüm eski alanlar ve `updated_at` değişmez |
 | REQ-004-T12 | Component negatif | Düzenleme formunda her alan için geçersiz değer | 24 girdinin her biri istek göndermez ve kayıt callback'ini çağırmaz |
 | REQ-004-T13 | E2E negatif | Tarayıcıda geçersiz ürün adıyla güncelleme | Doğrulama mesajı görünür; `PUT` isteği gönderilmez |
+| REQ-004-T14 | API/E2E negatif | Seller başka seller'ın ürününü günceller | `404` ile sahiplik sızıntısı önlenir; kayıt değişmez |
 
 **Test katmanı izlenebilirliği:** Güncelleme, rol, 26 sınıflı geçersiz alan matrisi, unique çakışma ve katalog okuma `apps/api/tests/test_products.py`; migration `apps/api/tests/test_product_migration.py`; `PUT` istemcisi `apps/web/src/api.test.ts`; düzenleme formunun 24 sınıflı geçersiz alan matrisi ve ürün satırı değişimi `apps/web/src/App.test.tsx` ile `apps/web/src/ProductCreatePage.test.tsx`; tüm alanların güncellenmesi, update rozeti, buyer kataloğu ve geçersiz düzenlemenin `PUT` göndermemesi `apps/web/e2e/admin-crud.spec.ts` ile doğrulanır.
 
@@ -329,14 +332,14 @@ Bu sürümde ürünler kalıcı olarak silinir; onay penceresi geri alınamayaca
 
 #### `DELETE /api/v1/products/{id}`
 
-Yalnızca admin rolüne açık. Başarıda boş gövdeli `204 No Content`; bulunamayan ürün için `404`, admin olmayan kullanıcı için `403`, eksik/geçersiz kimlik doğrulama için `401` döndürülür.
+Admin tüm ürünleri, seller yalnızca kendisine ait ürünü silebilir. Başarıda boş gövdeli `204 No Content`; bulunmayan veya başka seller'a ait ürün için `404`, buyer/onaysız seller için `403`, eksik/geçersiz kimlik doğrulama için `401` döndürülür.
 
 ### Doğrulama/test fikirleri
 
 | Kimlik | Seviye | Durum | Beklenti |
 |---|---|---|---|
 | REQ-005-T1 | API/entegrasyon | Admin var olan ürünü siler | `204`, boş yanıt; ürün admin ve müşteri listelerinden kalkar, toplam azalır |
-| REQ-005-T2 | API negatif | Token yok, müşteri rolü, ürün ID'si yok | Sırasıyla `401`, `403`, `404`; ürün kaydı korunur |
+| REQ-005-T2 | API negatif | Token yok, buyer, başka seller'ın ürünü veya ürün ID'si yok | Sırasıyla `401`, `403`, `404`, `404`; ürün kaydı korunur |
 | REQ-005-T3 | API/DB | Ürün silindikten sonra aynı adı yeniden oluşturma | Yeni oluşturma `201` olur; silinen kaydın benzersizlik anahtarı kalmaz |
 | REQ-005-T4 | Unit | `deleteProduct` istemci çağrısı | `DELETE`, ürün ID'si ve bearer token doğru gönderilir; boş `204` yanıtı başarı sayılır |
 | REQ-005-T5 | Component | Admin silmeyi iptal eder | Onay reddedilir; API çağrılmaz ve ürün listede kalır |
@@ -363,8 +366,8 @@ Yalnızca admin rolüne açık. Başarıda boş gövdeli `204 No Content`; bulun
 | Rol/profil | İlk dilimde atama | Yetki sınırı |
 |---|---|---|
 | `buyer` (alıcı) | Herkese açık başarılı kayıtta otomatik atanır | Ana sayfa ve ürün kataloğunu görüntüler; yalnızca kendi kullanıcı verilerine erişir. |
-| `seller` (satıcı) | Yalnızca güvenilir admin/operasyon süreciyle; self-registration ile atanamaz | Bu dilimde satıcı başvurusu, işletme doğrulaması ve satıcıya özel ürün yönetimi yoktur. |
-| `admin` (platform yöneticisi) | Yalnızca güvenilir Keycloak yönetim kanalıyla; self-registration ile atanamaz | Mevcut ürün CRUD yetkileri admin rolünde kalır. Rol kullanıcı profilinden veya istemci isteğinden değiştirilemez. |
+| `seller` (satıcı) | REQ-007'de admin onayı ve başarılı Keycloak provisioning sonrasında atanır; self-registration ile atanamaz | Admin onaylı başvurusu gerekir; kendi ürünlerini yönetebilir, diğer seller ürünlerini değiştiremez. |
+| `admin` (platform yöneticisi) | Yalnızca güvenilir Keycloak yönetim kanalıyla; self-registration ile atanamaz | Mağaza genelindeki ürün CRUD yetkileri admin rolündedir. Rol kullanıcı profilinden veya istemci isteğinden değiştirilemez. |
 
 Roller kullanıcı kategorilerini anlatır; satıcı organizasyonu ve birden fazla çalışan/alt rol desteği bu dilimin kapsamı değildir. Backend her istekte doğrulanmış token'daki yetkiyi denetler; yalnızca frontend'de eylem gizlemek yetkilendirme sayılmaz.
 
@@ -374,7 +377,7 @@ Roller kullanıcı kategorilerini anlatır; satıcı organizasyonu ve birden faz
 2. Kayıt formu e-posta ve parolayı uygulama backend'ine göndermez; kimlik bilgileri yalnızca Keycloak tarafından işlenir. OIDC tarayıcı akışında Authorization Code + PKCE kullanılır.
 3. E-posta benzersizliği Keycloak tarafından korunur. Var olan e-posta ile tekrar kayıt ve geçersiz/eksik alanlar kullanıcıya güvenli, anlaşılır hata verir; hesap/kimlik bilgisi ayrıntıları gereksiz yere açığa çıkarılmaz.
 4. İlk sürümde e-posta doğrulaması zorunlu değildir. Kayıt sonrasında doğrulanmamış e-posta ile giriş engellenmez.
-5. Parola sıfırlama, e-posta doğrulama, sosyal giriş, MFA ve satıcı self-service başvurusu ilk dilimde sunulmaz; bunlar roadmap'te sonraki işlerdir.
+5. Parola sıfırlama, e-posta doğrulama, sosyal giriş ve MFA ilk dilimde sunulmaz; satıcı başvurusu REQ-007'de ayrı bir dilimdir.
 6. Kullanıcı kayıt isteğinde `seller` veya `admin` talep etse bile rol yükseltemez. Yeni alıcı hesabı sadece `buyer` olur; ayrıcalıklı roller yalnızca güvenilir yönetim kanalından atanabilir.
 7. FastAPI yalnızca yapılandırılmış Keycloak issuer'ından gelen, imzası ve `iss`, `aud`, süre/aktiflik kontrolleri doğrulanmış access token'ları kabul eder. Eksik, bozuk, süresi dolmuş veya yanlış issuer/audience token `401` döndürür.
 8. Backend rol/yetki denetimi uygular: alıcı ürün CRUD yapamaz (`403`); admin mevcut ürün CRUD işlemlerini sürdürebilir; kullanıcı kendi sepeti/siparişi gibi kişisel kayıtlar eklendiğinde yalnızca kendisininkine erişebilir.
@@ -384,7 +387,7 @@ Roller kullanıcı kategorilerini anlatır; satıcı organizasyonu ve birden faz
 ### Dışarıda bırakılanlar
 
 - E-posta adresi doğrulama, parola sıfırlama/değiştirme, MFA, sosyal giriş ve gelişmiş oturum/cihaz yönetimi.
-- Satıcı başvurusu, şirket/kimlik/KYC kontrolü, banka/ödeme bilgileri, mağaza profili, satıcı çalışanları ve satıcıya özel ürün yetkileri.
+- Şirket/kimlik/KYC kontrolü, banka/ödeme bilgileri, satıcı çalışanları ve gelişmiş mağaza profili.
 - Admin kullanıcı arayüzü veya kullanıcıların kendi rollerini yönetmesi.
 - Müşteri adresi ve ödeme aracı toplama.
 
@@ -408,13 +411,116 @@ Roller kullanıcı kategorilerini anlatır; satıcı organizasyonu ve birden faz
 
 **QA/güvenlik kararı:** Keycloak'ın varsayılan yinelenen kullanıcı/e-posta mesajı hesap keşfine (account enumeration) imkân verebildiğinden custom `liva` login theme ile genel hata mesajına dönüştürülmüştür. Bu davranış gerçek Keycloak E2E testiyle doğrulanır.
 
-**Sıralı kullanıcı yönetimi dilimleri:** Önce alıcı kayıt/login entegrasyonu tamamlanıp tüm katmanlarda kapsamlı test edilecek. Test kapısı geçmeden satıcı başvurusu geliştirilmeyecek. Ardından satıcı başvurusu ve işletme doğrulaması, bu dilimin kabul/test kapısından sonra admin rol atama akışı geliştirilecek. Bu sonraki iki akışın iş kuralları ayrı gereksinimlerde netleştirilecektir.
+**Sıralı kullanıcı yönetimi dilimleri:** Alıcı kayıt/login entegrasyonu ve test kapısı tamamlandı. REQ-007 satıcı başvurusu ve ilk manuel inceleme dilimi geliştirme aşamasındadır; tüm katmanların çıkış kapısı geçmeden REQ-008 admin rol atama akışına başlanmayacaktır.
+
+## REQ-007 — Satıcı başvurusu ve ilk inceleme
+
+**Öncelik:** P0 (v1.0 sonrası ilk kullanıcı yönetimi dilimi)
+**Durum:** Tamamlandı. Başvuru API/veri modeli, admin inceleme ekranı, satıcıya ait ürün yönetimi ve Keycloak rol provisioning uygulandı; migration, API/component ve gerçek Keycloak E2E testleri geçti. Alıcı rolü korunur, satıcı ürünü ortak katalogda görünür ve yalnızca sahibi yönetebilir.
+**Kullanıcı hikâyesi:** Giriş yapmış bir alıcı olarak mağaza açmak için başvurmak ve başvurumun durumunu takip etmek istiyorum. Platform yöneticisi olarak başvuruyu inceleyip gerekçeli karar vermek istiyorum.
+**Ön koşul:** Kullanıcı Keycloak üzerinden giriş yapmış ve yalnızca `buyer` rolüne sahip olmalıdır.
+
+### Pazar yeri araştırması ve proje kararı
+
+Amazon'ın resmi ABD satıcı kayıt rehberi işletme konumu/türü/adı, şirket kayıt bilgisi ve adresi, birincil irtibat, banka/kart bilgisi, mağaza/ürün bilgisi ve kimlik doğrulaması adımlarını anlatır; kimlik, işletme kaydı/lisansı, adres kanıtı ve vergi bilgisini kayıt hazırlıkları arasında sayar. Amazon'ın ülkeye ve hesap türüne göre gereklilikleri değişebilir; bu ABD rehberi Türkiye için yasal gereklilik olarak yorumlanmamalıdır.
+
+Trendyol'un resmi Partner Portalı satıcılar için ayrı bir iş yüzeyi olduğunu gösterir. Portalın kamuya açık içeriği JavaScript/oturum gerektirdiği için başvuru alanları, iç durum akışı veya doğrulama kuralları bağımsız olarak doğrulanamamıştır. Bu gereksinim Trendyol'un iç uygulamasını kopyaladığını iddia etmez.
+
+**Kaynaklar (31 Ekim 2026):**
+
+- [Amazon — How to sell on Amazon](https://sell.amazon.com/sell) (ABD satıcı kayıt rehberi; ülkeye göre değişiklik gösterebilir).
+- [Trendyol Partner Portalı](https://partner.trendyol.com/) (JavaScript/oturum gerektirir; iç başvuru adımları kamuya açık olarak doğrulanamadı).
+
+**İlk sürüm kararı:** Başvurular bireysel satıcı, şahıs işletmesi ve şirket türlerini seçebilir. Form yalnızca temel beyanları alır; kimlik/vergi numarası, banka bilgisi ve belge dosyası toplamaz. Yetkili admin beyan edilen bilgileri manuel olarak inceler. Bu kontrol formal KYC, sicil doğrulaması veya hukuki uygunluk teyidi değildir; `approved` yalnızca uygulamadaki satıcı erişiminin admin tarafından açıldığını ifade eder. İlan yayımlama, sipariş/ödeme alma ve gerçek satışa başlama için gerekli hukuki/işletme doğrulaması ayrıca tanımlanıp tamamlanmalıdır.
+
+### Sonraki araştırma: otomatik doğrulama ve entegrasyon
+
+Otomatik KYC/KYB doğrulaması bu gereksinimin ve ilk uygulama diliminin **dışındadır**; daha sonra ayrı bir araştırma/teknoloji kararı olarak ele alınacaktır. İleride araştırılacak seçenekler:
+
+- Şirket/işletme varlığı ve unvanı için MERSİS/Ticaret Sicili verilerine veya erişim izni olan bir KYB sağlayıcısına entegrasyon olanağı.
+- Gerekli görülürse GİB belge/mükellefiyet doğrulaması ve kimlik/temsilci doğrulaması için yetkili resmî servis veya sözleşmeli KYC sağlayıcısı. Mevcut kamuya açık doğrulama ekranları tek başına kullanılabilir bir API veya entegrasyon hakkı bulunduğunu göstermez.
+- Ülke ve işletme türü kapsamı, doğrulanan veri ve kanıtlar, erişim/sözleşme koşulları, KVKK ve veri saklama etkisi, maliyet ve sağlayıcı hata/yanıt süresi.
+- Net başarılı/net başarısız/belirsiz sonuç politikası; eşleşmeme, servis kesintisi ve yetersiz kanıtta manuel incelemeye güvenli dönüş; gerekçeli karar ve audit izi.
+
+Sağlayıcı ve yasal/operasyonel gereklilikler araştırılmadan otomatik onay, belirli bir kamu API'sinin varlığı veya KYC kapsamı taahhüt edilmez. Otomatik bir kontrol devreye girse dahi tek başına başvuru beyanı ya da doğrulama servisi sonucu, satış/ödeme için hukuki uygunluk garantisi olarak sunulmamalıdır.
+
+### Başvuru alanları
+
+Keycloak `sub` ve e-posta bilgisi doğrulanmış access token'dan alınır; istemciden gelen kullanıcı kimliği/e-posta yetki kaynağı olarak kullanılmaz. Parola bu akışa dahil değildir.
+
+| Alan | Kural | Gizlilik/amaç |
+|---|---|---|
+| `applicant_type` | Zorunlu enum: `individual`, `sole_proprietor`, `company` | Başvurunun beyan edilen işletme türü; uygunluk kararı değildir. |
+| `legal_name` | Zorunlu, 2–120 karakter; bireyselde yasal ad-soyad, işletmede yasal/tescilli unvan | Yasal adı işletme unvanından ayırt eder. |
+| `representative_name` | Şirket için zorunlu, 2–120 karakter; diğer türlerde isteğe bağlı | Başvuruyu yapan yetkili irtibat kişisi. |
+| `store_name` | Zorunlu, 2–64 karakter; Unicode harf/rakam, boşluk, tire ve kesme işareti; trim ve ardışık boşluk normalizasyonu | Mağaza için görünen ad; normalize edilmiş adı başka aktif/onaylı başvuruda kullanılamaz. |
+| `contact_phone` | Zorunlu; `+` ve 8–15 rakam, ilk rakam sıfır olamaz; boşluk ve ayraç kabul edilmez | Başvuru ve inceleme iletişimi; Keycloak e-postası token'dan okunur. |
+| `city`, `district` | Zorunlu; her biri 2–80 karakter | Operasyon bölgesini belirler; tam açık adres toplanmaz. |
+| `primary_category` | Zorunlu, 2–80 karakter | Satıcının beyan ettiği ana ürün grubu; ürün katalog kategorileriyle eşleşme garantisi vermez. |
+| `business_description` | Zorunlu, 20–1000 karakter; yazdırılabilir metin | Başvurunun amacını ve satılacak ürünleri özetler. |
+
+`tax_id`, T.C. kimlik numarası, MERSİS/ticaret sicil numarası, banka/kart bilgisi, kimlik veya işletme belgesi, tam adres ve belge görselleri bu dilimde istenmez ve saklanmaz. Bireysel başvuru seçeneği, kişinin mevzuat uyarınca satıcı olarak faaliyete uygun olduğu anlamına gelmez.
+
+### Başvuru durumları ve geçişler
+
+| Durum | Anlam |
+|---|---|
+| `draft` | Başvuru sahibi henüz göndermedi; alanları düzenleyebilir. |
+| `submitted` | Başvuru inceleme kuyruğuna gönderildi. |
+| `under_review` | Admin incelemeyi başlattı. |
+| `changes_requested` | Admin eksik/yanlış beyanları ve kullanıcıya gösterilecek açıklamayı iletti; başvuru sahibi düzeltip yeniden gönderebilir. |
+| `approval_pending` | Admin olumlu kararı verdi; Keycloak `seller` rolü ataması tamamlanmadı. Satıcı yetkisi verilmez ve işlem güvenle yeniden denenebilir. |
+| `approved` | Keycloak rol ataması doğrulandı; başvuru sahibi yeni oturum/token aldığında `seller` rolüyle satıcı alanına erişebilir. Bu, formal KYC veya satış yetkisi değildir. |
+| `rejected` | Admin gerekçe kodu ve kullanıcıya uygun açıklamayla reddetti. Yeniden başvuru yeni kayıt olarak yapılır; eski kayıt/audit izi korunur. |
+| `withdrawn` | Başvuru sahibi henüz karar verilmemiş başvuruyu geri çekti. |
+
+İzin verilen ana geçişler: `draft → submitted → under_review`; incelemede `changes_requested`, `approval_pending` veya `rejected`; `changes_requested → submitted`; `approval_pending → approved` yalnızca Keycloak rol ataması başarıyla doğrulandıktan sonra. `draft`, `submitted` ve `changes_requested` başvuru sahibi tarafından geri çekilebilir. Onay/red/geri çekme sonrasında aynı kayıt değiştirilemez. Geçersiz geçiş reddedilir. Kullanıcı başına aynı anda en fazla bir aktif başvuru bulunur; ret sonrası yeni başvuru yeni kimlikle açılır.
+
+Keycloak erişim/rol atama hatasında işlem başarı gibi raporlanmaz; başvuru `approval_pending` kalır, kullanıcı satıcı yetkisi kazanmaz ve admin yeniden deneyebilir. Rol atama tekrarı idempotent olmalı; yalnızca başarılı rol eşlemesi ve doğrulanmış sonuçtan sonra `approved` yapılmalıdır. Rol değişikliği audit kaydında başvuru, karar veren admin, zaman ve sonuç tutulur; token claim'i sonraki token yenileme/yeni oturumda görünür.
+
+### Kabul kriterleri
+
+1. Yalnızca kimliği doğrulanmış `buyer` kendi başvurularını oluşturabilir, okuyabilir ve uygun durumda düzenleyebilir; `seller`/`admin` rolü talep eden payload yetki vermez.
+2. Başvuru Keycloak `sub` değerine bağlanır. Kullanıcı başka bir başvuruya erişemez; istemcinin gönderdiği owner ID/e-posta yok sayılır veya reddedilir.
+3. Alanlar tür, uzunluk, biçim ve normalize edilmiş mağaza adı benzersizliği açısından doğrulanır. Geçersiz istek `422` alır ve kayıt yaratmaz/değiştirmez.
+4. Başvuru sahibi yalnızca `draft` ve `changes_requested` durumlarında form alanlarını düzenleyebilir; gönderilmiş/incelemedeki/onaylanmış/reddedilmiş kayıt doğrudan değiştirilemez.
+5. Kullanıcı başvuru durumunu ve kendisine gösterilmesi güvenli inceleme notunu görür; admin iç notları, başka başvuru verileri ve hassas sistem hataları görünmez.
+6. Yetkili admin başvuruyu incelemeye alabilir, eksik bilgi isteyebilir, reddedebilir veya onay sürecini başlatabilir. Admin olmayan kullanıcı bu işlemlerde `403` alır.
+7. `seller` rolü başvuru gönderiminde veya incelemede verilmez. Admin onayı sonrasında Keycloak rol ataması başarılı olunca durum `approved` olur; mevcut `buyer` rolü korunur ve yeni token/oturumda her iki rol bulunur.
+8. Keycloak rol ataması başarısızsa durum `approval_pending` kalır, hata izlenebilir biçimde raporlanır ve kullanıcı/admin başarı mesajı almaz; tekrar deneme ikinci bir rol veya kayıt yaratmaz.
+9. Başvuru sahibinin başvuru başına bir aktif kayıt kuralı korunur; `rejected`/`withdrawn` başvurular geçmiş olarak saklanır ve yeni başvuru yeni kayıt olur.
+10. Onaylı seller bu dilimde yalnızca kendisine ait ürünleri ekleyebilir, düzenleyebilir ve silebilir; buyer rolüyle ortak katalogdaki ürünleri görüntülemeye devam eder. Admin tüm ürünleri yönetebilir. Başka seller'a ait ürün seller için bulunmuyor gibi (`404`) yanıtlanır.
+11. Yeni seller ürünü onaylı satıcı tarafından kaydedildiğinde ortak katalogda anında görünür; ürün başına ikinci bir admin moderasyon aşaması yoktur. Bu, ürünün yasal satış/ödeme için uygun olduğunu garanti etmez.
+12. Uygulama yalnızca başvuru kararını ve temel beyanları yönetir; bu gereksinim formal KYC/işletme sicili kontrolü, belge depolama, ödeme alma veya yasal satıcı uygunluğu garantisi vermez.
+13. Başvuru ve audit yanıtları parolayı, token'ı, T.C. kimlik/vergi/banka verisini veya belge içeriğini içermez; böyle hassas alanlar bu dilimde toplanmaz.
+
+### Doğrulama/test fikirleri
+
+| Kimlik | Seviye | Durum | Beklenti |
+|---|---|---|---|
+| REQ-007-T1 | Unit | Başvuru enum, zorunlu/koşullu alan ve uzunluk/telefon/Unicode doğrulaması | Geçerli türler kabul; sınır dışı/eksik veri reddedilir |
+| REQ-007-T2 | Unit | Başvuru durum makinesi | İzinli geçişler başarılı; terminal/geçersiz geçişler reddedilir |
+| REQ-007-T3 | API | Buyer taslak oluşturur/görüntüler/günceller/gönderir | `201/200`; owner token `sub` üzerinden atanır, rol aynı kalır |
+| REQ-007-T4 | API negatif | Anonim, admin olmayan review, seller/admin rolü talebi veya başka kullanıcının ID'si | `401/403`; veri ve roller değişmez |
+| REQ-007-T5 | API negatif | İkinci aktif başvuru, duplicate normalize store name, geçersiz durum güncellemesi | Conflict/validation yanıtı; mevcut başvuru korunur |
+| REQ-007-T6 | API/privacy | Buyer başvuru durumunu ve detayını okur | Yalnızca kendi güvenli alanları döner; admin iç notu/başka başvuru yoktur |
+| REQ-007-T7 | DB/migration | Başvuru şeması, FK/unique kısıtları, upgrade/downgrade ve rollback | Owner ve aktif başvuru kuralları korunur; yarım veri kalmaz |
+| REQ-007-T8 | Keycloak entegrasyon | Admin onayı ve seller rol atama | Başarılı eşlemeden sonra `approved`; yeni token `seller` içerir |
+| REQ-007-T9 | Keycloak negatif | IdP kapalı/rol ataması başarısız/tekrar deneme | `approval_pending`, seller erişimi yok; idempotent retry sonunda tek başarılı atama |
+| REQ-007-T10 | Component | Buyer başvuru formu ve durum ekranı | Alan hataları, yükleniyor/başarı/hata, changes-requested düzenleme görünür |
+| REQ-007-T11 | Component | Yetkisiz review kontrolleri | Buyer'a admin karar eylemleri gösterilmez; API hatası güvenli görünür |
+| REQ-007-T12 | E2E | Gerçek Keycloak buyer başvurur, admin inceler ve onaylar | Gönderimden önce seller rolü yok; onay sonrası yeniden kimlik doğrulamayla seller rolü görünür |
+| REQ-007-T13 | E2E/regresyon | Admin olmayan kullanıcı başka başvuruyu inceler/onaylar; onaysız buyer seller alanına erişir | UI/endpoint engeli ve `403`; başvuru/ürün katalog verisi değişmez |
+| REQ-007-T14 | Güvenlik/regresyon | Hassas alan sızıntısı ve mevcut buyer/CRUD akışları | Yanıt/loglarda credential veya toplanmayan belge/kimlik verisi yok; önceki kayıt ve ürün CRUD E2E'leri geçer |
+
+**Test katmanı izlenebilirliği:** `apps/api/tests/test_seller_applications.py` başvuru/karar API ve hata davranışlarını; `apps/api/tests/test_keycloak_admin.py` servis istemcisi rol provisioning davranışını; `apps/api/tests/test_seller_migration.py` migration upgrade/downgrade'ını; `apps/web/src/api.test.ts` HTTP sözleşmesini; `apps/web/src/App.test.tsx` başvuru/admin/seller arayüzü ve ürün sahipliği görünürlüğünü doğrular. `apps/web/e2e/seller-applications.spec.ts` gerçek Keycloak buyer başvurusunu, admin onayını, yeni oturumda buyer+seller rollerini, satıcının ürün oluşturmasını ve başka buyer'ın ortak katalogda ürünü salt-okunur görmesini doğrular. Gerçek Keycloak E2E ile mevcut buyer kayıt/login ve admin/buyer CRUD regresyonları geçti.
 
 ## İleri gereksinim adayları
 
 Bu maddeler kapsamı erkenden sabitlememek için henüz kabul kriterlerine dönüştürülmemiştir:
 
-- Satıcı başvurusu, işletme doğrulaması ve satıcı çalışan/alt rol yönetimi.
+- Satıcı işletme/kimlik KYC doğrulaması, belge alımı ve hukuki uygunluk; satıcı çalışan/alt rol yönetimi.
+- Satıcı başvuruları için otomatik kimlik/işletme doğrulama sağlayıcısı veya yetkili resmî entegrasyon araştırması; kapsam, erişim izni, KVKK, maliyet ve manuel fallback değerlendirmesi.
 - Ürün kataloğunda arama ve filtreleme.
 - Sepet yönetimi ve stok/ürün fiyatı kuralları.
 - Adres ve teslimat seçenekleriyle sipariş oluşturma.

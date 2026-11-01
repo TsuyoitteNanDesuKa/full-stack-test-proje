@@ -2,8 +2,16 @@ import re
 import unicodedata
 from datetime import UTC, datetime
 from decimal import Decimal
+from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 
 class CurrentUserResponse(BaseModel):
@@ -80,6 +88,7 @@ class ProductResponse(BaseModel):
     price: Decimal
     stock: int
     updated_at: datetime | None
+    can_manage: bool = False
 
     @field_validator("updated_at")
     @classmethod
@@ -89,9 +98,136 @@ class ProductResponse(BaseModel):
         return value
 
 
+class SellerApplicantType(StrEnum):
+    INDIVIDUAL = "individual"
+    SOLE_PROPRIETOR = "sole_proprietor"
+    COMPANY = "company"
+
+
+class SellerApplicationStatus(StrEnum):
+    DRAFT = "draft"
+    SUBMITTED = "submitted"
+    UNDER_REVIEW = "under_review"
+    CHANGES_REQUESTED = "changes_requested"
+    APPROVAL_PENDING = "approval_pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    WITHDRAWN = "withdrawn"
+
+
+class SellerApplicationAction(StrEnum):
+    BEGIN_REVIEW = "begin_review"
+    REQUEST_CHANGES = "request_changes"
+    REJECT = "reject"
+    APPROVE = "approve"
+
+
+def _normalize_application_text(value: str) -> str:
+    return unicodedata.normalize("NFC", " ".join(value.split()))
+
+
+class SellerApplicationRequest(BaseModel):
+    applicant_type: SellerApplicantType
+    legal_name: str = Field(min_length=2, max_length=120, strict=True)
+    representative_name: str | None = Field(default=None, max_length=120, strict=True)
+    store_name: str = Field(min_length=2, max_length=64, strict=True)
+    contact_phone: str = Field(pattern=r"^\+[1-9]\d{7,14}$", strict=True)
+    city: str = Field(min_length=2, max_length=80, strict=True)
+    district: str = Field(min_length=2, max_length=80, strict=True)
+    primary_category: str = Field(min_length=2, max_length=80, strict=True)
+    business_description: str = Field(min_length=20, max_length=1000, strict=True)
+
+    @field_validator(
+        "legal_name",
+        "representative_name",
+        "store_name",
+        "city",
+        "district",
+        "primary_category",
+        "business_description",
+    )
+    @classmethod
+    def normalize_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = _normalize_application_text(value)
+        if any(not character.isprintable() for character in normalized):
+            raise ValueError("Metin yazdırılamayan karakter içeremez.")
+        return normalized
+
+    @field_validator("store_name")
+    @classmethod
+    def validate_store_name(cls, value: str) -> str:
+        if not re.fullmatch(r"[\w]+(?:[ '-][\w]+)*", value, flags=re.UNICODE):
+            raise ValueError("Mağaza adı biçimi geçersiz.")
+        return value
+
+    @field_validator("representative_name")
+    @classmethod
+    def validate_representative_name(cls, value: str | None) -> str | None:
+        if value is not None and not 2 <= len(value) <= 120:
+            raise ValueError("Yetkili kişi adı 2 ile 120 karakter arasında olmalıdır.")
+        return value
+
+    @model_validator(mode="after")
+    def require_company_representative(self) -> "SellerApplicationRequest":
+        if self.applicant_type == SellerApplicantType.COMPANY and self.representative_name is None:
+            raise ValueError("Şirket başvurusunda yetkili kişi adı zorunludur.")
+        return self
+
+
+class SellerApplicationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    applicant_type: SellerApplicantType
+    legal_name: str
+    representative_name: str | None
+    store_name: str
+    contact_phone: str
+    city: str
+    district: str
+    primary_category: str
+    business_description: str
+    status: SellerApplicationStatus
+    applicant_note: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AdminSellerApplicationResponse(SellerApplicationResponse):
+    owner_subject: str
+    admin_note: str | None
+    reviewer_subject: str | None
+    reviewed_at: datetime | None
+
+
+class SellerApplicationReviewRequest(BaseModel):
+    action: SellerApplicationAction
+    applicant_note: str | None = Field(default=None, min_length=2, max_length=500)
+    admin_note: str | None = Field(default=None, min_length=2, max_length=1000)
+
+    @model_validator(mode="after")
+    def validate_action_notes(self) -> "SellerApplicationReviewRequest":
+        if (
+            self.action
+            in {
+                SellerApplicationAction.REQUEST_CHANGES,
+                SellerApplicationAction.REJECT,
+            }
+            and self.applicant_note is None
+        ):
+            raise ValueError("Bu karar için başvuru sahibine açıklama zorunludur.")
+        return self
+
+
 def product_name_key(name: str) -> str:
     normalized = " ".join(name.split())
     return unicodedata.normalize("NFC", normalized).casefold()
+
+
+def store_name_key(name: str) -> str:
+    return product_name_key(name)
 
 
 class ProductListResponse(BaseModel):

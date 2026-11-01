@@ -19,10 +19,12 @@ Bu proje, çevrimiçi alışveriş uygulamasını Agile yaklaşımla gereksiniml
 
 - Keycloak üzerinden alıcı self-registration ve OIDC tabanlı güvenli giriş.
 - Kimliği doğrulanmış müşteriye ana sayfa içeriğinin sunulması.
+- Alıcının satıcı başvurusu oluşturması, admin'in manuel incelemesi ve onay sonrası satıcı rolü provisioning.
+- Satıcının ortak ürün kataloğunda yalnızca kendi ürünlerini yönetmesi.
 - İlerleyen dilimlerde ürün kataloğu, arama, sepet, sipariş ve müşteri hesabı akışları.
 - API'de Keycloak imzası, issuer, audience, süre ve rollerin doğrulanması.
 
-E-posta doğrulama ve parola sıfırlama daha sonraki dilimlere bırakılmıştır. Satıcı başvurusu/işletme doğrulaması ve admin ataması alıcı kayıt diliminin dışındadır; admin rolü şimdilik yalnızca Keycloak yönetim konsolundan güvenilir operatör tarafından verilebilir. Gerçek zamanlı işbirliği, mikroservisler ve mobil uygulama da kapsam dışındadır.
+E-posta doğrulama ve parola sıfırlama daha sonraki dilimlere bırakılmıştır. Alıcı kayıt diliminden sonra REQ-007 kapsamında bireysel, şahıs işletmesi ve şirket başvuruları; belge toplamayan, admin tarafından manuel incelenen ilk akış olarak planlanmıştır. Bu ilk inceleme formal KYC veya satışa yasal uygunluk teyidi değildir; ilan yayımlama ve ödeme alma ayrı doğrulama gereksinimlerine bağlıdır. Admin rolü şimdilik yalnızca Keycloak yönetim konsolundan güvenilir operatör tarafından verilebilir. Gerçek zamanlı işbirliği, mikroservisler ve mobil uygulama da kapsam dışındadır.
 
 ## Örnek kullanım senaryosu: Alıcı kaydı ve giriş
 
@@ -58,6 +60,8 @@ Realm ve `shop-web` public OIDC istemcisi `infra/keycloak/realm-export.json` dos
 
 Keycloak `liva` login theme'i `infra/keycloak/themes/liva` dizininden salt okunur bağlanır; yinelenen hesap hataları e-posta varlığını açıklamayan genel mesaj gösterir. Keycloak realm'i kalıcı Docker volume'ünde tutulur; sonraki başlangıçlarda realm import'u mevcut realm ayarlarını güncellemez. Önceden başlatılmış realm için Admin Console → Realm settings → Themes ekranından Login theme olarak `liva` seçip kaydedin. Volume'ü silmek test kullanıcılarını ve realm verisini de siler.
 
+Satıcı onayında API'nin Keycloak service account üzerinden `seller` realm rolünü atayabilmesi gerekir. Yeni realm import'u `shop-api-admin` istemcisini ekler; kalıcı/önceden oluşturulmuş realm için istemci, secret, service-account rolleri ve açık client-scope eşlemeleri [API kurulum notlarında](./apps/api/README.md#seller-role-provisioning) açıklanmıştır. Service-account secret'ını yalnızca `apps/api/.env` içinde tutun.
+
 ```powershell
 Set-Location apps/web
 npm ci
@@ -78,7 +82,7 @@ Set-Location apps/web
 npm run test:e2e
 ```
 
-Playwright testleri gerçek Keycloak kayıt/giriş ekranını kullanır; admin CRUD testi ayrıca geçici admin hesabı oluşturup `admin` rolü atar, buyer ve admin test hesaplarını temizler. Ürün veritabanı da izole geçici SQLite dosyasıdır. Keycloak E2E testleri varsayılan olarak atlanır; yalnızca yerel test realm'i çalışırken açıkça etkinleştirilmelidir.
+Playwright testleri gerçek Keycloak kayıt/giriş ekranını kullanır; admin CRUD ve satıcı başvuru E2E'leri geçici test hesapları oluşturup temizler. Satıcı akışı için API service-account secret'ı ve yerel Keycloak realm rol eşlemeleri de yapılandırılmış olmalıdır. Ürün veritabanı izole geçici SQLite dosyasıdır. Keycloak E2E testleri varsayılan olarak atlanır; yalnızca yerel test realm'i çalışırken açıkça etkinleştirilmelidir.
 
 ## Önerilen teknoloji seti
 

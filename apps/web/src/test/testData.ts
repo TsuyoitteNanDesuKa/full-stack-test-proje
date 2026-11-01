@@ -21,6 +21,7 @@ export function createTestProduct(
     price: `${Math.floor(priceCents / 100)}.${String(priceCents % 100).padStart(2, '0')}`,
     stock: Math.floor(Math.random() * 1_000_000),
     updated_at: null,
+    can_manage: false,
     ...overrides,
   }
 }

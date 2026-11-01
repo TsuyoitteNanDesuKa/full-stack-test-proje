@@ -739,6 +739,148 @@
   letter-spacing: -0.8px;
 }
 
+.seller-panel {
+  width: min(100%, 1120px);
+  margin: 28px auto 42px;
+  padding: clamp(20px, 4vw, 34px);
+  border: 1px solid #e6e8df;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 84%);
+}
+
+.seller-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.seller-panel-heading h2,
+.seller-application-card h3 {
+  margin: 8px 0 0;
+  color: #2e4433;
+  font-family: var(--serif);
+  font-size: 25px;
+  font-weight: 500;
+}
+
+.seller-application-card h3 {
+  font-size: 21px;
+}
+
+.application-status {
+  padding: 7px 10px;
+  border: 1px solid #e3e7dd;
+  border-radius: 20px;
+  background: #f7f8f3;
+  color: #49624d;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.seller-application-form,
+.seller-review-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.seller-application-form label,
+.seller-review-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: #566253;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.seller-application-form input,
+.seller-application-form select,
+.seller-application-form textarea,
+.seller-review-fields textarea {
+  width: 100%;
+  min-height: 39px;
+  padding: 9px 10px;
+  border: 1px solid #e1e5dc;
+  border-radius: 4px;
+  background: #fff;
+  color: #354638;
+  font: inherit;
+  font-weight: 400;
+}
+
+.seller-application-form textarea,
+.seller-review-fields textarea {
+  resize: vertical;
+}
+
+.seller-description-field {
+  grid-column: 1 / -1;
+}
+
+.seller-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.seller-form-actions button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.seller-application-list {
+  display: grid;
+  gap: 16px;
+}
+
+.seller-application-card {
+  padding: 20px;
+  border: 1px solid #e6e8df;
+  border-radius: 5px;
+  background: #fff;
+}
+
+.seller-application-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 20px;
+  margin: 18px 0;
+}
+
+.seller-application-details div {
+  min-width: 0;
+}
+
+.seller-application-details dt {
+  margin-bottom: 4px;
+  color: #829078;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.seller-application-details dd {
+  margin: 0;
+  color: #465348;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.application-note,
+.application-notice {
+  color: #49624d;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.seller-review-fields {
+  margin: 18px 0;
+}
+
 .products-count {
   padding: 7px 10px;
   border: 1px solid #e3e7dd;
@@ -1067,6 +1209,16 @@
   .products-heading-row {
     align-items: start;
     flex-wrap: wrap;
+  }
+
+  .seller-application-form,
+  .seller-review-fields,
+  .seller-application-details {
+    grid-template-columns: 1fr;
+  }
+
+  .seller-panel-heading {
+    align-items: flex-start;
   }
 
   .add-product-button {

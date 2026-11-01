@@ -1,7 +1,17 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Numeric, String, false
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Numeric,
+    String,
+    false,
+    text,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -53,7 +63,85 @@ class Product(Base):
     description: Mapped[str] = mapped_column(String(500), nullable=False)
     price: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False)
     stock: Mapped[int] = mapped_column(nullable=False)
+    seller_subject: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )
+
+
+class SellerApplication(Base):
+    __tablename__ = "seller_applications"
+    __table_args__ = (
+        CheckConstraint(
+            "applicant_type IN ('individual', 'sole_proprietor', 'company')",
+            name="ck_seller_applications_applicant_type",
+        ),
+        CheckConstraint(
+            "status IN ('draft', 'submitted', 'under_review', 'changes_requested', "
+            "'approval_pending', 'approved', 'rejected', 'withdrawn')",
+            name="ck_seller_applications_status",
+        ),
+        Index(
+            "uq_seller_applications_active_owner",
+            "owner_subject",
+            unique=True,
+            sqlite_where=text(
+                "status IN ('draft', 'submitted', 'under_review', "
+                "'changes_requested', 'approval_pending', 'approved')"
+            ),
+            postgresql_where=text(
+                "status IN ('draft', 'submitted', 'under_review', "
+                "'changes_requested', 'approval_pending', 'approved')"
+            ),
+        ),
+        Index(
+            "uq_seller_applications_active_store_name",
+            "store_name_key",
+            unique=True,
+            sqlite_where=text(
+                "status IN ('draft', 'submitted', 'under_review', "
+                "'changes_requested', 'approval_pending', 'approved')"
+            ),
+            postgresql_where=text(
+                "status IN ('draft', 'submitted', 'under_review', "
+                "'changes_requested', 'approval_pending', 'approved')"
+            ),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_subject: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    applicant_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    legal_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    representative_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    store_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    store_name_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    contact_phone: Mapped[str] = mapped_column(String(16), nullable=False)
+    city: Mapped[str] = mapped_column(String(80), nullable=False)
+    district: Mapped[str] = mapped_column(String(80), nullable=False)
+    primary_category: Mapped[str] = mapped_column(String(80), nullable=False)
+    business_description: Mapped[str] = mapped_column(String(1000), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft")
+    applicant_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    admin_note: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    reviewer_subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SellerApplicationAudit(Base):
+    __tablename__ = "seller_application_audit"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("seller_applications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    actor_subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    from_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    to_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

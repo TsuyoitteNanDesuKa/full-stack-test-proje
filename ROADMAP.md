@@ -212,26 +212,42 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 
 **Çıkış ölçütü:** Alıcı kendi hesabını oluşturup yeniden giriş yapar; rol/token kontrolleri backend'de uygulanır; unit/API/component/E2E testleri ve katalog/admin CRUD regresyonları geçer. Yinelenen e-posta geri bildirimindeki hesap keşfi riski için açık güvenlik kararı kayda alınır. E-posta doğrulama ve parola sıfırlama ayrı sonraki iş olarak kalır.
 
-### Öncelik 2 — REQ-007: Satıcı başvurusu ve işletme doğrulaması
+### Öncelik 2 — REQ-007: Satıcı başvurusu ve ilk inceleme
 
 **Başlama koşulu:** REQ-006 alıcı registration/login gereksinimi ve kapsamlı test kapısı tamamlanmış olmalı.
 
-**Amaç:** Alıcı hesabı sahibi, mağaza satıcısı olmak için işletme bilgileriyle başvurabilsin; başvuru incelenip onaylanmadan kullanıcı `seller` yetkisi alamamalı.
+**Amaç:** Giriş yapmış alıcı bireysel, şahıs işletmesi veya şirket olarak mağaza başvurusu yapabilsin; admin manuel inceleyebilsin; Keycloak `seller` rolü yalnızca onay süreci tamamlandığında verilsin.
 
-- REQ-006 test kapısı geçtikten sonra satıcı başvurusu için alanları, işletme doğrulama seviyesini, durum geçişlerini ve ret/yeniden başvuru politikasını ayrı gereksinimle tanımla.
-- Başvuru verilerini alıcı kimliğine ve işletme profiline bağla; müşteri kişisel verisini minimumda tut ve saklama/erişim kurallarını belirt.
-- Başvuru durumları en az taslak/gönderildi/incelemede/onaylandı/reddedildi olarak modellenmeli; yalnızca onaylı başvuru `seller` rolü kazanmalı.
+**Durum:** Tamamlandı. Backend/veri modeli, buyer başvuru arayüzü, admin inceleme arayüzü, satıcı ürün sahipliği ve katmanlı testler gerçek Keycloak akışıyla doğrulandı.
+
+- REQ-007 gereksinimi `docs/requirements.md` içinde tanımlandı: bireysel/şahıs işletmesi/şirket türü; yasal ad/unvan, mağaza adı, irtibat telefonu, il/ilçe, ana kategori ve kısa işletme tanıtımı. Keycloak `sub` ve e-posta token'dan alınır.
+- İlk sürümde yalnızca beyan bilgileri admin tarafından manuel incelenir; belge dosyası, T.C. kimlik/vergi numarası, banka bilgisi ve tam adres toplanmaz. Bu karar formal KYC veya mevzuata uygunluk teyidi değildir; ilan/payout/satışa başlama daha sonraki doğrulanmış gereksinime bağlıdır.
+- Otomatik KYC/KYB bu dilime dahil değildir. Daha sonra yetkili resmî servis veya sözleşmeli sağlayıcı araştırması yapılacak: MERSİS/Ticaret Sicili, GİB ve kimlik doğrulama seçeneklerinin gerçekten erişilebilirliği/entegrasyon hakkı, ülke kapsamı, KVKK, maliyet ve manuel incelemeye dönüş yolu doğrulanmadan teknoloji seçilmeyecek.
+- Durum makinesi: `draft → submitted → under_review → changes_requested / approval_pending / rejected`; Keycloak rol atama başarıyla doğrulanınca `approval_pending → approved`. Rol ataması başarısız olursa seller yetkisi verilmez ve işlem güvenle tekrar denenir.
+- Bir alıcıya en fazla bir aktif başvuru; ret sonrası yeni başvuru yeni kayıt olarak açılır. Admin kararları aktör, zaman ve sonuçla audit edilir.
 
 **Geliştirme tamamlandıktan hemen sonra — test geliştirme planı:**
 
-- **Unit:** Alan/format/sınır doğrulamaları, başvuru durum makinesi, izin verilen/geçersiz geçişler ve rol atama kararları.
-- **API/entegrasyon:** Alıcının kendi başvurusunu oluşturma/görüntüleme/güncellemesi; başka kullanıcı başvurusuna erişim; duplicate başvuru; eksik/uygunsuz işletme verisi; inceleme/onay/ret; her başarısız durumda kalıcılığın değişmediği.
+- **Unit:** Alan/format/sınır doğrulamaları, işletme türüne göre alan koşulları, başvuru durum makinesi, izin verilmeyen geçişler ve rol atama kararları.
+- **API/entegrasyon:** Buyer'ın kendi başvurusunu oluşturma/görüntüleme/güncellemesi; başka kullanıcı başvurusuna erişim; duplicate aktif başvuru/mağaza adı; eksik/uygunsuz beyan; review/changes/reject/approve; başarısız durumda kalıcılığın ve rolün değişmemesi.
 - **DB/migration:** Yeni başvuru ve işletme tabloları, ilişkiler, unique/foreign-key kısıtları, migration upgrade/downgrade ve transaction rollback.
-- **Component:** Başvuru formu doğrulaması, durum ekranları, yükleme/başarı/hata ve ret/yeniden başvuru davranışları.
-- **E2E:** Gerçek Keycloak alıcısıyla başvuru ve durum takibi; yetkisiz alıcının inceleme/onay yapamaması; onay öncesi `seller` claim/işlevi kazanılmaması; yetkili onaydan sonra rolün ve satıcı erişiminin etkili olması.
-- **Güvenlik/regresyon:** Hassas işletme verisinin log/API yanıtlarında sızmaması; alıcı kayıt, mevcut katalog ve admin ürün CRUD regresyonları.
+- **Keycloak entegrasyon:** Onay öncesi `seller` claim olmaması; rol atama başarısızlığında `approval_pending`/retry; tekrarın idempotent olması; başarılı atamadan sonra yeni token'da rolün görünmesi.
+- **Component:** Başvuru formu doğrulaması, durum ekranları, yükleme/başarı/hata, changes-requested düzenlemesi ve admin karar akışı.
+- **E2E:** Gerçek Keycloak buyer başvurur, mevcut admin inceler; gönderim/inceleme öncesi seller yetkisi yoktur; onaydan sonra yeni oturumda seller rolü görünür. Yetkisiz review ve onaysız seller erişimi reddedilir.
+- **Güvenlik/regresyon:** Kimlik/vergi/banka/belge verisi toplanmaması ve yanıt/loglarda credential sızmaması; buyer kayıt/login, ürün katalog ve admin CRUD regresyonları korunur.
 
-**Çıkış ölçütü:** İşletme başvurusu izlenebilir bir inceleme sürecinden geçer; onaysız kullanıcı satıcı yetkisi veya satıcı işlevleri kazanamaz.
+**İlerleme kontrol listesi**
+
+- [x] Başvuru şeması, durumlar, audit kaydı, API yetkilendirmesi ve migration.
+- [x] Admin onayı, Keycloak seller-role provisioning servisi ve seller ürün sahipliği backend kuralları.
+- [x] Buyer başvuru formu/durum paneli, admin review ekranı ve seller'ın sahip olduğu ürünler için CRUD kontrolleri.
+- [x] API, provisioning mock, migration upgrade/downgrade ve frontend component/API testleri.
+- [x] Gerçek Keycloak seller başvuru/onay E2E senaryosu yazıldı.
+- [x] Mevcut Keycloak realm'inde service account secret, service-account rolleri ve açık client-scope eşlemeleri güvenli biçimde yapılandırıldı; secret yalnızca ignored `apps/api/.env` içinde.
+- [x] Gerçek Keycloak E2E (buyer → admin review → seller role → yeni oturum → seller ürün yayını → buyer ortak katalog görünümü) geçti.
+- [x] Tam API/web regresyonu, %100 frontend coverage, lint, build, migration ve `git diff --check` çıkış kapıları geçti.
+
+**Çıkış ölçütü:** Başvuru ve admin kararları izlenebilir; Keycloak rol provisioning hataları başarı gibi gösterilmez; onaysız kullanıcı seller yetkisi kazanamaz. Bu dilim formal KYC/satış uygunluğu veya ödeme kabulü sağlamaz.
 
 ### Öncelik 3 — REQ-008: Admin rolü atama ve yönetici erişimi
 

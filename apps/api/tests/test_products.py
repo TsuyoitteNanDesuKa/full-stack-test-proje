@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -9,8 +9,8 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
-from shop_api.models import Product, User
-from shop_api.schemas import product_name_key
+from shop_api.models import Product, SellerApplication, User
+from shop_api.schemas import product_name_key, store_name_key
 
 PRODUCT_PAYLOAD = product_payload()
 
@@ -71,6 +71,7 @@ def test_admin_can_create_product_and_customer_can_list_it(
         **PRODUCT_PAYLOAD,
         "price": PRODUCT_PAYLOAD["price"],
         "updated_at": None,
+        "can_manage": True,
     }
 
     list_response = client.get(
@@ -80,7 +81,7 @@ def test_admin_can_create_product_and_customer_can_list_it(
 
     assert list_response.status_code == 200
     assert list_response.json() == {
-        "products": [created_product],
+        "products": [{**created_product, "can_manage": False}],
         "total": 1,
         "limit": 20,
         "offset": 0,
@@ -195,7 +196,9 @@ def test_customer_cannot_create_products(
     )
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "Bu işlem için yönetici yetkisi gereklidir."
+    assert response.json()["detail"] == (
+        "Bu işlem için onaylı satıcı veya yönetici yetkisi gereklidir."
+    )
     assert (
         client.get(
             "/api/v1/products",
@@ -298,7 +301,7 @@ def test_admin_can_update_all_product_fields_and_customers_see_the_updated_produ
     } == {**updated_payload, "price": f"{float(str(updated_payload['price'])):.2f}"}
     assert datetime.fromisoformat(updated_product["updated_at"])
     listed_product = client.get("/api/v1/products", headers=customer_headers).json()["products"][0]
-    assert listed_product == updated_product
+    assert listed_product == {**updated_product, "can_manage": False}
 
 
 def test_admin_can_update_product_without_changing_its_name(
@@ -660,3 +663,118 @@ def test_product_endpoints_reject_invalid_bearer_token(
         )
 
     assert response.status_code == 401
+
+
+def create_approved_seller_application(engine, subject: str, suffix: str) -> None:
+    now = datetime.now(UTC)
+    with sessionmaker(bind=engine, class_=Session)() as session:
+        session.add(
+            SellerApplication(
+                owner_subject=subject,
+                applicant_type="individual",
+                legal_name=f"Seller Owner {suffix}",
+                representative_name=None,
+                store_name=f"Store {suffix}",
+                store_name_key=store_name_key(f"Store {suffix}"),
+                contact_phone="+905551234567",
+                city="Istanbul",
+                district="Kadikoy",
+                primary_category="Home",
+                business_description=f"Seller products and catalog {suffix}",
+                status="approved",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        session.commit()
+
+
+def test_seller_without_approved_application_cannot_create_products(
+    client: TestClient,
+) -> None:
+    token = create_test_token(
+        client,
+        subject="unapproved-seller",
+        roles=["buyer", "seller"],
+    )
+    response = client.post(
+        "/api/v1/products",
+        json=product_payload(),
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 403
+    assert (
+        client.get(
+            "/api/v1/products",
+            headers={"Authorization": f"Bearer {token}"},
+        ).json()["total"]
+        == 0
+    )
+
+
+def test_seller_can_manage_only_owned_products_and_buyers_see_shared_catalog(
+    client: TestClient,
+    engine,
+) -> None:
+    create_approved_seller_application(engine, "seller-one", "One")
+    create_approved_seller_application(engine, "seller-two", "Two")
+    seller_one_token = create_test_token(
+        client,
+        subject="seller-one",
+        roles=["buyer", "seller"],
+    )
+    seller_two_token = create_test_token(
+        client,
+        subject="seller-two",
+        roles=["buyer", "seller"],
+    )
+    seller_one_headers = {"Authorization": f"Bearer {seller_one_token}"}
+    seller_two_headers = {"Authorization": f"Bearer {seller_two_token}"}
+    create_response = client.post(
+        "/api/v1/products",
+        json=product_payload(),
+        headers=seller_one_headers,
+    )
+    product = create_response.json()
+
+    assert create_response.status_code == 201
+    with sessionmaker(bind=engine, class_=Session)() as session:
+        stored_product = session.get(Product, product["id"])
+        assert stored_product is not None
+        assert stored_product.seller_subject == "seller-one"
+
+    buyer_token = create_test_token(client, subject="catalog-buyer", roles=["buyer"])
+    buyer_catalog = client.get(
+        "/api/v1/products",
+        headers={"Authorization": f"Bearer {buyer_token}"},
+    )
+    assert buyer_catalog.status_code == 200
+    assert buyer_catalog.json()["products"] == [{**product, "can_manage": False}]
+
+    another_seller_update = client.put(
+        f"/api/v1/products/{product['id']}",
+        json=product_payload(),
+        headers=seller_two_headers,
+    )
+    another_seller_delete = client.delete(
+        f"/api/v1/products/{product['id']}",
+        headers=seller_two_headers,
+    )
+    assert another_seller_update.status_code == 404
+    assert another_seller_delete.status_code == 404
+
+    updated_payload = product_payload()
+    update_response = client.put(
+        f"/api/v1/products/{product['id']}",
+        json=updated_payload,
+        headers=seller_one_headers,
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["name"] == updated_payload["name"]
+
+    delete_response = client.delete(
+        f"/api/v1/products/{product['id']}",
+        headers=seller_one_headers,
+    )
+    assert delete_response.status_code == 204

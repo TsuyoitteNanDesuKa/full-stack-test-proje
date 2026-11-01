@@ -49,7 +49,7 @@ function getErrorMessage(error: unknown, isEditing: boolean): string {
     return 'Oturum süren dolmuş. Çıkış yapıp yeniden giriş yap.'
   }
   if (error instanceof ApiError && error.status === 403) {
-    return 'Bu işlem için yönetici yetkisi gereklidir.'
+    return 'Bu işlem için onaylı satıcı veya yönetici hesabı gereklidir.'
   }
   if (error instanceof ApiError && error.status === 409) {
     return 'Bu ürün adı katalogda zaten kullanılıyor.'

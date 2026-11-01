@@ -2,16 +2,34 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   ApiError,
   createProduct,
+  createSellerApplication,
   deleteProduct,
   getCurrentUser,
   getHome,
+  getMySellerApplication,
   getProducts,
+  getSellerApplications,
+  reviewSellerApplication,
+  submitMySellerApplication,
   updateProduct,
+  updateMySellerApplication,
+  withdrawMySellerApplication,
 } from './api'
 import { createTestProduct, productRequest } from './test/testData'
 
 const apiTestProduct = createTestProduct()
 const apiTestProductRequest = productRequest(apiTestProduct)
+const sellerApplicationRequest = {
+  applicant_type: 'company' as const,
+  legal_name: 'Liva Kozmetik Ltd.',
+  representative_name: 'Enes Aysel',
+  store_name: 'Liva Care',
+  contact_phone: '05551234567',
+  city: 'İstanbul',
+  district: 'Kadıköy',
+  primary_category: 'Kişisel bakım',
+  business_description: 'Doğal bakım ürünleri',
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -246,5 +264,91 @@ describe('storefront API client', () => {
       status: 403,
       message: 'Bu işlem için yönetici yetkisi gereklidir.',
     } satisfies Partial<ApiError>)
+  })
+
+  it('creates a seller application draft with the authenticated buyer token', async () => {
+    const body = { ...sellerApplicationRequest, id: 12, status: 'draft' }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(body, 201))
+
+    await expect(
+      createSellerApplication('buyer-token', sellerApplicationRequest),
+    ).resolves.toEqual(body)
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/seller-applications',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: expect.stringContaining('buyer-token'),
+        }),
+        body: JSON.stringify(sellerApplicationRequest),
+      }),
+    )
+  })
+
+  it('loads the buyer application and sends update/submit/withdraw requests', async () => {
+    const application = { ...sellerApplicationRequest, id: 12, status: 'draft' }
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse(application))
+      .mockResolvedValueOnce(jsonResponse(application))
+      .mockResolvedValueOnce(jsonResponse({ ...application, status: 'submitted' }))
+      .mockResolvedValueOnce(jsonResponse({ ...application, status: 'withdrawn' }))
+
+    await expect(getMySellerApplication('buyer-token')).resolves.toEqual(application)
+    await expect(
+      updateMySellerApplication('buyer-token', sellerApplicationRequest),
+    ).resolves.toEqual(application)
+    await expect(submitMySellerApplication('buyer-token')).resolves.toMatchObject({
+      status: 'submitted',
+    })
+    await expect(withdrawMySellerApplication('buyer-token')).resolves.toMatchObject({
+      status: 'withdrawn',
+    })
+
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/seller-applications/me',
+      expect.objectContaining({ method: 'PUT' }),
+    )
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      '/api/v1/seller-applications/me/submit',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(fetch).toHaveBeenNthCalledWith(
+      4,
+      '/api/v1/seller-applications/me/withdraw',
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
+  it('loads seller applications and submits admin review decisions', async () => {
+    const application = {
+      ...sellerApplicationRequest,
+      id: 12,
+      status: 'under_review',
+      owner_subject: 'buyer-subject',
+      admin_note: null,
+      reviewer_subject: 'admin-subject',
+      reviewed_at: null,
+    }
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse([application]))
+      .mockResolvedValueOnce(jsonResponse({ ...application, status: 'approved' }))
+
+    await expect(getSellerApplications('admin-token')).resolves.toEqual([application])
+    await expect(
+      reviewSellerApplication('admin-token', 12, {
+        action: 'approve',
+        admin_note: 'Reviewed',
+      }),
+    ).resolves.toMatchObject({ status: 'approved' })
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/seller-applications/12/review',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ action: 'approve', admin_note: 'Reviewed' }),
+      }),
+    )
   })
 })

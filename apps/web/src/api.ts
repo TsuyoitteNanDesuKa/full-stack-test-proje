@@ -18,6 +18,7 @@ export interface Product {
   price: string
   stock: number
   updated_at: string | null
+  can_manage: boolean
 }
 
 export interface ProductListResponse {
@@ -33,6 +34,56 @@ export interface ProductCreateRequest {
   description: string
   price: string
   stock: number
+}
+
+export type SellerApplicantType = 'individual' | 'sole_proprietor' | 'company'
+export type SellerApplicationStatus =
+  | 'draft'
+  | 'submitted'
+  | 'under_review'
+  | 'changes_requested'
+  | 'approval_pending'
+  | 'approved'
+  | 'rejected'
+  | 'withdrawn'
+
+export interface SellerApplicationRequest {
+  applicant_type: SellerApplicantType
+  legal_name: string
+  representative_name: string | null
+  store_name: string
+  contact_phone: string
+  city: string
+  district: string
+  primary_category: string
+  business_description: string
+}
+
+export interface SellerApplication extends SellerApplicationRequest {
+  id: number
+  status: SellerApplicationStatus
+  applicant_note: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface AdminSellerApplication extends SellerApplication {
+  owner_subject: string
+  admin_note: string | null
+  reviewer_subject: string | null
+  reviewed_at: string | null
+}
+
+export type SellerApplicationReviewAction =
+  | 'begin_review'
+  | 'request_changes'
+  | 'reject'
+  | 'approve'
+
+export interface SellerApplicationReviewRequest {
+  action: SellerApplicationReviewAction
+  applicant_note?: string
+  admin_note?: string
 }
 
 interface ApiErrorBody {
@@ -124,4 +175,75 @@ export function deleteProduct(token: string, productId: number): Promise<void> {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   })
+}
+
+export function getMySellerApplication(
+  token: string,
+): Promise<SellerApplication | null> {
+  return request<SellerApplication | null>('/api/v1/seller-applications/me', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function createSellerApplication(
+  token: string,
+  application: SellerApplicationRequest,
+): Promise<SellerApplication> {
+  return request<SellerApplication>('/api/v1/seller-applications', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(application),
+  })
+}
+
+export function updateMySellerApplication(
+  token: string,
+  application: SellerApplicationRequest,
+): Promise<SellerApplication> {
+  return request<SellerApplication>('/api/v1/seller-applications/me', {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(application),
+  })
+}
+
+export function submitMySellerApplication(
+  token: string,
+): Promise<SellerApplication> {
+  return request<SellerApplication>('/api/v1/seller-applications/me/submit', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function withdrawMySellerApplication(
+  token: string,
+): Promise<SellerApplication> {
+  return request<SellerApplication>('/api/v1/seller-applications/me/withdraw', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function getSellerApplications(
+  token: string,
+): Promise<AdminSellerApplication[]> {
+  return request<AdminSellerApplication[]>('/api/v1/seller-applications', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function reviewSellerApplication(
+  token: string,
+  applicationId: number,
+  review: SellerApplicationReviewRequest,
+): Promise<AdminSellerApplication> {
+  return request<AdminSellerApplication>(
+    `/api/v1/seller-applications/${applicationId}/review`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(review),
+    },
+  )
 }
