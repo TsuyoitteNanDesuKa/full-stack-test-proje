@@ -411,7 +411,7 @@ Roller kullanıcı kategorilerini anlatır; satıcı organizasyonu ve birden faz
 
 **QA/güvenlik kararı:** Keycloak'ın varsayılan yinelenen kullanıcı/e-posta mesajı hesap keşfine (account enumeration) imkân verebildiğinden custom `liva` login theme ile genel hata mesajına dönüştürülmüştür. Bu davranış gerçek Keycloak E2E testiyle doğrulanır.
 
-**Sıralı kullanıcı yönetimi dilimleri:** Alıcı kayıt/login entegrasyonu ve test kapısı tamamlandı. REQ-007 satıcı başvurusu ve ilk manuel inceleme dilimi geliştirme aşamasındadır; tüm katmanların çıkış kapısı geçmeden REQ-008 admin rol atama akışına başlanmayacaktır.
+**Sıralı kullanıcı yönetimi dilimleri:** Alıcı kayıt/login (REQ-006) ve satıcı başvurusu (REQ-007) dilimleri tamamlandı. REQ-008 kapsamı, admin rolünün yalnızca güvenilir Keycloak Admin Console operatörünce yönetilmesi olarak kararlaştırıldı; uygulama içi admin yönetimi bu kapsamda değildir.
 
 ## REQ-007 — Satıcı başvurusu ve ilk inceleme
 
@@ -514,6 +514,36 @@ Keycloak erişim/rol atama hatasında işlem başarı gibi raporlanmaz; başvuru
 | REQ-007-T14 | Güvenlik/regresyon | Hassas alan sızıntısı ve mevcut buyer/CRUD akışları | Yanıt/loglarda credential veya toplanmayan belge/kimlik verisi yok; önceki kayıt ve ürün CRUD E2E'leri geçer |
 
 **Test katmanı izlenebilirliği:** `apps/api/tests/test_seller_applications.py` başvuru/karar API ve hata davranışlarını; `apps/api/tests/test_keycloak_admin.py` servis istemcisi rol provisioning davranışını; `apps/api/tests/test_seller_migration.py` migration upgrade/downgrade'ını; `apps/web/src/api.test.ts` HTTP sözleşmesini; `apps/web/src/App.test.tsx` başvuru/admin/seller arayüzü ve ürün sahipliği görünürlüğünü doğrular. `apps/web/e2e/seller-applications.spec.ts` gerçek Keycloak buyer başvurusunu, admin onayını, yeni oturumda buyer+seller rollerini, satıcının ürün oluşturmasını ve başka buyer'ın ortak katalogda ürünü salt-okunur görmesini doğrular. Gerçek Keycloak E2E ile mevcut buyer kayıt/login ve admin/buyer CRUD regresyonları geçti.
+
+## REQ-008 — Güvenilir kanaldan admin rolü yönetimi
+
+- **Öncelik:** P1
+- **Durum:** Tamamlandı; operasyon dokümantasyonu, realm audit ayarı ve API/config/E2E regresyonları doğrulandı.
+- **Kullanıcı hikâyesi:** Güvenilir platform operatörü, uygulama kullanıcılarının kendilerini admin'e yükseltemediğinden emin olarak admin erişimini kontrollü biçimde atayıp geri alabilmek istiyor.
+- **Kapsam kararı:** İlk admin'in bootstrap'i, sonraki admin rol ataması ve rolün kaldırılması yalnızca güvenilir operatörün Keycloak Admin Console işlemleridir. Mağaza UI'ında admin kullanıcı yönetimi ve admin rolü atayan/kaldıran uygulama API'si oluşturulmayacaktır.
+- **Son admin kuralı:** Admin rolü kaldırılmadan veya admin hesabı kapatılmadan önce başka bir etkin admin bulunduğu operatör tarafından doğrulanmalı; ayrı ve güvenli break-glass operatör hesabı korunmalıdır. Keycloak Admin Console bu son-admin kontrolünü kendiliğinden zorlamaz; bu dilimdeki kontrol operasyonel prosedürdür, otomatik teknik bloklama değildir.
+- **Audit:** Keycloak admin olayları açık olmalı; olay ayrıntıları/payload'ları kapalı tutulmalıdır. Kalıcı realm'lerde bu ayar ayrıca uygulanır ve olay kayıtlarına erişim kısıtlanır.
+
+### Kabul kriterleri
+
+1. İlk admin yalnızca Keycloak Admin Console'a erişimi olan güvenilir operatör tarafından atanır; uygulama/realm self-registration yeni kullanıcıya yalnızca `buyer` verir.
+2. Sonraki admin rolü verme ve geri alma işlemleri yalnızca Keycloak Admin Console'dan yapılır. Uygulama içinde rol yönetim ekranı veya admin-role mutation API'si bulunmaz.
+3. Admin rolü bir isteğin body/query/path alanıyla verilemez; buyer veya seller kendi token rolünü değiştiremez ve admin API'lerine yetkisiz erişim alamaz.
+4. Admin rolü geri alınan kullanıcı, yeni access token aldığında `admin` claim'ine sahip olmaz; mevcut token'ın süresi dolana/oturum yenilenene kadar eski claim davranışı ayrıca dikkate alınır.
+5. Admin rolü kaldırılmadan veya admin kullanıcısı devre dışı bırakılmadan önce başka etkin admin bulunduğu operatör kontrol listesiyle doğrulanır; ayrı break-glass erişimi korunur. Bu manuel prosedür, Keycloak'ın kendi teknik son-admin kilidi olarak sunulmaz.
+6. Keycloak admin-event kaydı açık, event detayları kapalıdır; rol atama/kaldırma olaylarının aktör ve olay türü kayıt altına alınabilir, gizli değerler olay detaylarına yazılmaz.
+7. Admin rolü olmayan kullanıcıların mevcut admin-only API işlemleri `403` döndürür; admin CRUD ve satıcı başvurusu onayının Keycloak admin rolü ile çalışması regresyon testleriyle korunur.
+
+### Geliştirme ve test planı
+
+- **Keycloak yapılandırma:** Realm export admin event kaydını açıp event detaylarını kapalı tutar. Persistent realm için Admin Console üzerinden uygulanacak adımlar belgelenir.
+- **Unit/config:** Realm testleri public kayıt varsayılanının yalnızca `buyer` olduğunu, `admin` rolünün varsayılan olmadığını ve admin-event ayarlarını doğrular.
+- **API/regresyon:** Admin olmayan kullanıcının admin ürün/başvuru-review işlemlerini yapamadığı mevcut API testleri korunur; kullanıcı girdisiyle rol yükseltme endpoint'i olmadığı doğrulanır.
+- **Keycloak entegrasyon/E2E:** Gerçek Keycloak test realm'inde güvenilir test bootstrap'i admin rolü atar; admin-only davranış doğrulanır. Rol kaldırılıp yeni oturum açıldığında admin erişimi kaybolur. Test kurulumu uygulama API'si üzerinden rol atama kabiliyeti eklemez.
+- **Operasyonel doğrulama:** İlk admin kurulumu, admin atama/kaldırma, son admin kontrolü ve break-glass hesabı için kısa runbook adımları dokümante edilir. Keycloak admin-event ekranında işlem ve operatörün görüldüğü hassas detay içermeyen kontrolle doğrulanır.
+- **Güvenlik:** Secret, token veya kullanıcı kimlik bilgileri test çıktısına/loglara düşmez; rol değişikliği için yeni token/oturum gerektiği belgelenir.
+
+**Çıkış ölçütü:** Admin yetkisi yalnızca güvenilir Keycloak yönetim kanalından verilir/alınır; public kayıttan rol yükseltilemez; admin olay kaydı hassas ayrıntı saklamadan etkin; son admin kontrolü açıkça operasyonel ve manuel olarak uygulanır; API ve Keycloak regresyonları geçer.
 
 ## İleri gereksinim adayları
 

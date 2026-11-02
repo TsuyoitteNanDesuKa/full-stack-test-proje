@@ -56,6 +56,14 @@ The former `POST /api/v1/auth/login` endpoint has been removed. The browser redi
 
 Buyer self-registration is enabled in the realm and new accounts receive only the default `buyer` role. Seller and admin assignment are not available through public registration. Seller approval preserves the buyer role and does not constitute formal KYC or sales/payment authorization. During local development only, an operator may assign `admin` from the Keycloak admin console.
 
+### Admin role operations (REQ-008)
+
+The first `admin` is bootstrapped manually by a trusted operator in the Keycloak Admin Console. Subsequent admin grants and revocations also happen only in that console; this application intentionally has no admin-role management API or UI. Do not grant the `admin` role through self-registration or a user-controlled request.
+
+Before removing an admin role or disabling/deleting an admin account, verify in the console that another active admin remains. Keycloak does not enforce this last-admin invariant automatically; retain a separately secured break-glass operator account and treat the active-admin check as a required operational step. If a stricter technical guarantee becomes necessary, role changes must move behind a controlled Keycloak management service rather than an unrestricted console workflow.
+
+The imported realm enables Keycloak admin-event recording without event details (`adminEventsEnabled=true`, `adminEventsDetailsEnabled=false`) so role changes can be audited without recording request payloads. For an existing persistent realm, configure the same options under Realm settings → Events → Admin events. Keep Keycloak's event database access and backups restricted; do not copy credentials or tokens into event notes.
+
 ## Tests and lint
 
 API tests use isolated SQLite databases and a test RSA/JWKS double. They cover access-token signature and claim validation, role enforcement, JWKS unavailability, seller application/review and provisioning behavior, migration rollback, storefront/product behavior, and imported realm settings.

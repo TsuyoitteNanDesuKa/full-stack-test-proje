@@ -58,7 +58,7 @@ uv run uvicorn shop_api.main:create_app --factory --reload
 
 Realm ve `shop-web` public OIDC istemcisi `infra/keycloak/realm-export.json` dosyasından ilk Keycloak başlangıcında içe aktarılır. Keycloak hazır olduğunda alıcı kayıt ve giriş ekranı `http://localhost:8080` üzerinden sunulur. `SHOP_OIDC_ISSUER` ve audience varsayılanları yerel realm ile eşleşir.
 
-Keycloak `liva` login theme'i `infra/keycloak/themes/liva` dizininden salt okunur bağlanır; yinelenen hesap hataları e-posta varlığını açıklamayan genel mesaj gösterir. Keycloak realm'i kalıcı Docker volume'ünde tutulur; sonraki başlangıçlarda realm import'u mevcut realm ayarlarını güncellemez. Önceden başlatılmış realm için Admin Console → Realm settings → Themes ekranından Login theme olarak `liva` seçip kaydedin. Volume'ü silmek test kullanıcılarını ve realm verisini de siler.
+Keycloak `liva` login theme'i `infra/keycloak/themes/liva` dizininden salt okunur bağlanır; yinelenen hesap hataları e-posta varlığını açıklamayan genel mesaj gösterir. Keycloak realm'i kalıcı Docker volume'ünde tutulur; sonraki başlangıçlarda realm import'u mevcut realm ayarlarını güncellemez. Önceden başlatılmış realm için Admin Console → Realm settings → Themes ekranından Login theme olarak `liva` seçip kaydedin; admin olay kaydını da açık ve olay detaylarını kapalı yapılandırın. Volume'ü silmek test kullanıcılarını ve realm verisini de siler.
 
 Satıcı onayında API'nin Keycloak service account üzerinden `seller` realm rolünü atayabilmesi gerekir. Yeni realm import'u `shop-api-admin` istemcisini ekler; kalıcı/önceden oluşturulmuş realm için istemci, secret, service-account rolleri ve açık client-scope eşlemeleri [API kurulum notlarında](./apps/api/README.md#seller-role-provisioning) açıklanmıştır. Service-account secret'ını yalnızca `apps/api/.env` içinde tutun.
 
@@ -69,7 +69,7 @@ Copy-Item .env.example .env
 npm run dev
 ```
 
-`http://localhost:5173` adresinde **Giriş yap** veya **Alıcı hesabı oluştur** seçilebilir. Uygulama parolayı almaz; Keycloak oturumundan dönen token'ı API'ye gönderir. Keycloak admin konsolu `http://localhost:8080/admin` adresindedir. Admin ürün işlemlerini yerel olarak denemek için bir test kullanıcısına `admin` realm rolünü yalnızca bu güvenilir konsoldan atayın; alıcılar kendileri rol yükseltemez. API dokümantasyonu `http://127.0.0.1:8000/docs` adresindedir. Ayrıntılar [backend README](./apps/api/README.md) ve [web README](./apps/web/README.md) içindedir.
+`http://localhost:5173` adresinde **Giriş yap** veya **Alıcı hesabı oluştur** seçilebilir. Uygulama parolayı almaz; Keycloak oturumundan dönen token'ı API'ye gönderir. Keycloak admin konsolu `http://localhost:8080/admin` adresindedir. İlk admin ve sonraki admin rol atama/geri alma işlemleri yalnızca güvenilir operatör tarafından bu konsoldan yapılır; uygulama içinde admin yönetim ekranı/API'si yoktur. Admin rolünü kaldırmadan veya hesabı kapatmadan önce başka etkin admin bulunduğunu doğrulayın; Keycloak bunu otomatik engellemez, break-glass operatör erişimini koruyun. API dokümantasyonu `http://127.0.0.1:8000/docs` adresindedir. Ayrıntılar [backend README](./apps/api/README.md) ve [web README](./apps/web/README.md) içindedir.
 
 ### Keycloak kayıt ve ürün CRUD E2E testleri
 

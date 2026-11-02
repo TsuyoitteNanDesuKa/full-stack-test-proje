@@ -49,6 +49,8 @@ def test_public_registration_grants_only_the_buyer_role_by_default() -> None:
 
     assert role_names == {"buyer", "seller", "admin"}
     assert realm["defaultRoles"] == ["buyer"]
+    assert realm["adminEventsEnabled"] is True
+    assert realm["adminEventsDetailsEnabled"] is False
 
 
 def test_seller_role_provisioner_is_a_confidential_service_account_client() -> None:

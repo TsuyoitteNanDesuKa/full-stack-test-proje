@@ -10,6 +10,8 @@
   "verifyEmail": false,
   "resetPasswordAllowed": false,
   "bruteForceProtected": true,
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": false,
   "defaultRoles": [
     "buyer"
   ],

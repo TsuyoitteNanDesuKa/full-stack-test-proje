@@ -253,23 +253,36 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 
 **Başlama koşulu:** REQ-007 satıcı başvurusu/işletme doğrulaması ve test kapısı tamamlanmış olmalı.
 
-**Amaç:** Platform yöneticisi rolü yalnızca yetkili ve denetlenebilir bir yönetim süreciyle atanabilsin; uygulama kullanıcısı kendi yetkisini yükseltemesin.
+**Amaç:** Platform yöneticisi rolü yalnızca güvenilir Keycloak operatörü tarafından atanıp geri alınabilsin; uygulama kullanıcısı kendi yetkisini yükseltemesin.
 
-- Güvenilir ilk admin bootstrap yöntemi ve sonrasındaki admin atama/geri alma workflow'unu ayrı gereksinimle tanımla.
-- Admin rolü self-registration, profil düzenleme, istemci isteği veya satıcı başvuru onayıyla kendiliğinden verilememeli.
-- Yetkili atama yapan aktör, hedef kullanıcı, rol değişikliği, zaman ve sonuç audit kaydına alınmalı.
-- Backend, tüm admin işlemlerinde Keycloak role claim'ini doğrulamaya devam etmeli.
+**Karar:** İlk admin bootstrap'i ve sonraki admin rolü atama/geri alma işlemleri yalnızca Keycloak Admin Console üzerinden yapılacak. Uygulama içi admin yönetim UI'ı veya admin-role mutation API'si geliştirilmeyecek. Son admin değişikliği öncesi etkin başka admin bulunduğu manuel kontrol edilecek; Keycloak bunu teknik olarak zorlamaz. Ayrı break-glass operatör hesabı korunacak.
+
+**Durum:** Tamamlandı; Keycloak admin-event kaydı, operasyon dokümantasyonu ve gerçek Keycloak E2E regresyonu doğrulandı.
+
+- REQ-008 kabul kriterleri ve operasyonel sınırlar `docs/requirements.md` içinde tutulur.
+- Realm admin event kaydı açık, event payload/detail kaydı kapalı olmalı; persistent Keycloak realm'e ayar ayrıca uygulanmalı.
+- Admin rolü public registration veya kullanıcı isteğiyle verilememeli; mevcut backend admin-only kontrolleri Keycloak claim'ini doğrulamaya devam etmeli.
+- İlk admin, son-admin kontrolü/break-glass ve rol geri alma adımları dokümante edilmelidir.
 
 **Geliştirme tamamlandıktan hemen sonra — test geliştirme planı:**
 
-- **Unit:** Atama/geri alma iş kuralları, rol sınırları, son aktif admin koruması ve audit olaylarının oluşturulması.
-- **API/entegrasyon:** Güvenilir admin atama/geri alma endpoint veya servis sözleşmesi; alıcının/satıcının rol atayamaması; sahte/eksik hedef, yetkisiz çağrı ve IdP hata yanıtlarında güvenli davranış.
-- **Keycloak entegrasyon:** İzole test realm'inde yalnızca güvenilir yönetim kanalının rol atayabildiği, kaldırabildiği ve token yenilendiğinde claim'in güncellendiği doğrulanmalı. Test admin hesabı otomatik ve tekrarlanabilir biçimde yalnızca test ortamında hazırlanmalı; sabit/üretim credential'ı kullanılmamalı.
-- **Component:** Admin kullanıcı/rol yönetim ekranında onay, hata, yükleme ve başarılı atama/geri alma görünümü; ayrıcalıksız kullanıcıya yönetim eylemi gösterilmemesi.
-- **E2E/regresyon:** Admin atama ve geri alma tarayıcıdan gerçek Keycloak/API ile doğrulanmalı. Aynı test diliminde önceki CRUD kapsamı geri eklenerek admin'in ürün ekleme, düzenleme ve silmesi; buyer'ın bu eylemleri görememesi ve API'de `403` alması uçtan uca doğrulanmalı.
-- **Güvenlik/audit:** Yetki yükseltme denemeleri, son admin'in kaldırılması, audit kaydının aktör/hedef/zaman/sonuç bilgisi ve sırların loglara yazılmaması.
+- **Unit/config:** Realm export'ta varsayılan rolün yalnızca `buyer`, admin'in varsayılan olmaması ve admin event/detail ayarları doğrulanmalı.
+- **API/entegrasyon:** Buyer/seller admin-only endpoint'lerde `403` almalı; rol yükseltme için uygulama API route'u bulunmamalı; mevcut admin izin testleri korunmalı.
+- **Keycloak entegrasyon:** İzole yerel realm'de güvenilir test bootstrap'i ile admin claim'i doğrulanmalı; rol kaldırıldıktan sonra yeni token/admin endpoint erişimi doğrulanmalı. Test kurulumu yalnızca test ortamında çalışmalı, credential'lar loglanmamalı.
+- **Component:** Uygulama admin rolü yönetimi sunmayacağı için admin atama/kaldırma component'i yoktur; admin yetkisi olmayan kullanıcıya admin UI eylemleri görünmemesi mevcut regresyonla doğrulanır.
+- **E2E/regresyon:** Gerçek Keycloak rolü ile admin ürün CRUD ve seller application review çalışmalı; buyer/seller için admin işlemleri UI ve API katmanında reddedilmeli.
+- **Operasyonel audit/güvenlik:** Keycloak admin event'lerinde aktör ve rol değişikliği görülebilmeli; detay kaydı kapalı olmalı. Admin rolü kaldırmadan önce başka etkin admin bulunduğu manuel kontrol edilmeli ve break-glass hesap korunmalı; Keycloak'ın otomatik son-admin kilidi sunduğu varsayılmamalı.
 
-**Çıkış ölçütü:** Admin yetkisi yalnızca güvenilir iş akışından verilir/alınır; her değişiklik denetlenebilir ve API'de etkili olur.
+**İlerleme kontrol listesi**
+
+- [x] Uygulama içi admin rol yönetimi kapsam dışı; Keycloak Console-only yönetim kararı netleştirildi.
+- [x] İlk admin Keycloak Console bootstrap'i, manuel son-admin kontrolü ve break-glass beklentisi belgelendi.
+- [x] Realm admin event kaydı açıldı; event detayları kapatıldı; config testi eklendi.
+- [x] Mevcut persistent Keycloak realm'inde admin event ayarları açıldı ve ayrıntı kaydı kapatıldı.
+- [x] Gerçek Keycloak rol kaldırma/yeni token ve admin endpoint regresyonu için E2E senaryosu eklendi.
+- [x] API testleri (166), Ruff, web lint/build, gerçek Keycloak E2E (7) ve `git diff --check` geçti.
+
+**Çıkış ölçütü:** Admin yetkisi yalnızca güvenilir Keycloak konsolundan verilir/alınır; public kayıtla rol yükseltilemez; admin olayları ayrıntısız kaydedilir; son-admin kontrolü ve break-glass prosedürü uygulanır; regresyon kapıları geçer.
 
 ### Öncelik 4 — REQ-009: Müşteri sepeti
 

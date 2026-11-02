@@ -13,6 +13,14 @@ interface KeycloakUser {
   id: string
 }
 
+interface KeycloakAdminEvent {
+  operationType?: string
+  resourcePath?: string
+  resourceType?: string
+  representation?: string | null
+  error?: string | null
+}
+
 interface KeycloakAdminAccess {
   apiUrl: string
   headers: { authorization: string }
@@ -24,6 +32,8 @@ interface TestAdmin {
   password: string
   cleanup: () => Promise<void>
   deleteUserByEmail: (email: string) => Promise<void>
+  revokeAdminRole: () => Promise<void>
+  hasAuditedAdminRoleRevocation: () => Promise<boolean>
 }
 
 function requireStatus(
@@ -102,7 +112,67 @@ async function connectToKeycloakAdmin(
     requireStatus(cleanupResponse.status(), 204, 'Removing a temporary Keycloak user')
   }
 
-  return { apiUrl, headers, deleteUserByEmail }
+  async function revokeRealmRoleByEmail(email: string, roleName: string): Promise<void> {
+    const usersResponse = await request.get(`${apiUrl}/users`, {
+      headers,
+      params: { email, exact: 'true' },
+    })
+    requireStatus(usersResponse.status(), 200, 'Finding a Keycloak user for role removal')
+    const users = (await usersResponse.json()) as KeycloakUser[]
+    if (users.length !== 1) {
+      throw new Error(
+        `Expected one Keycloak user for role removal; found ${users.length}.`,
+      )
+    }
+
+    const roleResponse = await request.get(`${apiUrl}/roles/${roleName}`, { headers })
+    requireStatus(roleResponse.status(), 200, `Reading the ${roleName} realm role`)
+    const role = (await roleResponse.json()) as KeycloakRole
+    const removalResponse = await request.delete(
+      `${apiUrl}/users/${users[0].id}/role-mappings/realm`,
+      { headers, data: [role] },
+    )
+    requireStatus(removalResponse.status(), 204, `Removing the ${roleName} realm role`)
+  }
+
+  async function hasAuditedRoleRevocation(
+    email: string,
+  ): Promise<boolean> {
+    const usersResponse = await request.get(`${apiUrl}/users`, {
+      headers,
+      params: { email, exact: 'true' },
+    })
+    requireStatus(usersResponse.status(), 200, 'Finding a Keycloak user for audit verification')
+    const users = (await usersResponse.json()) as KeycloakUser[]
+    if (users.length !== 1) {
+      throw new Error(
+        `Expected one Keycloak user for audit verification; found ${users.length}.`,
+      )
+    }
+
+    const eventsResponse = await request.get(`${apiUrl}/admin-events`, {
+      headers,
+      params: { max: '100' },
+    })
+    requireStatus(eventsResponse.status(), 200, 'Reading Keycloak admin events')
+    const events = (await eventsResponse.json()) as KeycloakAdminEvent[]
+    return events.some(
+      (event) =>
+        event.operationType === 'DELETE' &&
+        event.resourceType === 'REALM_ROLE_MAPPING' &&
+        event.resourcePath === `users/${users[0].id}/role-mappings/realm` &&
+        !event.error &&
+        !event.representation,
+    )
+  }
+
+  return {
+    apiUrl,
+    headers,
+    deleteUserByEmail,
+    revokeRealmRoleByEmail,
+    hasAuditedRoleRevocation,
+  }
 }
 
 export async function createKeycloakAdminClient(
@@ -160,5 +230,7 @@ export async function createKeycloakTestAdmin(
     password,
     cleanup: () => adminAccess.deleteUserByEmail(email),
     deleteUserByEmail: adminAccess.deleteUserByEmail,
+    revokeAdminRole: () => adminAccess.revokeRealmRoleByEmail(email, 'admin'),
+    hasAuditedAdminRoleRevocation: () => adminAccess.hasAuditedRoleRevocation(email),
   }
 }
