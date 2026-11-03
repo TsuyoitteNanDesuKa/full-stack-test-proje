@@ -381,7 +381,7 @@ def review_application(
         application.reviewed_at = datetime.now(UTC)
     else:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Başvuru kararı geçersiz.",
         )
 

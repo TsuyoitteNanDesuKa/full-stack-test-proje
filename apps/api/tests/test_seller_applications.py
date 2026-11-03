@@ -1,13 +1,17 @@
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 from conftest import create_test_token
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from shop_api.keycloak_admin import KeycloakProvisioningError
 from shop_api.models import SellerApplicationAudit
+from shop_api.routes.seller_applications import review_application
+from shop_api.schemas import SellerApplicationReviewRequest
 
 
 def application_payload(**overrides: object) -> dict[str, object]:
@@ -126,9 +130,85 @@ def test_only_authenticated_buyers_can_create_applications(client: TestClient) -
         json=application_payload(),
         headers=auth_headers(client, "support-user", ["support"]),
     )
+    seller_response = client.post(
+        "/api/v1/seller-applications",
+        json=application_payload(),
+        headers=auth_headers(client, "seller-user", ["seller"]),
+    )
 
     assert anonymous_response.status_code == 401
     assert non_buyer_response.status_code == 401
+    assert seller_response.status_code == 403
+
+
+def test_update_rejects_a_store_name_used_by_another_active_application(
+    client: TestClient,
+) -> None:
+    first_headers = auth_headers(client, "first-applicant")
+    second_headers = auth_headers(client, "second-applicant")
+    first_payload = application_payload(store_name="First Test Store")
+    second_payload = application_payload(store_name="Second Test Store")
+    first_application = client.post(
+        "/api/v1/seller-applications",
+        json=first_payload,
+        headers=first_headers,
+    )
+    client.post(
+        "/api/v1/seller-applications",
+        json=second_payload,
+        headers=second_headers,
+    )
+
+    response = client.put(
+        "/api/v1/seller-applications/me",
+        json={**first_payload, "store_name": "Second Test Store"},
+        headers=first_headers,
+    )
+
+    assert first_application.status_code == 201
+    assert response.status_code == 409
+    assert (
+        client.get("/api/v1/seller-applications/me", headers=first_headers).json()["store_name"]
+        == "First Test Store"
+    )
+
+
+def test_submit_and_withdraw_return_not_found_when_no_editable_application_exists(
+    client: TestClient,
+) -> None:
+    headers = auth_headers(client, "no-application")
+
+    submit_response = client.post("/api/v1/seller-applications/me/submit", headers=headers)
+    withdraw_response = client.post("/api/v1/seller-applications/me/withdraw", headers=headers)
+
+    assert submit_response.status_code == 404
+    assert withdraw_response.status_code == 404
+
+
+def test_buyer_can_withdraw_draft_and_cannot_submit_or_withdraw_it_again(
+    client: TestClient,
+) -> None:
+    headers = auth_headers(client, "withdrawing-applicant")
+    created = client.post(
+        "/api/v1/seller-applications",
+        json=application_payload(),
+        headers=headers,
+    )
+    application_id = created.json()["id"]
+
+    withdrawn = client.post("/api/v1/seller-applications/me/withdraw", headers=headers)
+    submit_again = client.post("/api/v1/seller-applications/me/submit", headers=headers)
+    withdraw_again = client.post("/api/v1/seller-applications/me/withdraw", headers=headers)
+
+    assert withdrawn.status_code == 200
+    assert withdrawn.json()["status"] == "withdrawn"
+    assert submit_again.status_code == 404
+    assert withdraw_again.status_code == 404
+    assert (
+        client.get("/api/v1/seller-applications/me", headers=headers).json()
+        is None
+    )
+    assert application_id == withdrawn.json()["id"]
 
 
 def test_admin_review_changes_and_approval_assigns_seller_role(
@@ -334,3 +414,95 @@ def test_invalid_review_transition_does_not_change_application(
         ).json()["status"]
         == "draft"
     )
+
+
+@pytest.mark.parametrize(
+    "action",
+    ["begin_review", "request_changes", "reject"],
+)
+def test_review_actions_reject_draft_applications(
+    client: TestClient,
+    action: str,
+) -> None:
+    buyer_headers = auth_headers(client, f"draft-{action}-applicant")
+    admin_headers = auth_headers(client, f"draft-{action}-reviewer", ["admin"])
+    application_id = client.post(
+        "/api/v1/seller-applications",
+        json=application_payload(),
+        headers=buyer_headers,
+    ).json()["id"]
+    payload: dict[str, str] = {"action": action}
+    if action in {"request_changes", "reject"}:
+        payload["applicant_note"] = "Please provide more application details."
+
+    response = client.post(
+        f"/api/v1/seller-applications/{application_id}/review",
+        json=payload,
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 409
+    assert (
+        client.get("/api/v1/seller-applications/me", headers=buyer_headers).json()["status"]
+        == "draft"
+    )
+
+
+def test_admin_can_reject_application_and_review_missing_application_is_not_found(
+    client: TestClient,
+) -> None:
+    buyer_headers = auth_headers(client, "rejected-applicant")
+    admin_headers = auth_headers(client, "rejecting-admin", ["admin"])
+    application_id = client.post(
+        "/api/v1/seller-applications",
+        json=application_payload(),
+        headers=buyer_headers,
+    ).json()["id"]
+    client.post("/api/v1/seller-applications/me/submit", headers=buyer_headers)
+    client.post(
+        f"/api/v1/seller-applications/{application_id}/review",
+        json={"action": "begin_review"},
+        headers=admin_headers,
+    )
+
+    rejected = client.post(
+        f"/api/v1/seller-applications/{application_id}/review",
+        json={
+            "action": "reject",
+            "applicant_note": "Please revise the application before applying again.",
+            "admin_note": "Required details were not provided.",
+        },
+        headers=admin_headers,
+    )
+    missing = client.post(
+        "/api/v1/seller-applications/999999/review",
+        json={"action": "approve"},
+        headers=admin_headers,
+    )
+
+    assert rejected.status_code == 200
+    assert rejected.json()["status"] == "rejected"
+    assert rejected.json()["applicant_note"] == (
+        "Please revise the application before applying again."
+    )
+    assert rejected.json()["admin_note"] == "Required details were not provided."
+    assert missing.status_code == 404
+
+
+def test_review_handler_rejects_an_invalid_internal_action_value() -> None:
+    class ExistingApplicationDatabase:
+        def get(self, _model: object, _application_id: int) -> SimpleNamespace:
+            return SimpleNamespace(status="draft")
+
+    payload = SellerApplicationReviewRequest.model_construct(action="unsupported")
+
+    with pytest.raises(HTTPException) as error:
+        review_application(
+            application_id=1,
+            payload=payload,
+            request=SimpleNamespace(),
+            admin=SimpleNamespace(subject="admin-user"),
+            db=ExistingApplicationDatabase(),
+        )
+
+    assert error.value.status_code == 422
