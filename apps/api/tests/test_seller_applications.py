@@ -204,10 +204,7 @@ def test_buyer_can_withdraw_draft_and_cannot_submit_or_withdraw_it_again(
     assert withdrawn.json()["status"] == "withdrawn"
     assert submit_again.status_code == 404
     assert withdraw_again.status_code == 404
-    assert (
-        client.get("/api/v1/seller-applications/me", headers=headers).json()
-        is None
-    )
+    assert client.get("/api/v1/seller-applications/me", headers=headers).json() is None
     assert application_id == withdrawn.json()["id"]
 
 
