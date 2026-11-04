@@ -1,9 +1,19 @@
 import { useEffect, useState } from 'react'
 import './App.css'
-import { deleteProduct, getCurrentUser, getHome, getProducts } from './api'
-import type { Product } from './api'
+import {
+  addCartItem,
+  deleteCartItem,
+  deleteProduct,
+  getCurrentUser,
+  getHome,
+  getMyCart,
+  getProducts,
+  updateCartItem,
+} from './api'
+import type { CartResponse, Product } from './api'
 import { beginLogin, beginRegistration, endSession, getCurrentSession } from './auth'
 import AdminSellerApplicationsPanel from './AdminSellerApplicationsPanel'
+import CartPanel from './CartPanel'
 import ProductCreatePage from './ProductCreatePage'
 import SellerApplicationPanel from './SellerApplicationPanel'
 
@@ -137,7 +147,16 @@ function HomePage({
   const [deletingProductId, setDeletingProductId] = useState<number | null>(null)
   const [deleteError, setDeleteError] = useState('')
   const [showSellerApplications, setShowSellerApplications] = useState(false)
+  const [cart, setCart] = useState<CartResponse | null>(null)
+  const [isCartLoading, setIsCartLoading] = useState(true)
+  const [cartLoadError, setCartLoadError] = useState('')
+  const [cartRetryCount, setCartRetryCount] = useState(0)
+  const [isCartOpen, setIsCartOpen] = useState(false)
+  const [isCartMutating, setIsCartMutating] = useState(false)
+  const [cartError, setCartError] = useState('')
+  const [addingProductId, setAddingProductId] = useState<number | null>(null)
   const canCreateProducts = isAdmin || roles.includes('seller')
+  const isBuyer = roles.includes('buyer')
 
   useEffect(() => {
     let active = true
@@ -167,10 +186,95 @@ function HomePage({
     }
   }, [retryCount, token])
 
+  useEffect(() => {
+    if (!isBuyer) {
+      return
+    }
+
+    let active = true
+    getMyCart(token)
+      .then((response) => {
+        if (active) {
+          setCart(response)
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setCartLoadError('Sepet yüklenemedi. Lütfen bağlantını kontrol edip tekrar dene.')
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setIsCartLoading(false)
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [cartRetryCount, isBuyer, token])
+
   const formatter = new Intl.NumberFormat('tr-TR', {
     style: 'currency',
     currency: 'TRY',
   })
+
+  function getCartErrorMessage(error: unknown): string {
+    if (error instanceof TypeError) {
+      return 'Sunucuya bağlanılamadı. Sepet işlemi tamamlanamadı.'
+    }
+    if (error instanceof Error && 'status' in error && error.status === 409) {
+      return 'İstenen miktar mevcut stoktan fazla. Sepetini ve ürün stoğunu kontrol et.'
+    }
+    if (error instanceof Error && 'status' in error && error.status === 404) {
+      return 'Ürün veya sepet satırı artık mevcut değil. Sepetini yenile.'
+    }
+    if (error instanceof Error && 'status' in error && error.status === 401) {
+      return 'Oturum süren dolmuş. Yeniden giriş yapıp tekrar dene.'
+    }
+    return 'Sepet işlemi tamamlanamadı. Lütfen tekrar dene.'
+  }
+
+  async function handleAddToCart(product: Product) {
+    setAddingProductId(product.id)
+    setCartError('')
+    try {
+      const updatedCart = await addCartItem(token, { product_id: product.id, quantity: 1 })
+      setCart(updatedCart)
+      setCartLoadError('')
+      setIsCartOpen(true)
+    } catch (error) {
+      setCartError(getCartErrorMessage(error))
+      setIsCartOpen(true)
+    } finally {
+      setAddingProductId(null)
+    }
+  }
+
+  async function handleCartUpdate(itemId: number, quantity: number) {
+    setIsCartMutating(true)
+    setCartError('')
+    try {
+      setCart(await updateCartItem(token, itemId, { quantity }))
+    } catch (error) {
+      setCartError(getCartErrorMessage(error))
+    } finally {
+      setIsCartMutating(false)
+    }
+  }
+
+  async function handleCartRemove(itemId: number) {
+    setIsCartMutating(true)
+    setCartError('')
+    try {
+      await deleteCartItem(token, itemId)
+      setCart(await getMyCart(token))
+    } catch (error) {
+      setCartError(getCartErrorMessage(error))
+    } finally {
+      setIsCartMutating(false)
+    }
+  }
 
   async function handleDeleteProduct(product: Product) {
     if (
@@ -257,6 +361,23 @@ function HomePage({
           Çıkış yap <span aria-hidden="true">↗</span>
         </button>
       </header>
+      {isBuyer && (
+        <CartPanel
+          cart={cart}
+          error={cartError || cartLoadError}
+          isLoading={isCartLoading}
+          isMutating={isCartMutating}
+          isOpen={isCartOpen}
+          onRemove={handleCartRemove}
+          onRetry={() => {
+            setIsCartLoading(true)
+            setCartLoadError('')
+            setCartRetryCount((count) => count + 1)
+          }}
+          onToggle={() => setIsCartOpen((open) => !open)}
+          onUpdate={handleCartUpdate}
+        />
+      )}
       {sessionError && (
         <p className="products-error" role="alert">{sessionError}</p>
       )}
@@ -339,6 +460,7 @@ function HomePage({
                   <th scope="col">Açıklama</th>
                   <th scope="col">Fiyat</th>
                   <th scope="col">Stok</th>
+                  {isBuyer && <th scope="col">Sepet</th>}
                   {canCreateProducts && <th scope="col">İşlem</th>}
                 </tr>
               </thead>
@@ -361,6 +483,23 @@ function HomePage({
                     <td className="product-description">{product.description}</td>
                     <td className="product-price">{formatter.format(Number(product.price))}</td>
                     <td>{product.stock}</td>
+                    {isBuyer && (
+                      <td>
+                        <button
+                          aria-label={`Sepete ekle ${product.name}`}
+                          className="add-cart-item-button"
+                          disabled={product.stock < 1 || addingProductId === product.id}
+                          onClick={() => void handleAddToCart(product)}
+                          type="button"
+                        >
+                          {addingProductId === product.id
+                            ? 'Ekleniyor...'
+                            : product.stock < 1
+                              ? 'Stokta yok'
+                              : 'Sepete ekle'}
+                        </button>
+                      </td>
+                    )}
                     {canCreateProducts && (
                       <td>
                         {(isAdmin || product.can_manage) && (

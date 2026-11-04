@@ -7,11 +7,11 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from shop_api.config import Settings
+from shop_api.database import create_database_engine
 from shop_api.main import create_app
 from shop_api.models import Base, User
 
@@ -30,7 +30,7 @@ class StaticJwksClient:
 @pytest.fixture
 def engine(tmp_path) -> Iterator[Engine]:
     database_path = tmp_path / "test.db"
-    test_engine = create_engine(f"sqlite:///{database_path}")
+    test_engine = create_database_engine(f"sqlite:///{database_path}")
     Base.metadata.create_all(test_engine)
     yield test_engine
     test_engine.dispose()

@@ -739,6 +739,141 @@
   letter-spacing: -0.8px;
 }
 
+.cart-section {
+  width: min(100%, 1120px);
+  margin: 12px auto 28px;
+  text-align: right;
+}
+
+.cart-toggle {
+  padding: 9px 13px;
+  border: 1px solid #dfe5da;
+  border-radius: 4px;
+  background: #fff;
+  color: #49624d;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.cart-toggle:hover {
+  background: #f5f6f1;
+}
+
+.cart-panel {
+  margin-top: 12px;
+  padding: clamp(18px, 3vw, 28px);
+  border: 1px solid #e6e8df;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 92%);
+  text-align: left;
+}
+
+.cart-panel-heading,
+.cart-item-heading,
+.cart-subtotal {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.cart-panel-heading h2 {
+  margin: 7px 0 0;
+  color: #2e4433;
+  font-family: var(--serif);
+  font-size: 25px;
+  font-weight: 500;
+}
+
+.cart-items {
+  display: grid;
+  gap: 12px;
+  margin: 20px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cart-item {
+  padding: 16px;
+  border: 1px solid #e6e8df;
+  border-radius: 5px;
+  background: #fff;
+}
+
+.cart-item h3 {
+  margin: 0;
+  color: #354a38;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.cart-item-price,
+.cart-subtotal strong {
+  color: #3d5a41;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cart-item-unavailable,
+.cart-error {
+  margin: 10px 0 0;
+  color: #9a5144;
+  font-size: 11px;
+}
+
+.cart-item-actions {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 14px;
+}
+
+.cart-item-actions label {
+  display: grid;
+  gap: 5px;
+  color: #657160;
+  font-size: 10px;
+}
+
+.cart-item-actions input {
+  width: 76px;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 1px solid #e1e5dc;
+  border-radius: 4px;
+  color: #354638;
+  font: inherit;
+}
+
+.cart-item-actions input:disabled {
+  background: #f3f4f0;
+}
+
+.cart-item-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.cart-subtotal {
+  padding-top: 16px;
+  border-top: 1px solid #e6e8df;
+  color: #657160;
+  font-size: 12px;
+}
+
+.cart-price-note {
+  margin: 9px 0 0;
+  color: #8a9286;
+  font-size: 10px;
+}
+
+.cart-empty {
+  margin: 22px auto 0;
+  text-align: center;
+}
+
 .seller-panel {
   width: min(100%, 1120px);
   margin: 28px auto 42px;
@@ -1209,6 +1344,15 @@
   .products-heading-row {
     align-items: start;
     flex-wrap: wrap;
+  }
+
+  .cart-section {
+    margin-bottom: 20px;
+    text-align: left;
+  }
+
+  .cart-item-actions {
+    align-items: stretch;
   }
 
   .seller-application-form,

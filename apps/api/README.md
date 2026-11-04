@@ -49,6 +49,7 @@ uv run uvicorn shop_api.main:create_app --factory --reload
 - Current identity: `GET /api/v1/auth/me` (Keycloak bearer token required)
 - Protected home: `GET /api/v1/home`
 - Product listing: `GET /api/v1/products?limit=20&offset=0` (authenticated)
+- Buyer cart: `GET /api/v1/cart`, `POST /api/v1/cart/items`, `PUT /api/v1/cart/items/{item_id}`, and `DELETE /api/v1/cart/items/{item_id}`. Cart ownership comes from the validated Keycloak subject; item mutations check current product stock and return current catalog prices.
 - Seller applications: buyer self-service routes under `/api/v1/seller-applications`; review routes require admin
 - Product create/update/delete: admin can manage all products; an approved seller can manage only their own products
 
@@ -66,7 +67,7 @@ The imported realm enables Keycloak admin-event recording without event details 
 
 ## Tests and lint
 
-API tests use isolated SQLite databases and a test RSA/JWKS double. They cover access-token signature and claim validation, role enforcement, JWKS unavailability, seller application/review and provisioning behavior, migration rollback, storefront/product behavior, and imported realm settings.
+API tests use isolated SQLite databases and a test RSA/JWKS double. They cover access-token signature and claim validation, role enforcement, JWKS unavailability, buyer cart ownership and stock behavior, deleted products, cart migration rollback, seller application/review and provisioning behavior, storefront/product behavior, and imported realm settings.
 
 ```powershell
 uv run pytest

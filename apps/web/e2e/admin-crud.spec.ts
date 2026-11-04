@@ -244,8 +244,10 @@ test.describe('REQ-003/004/005/006 admin product CRUD regression', () => {
       )
       expect(preservedProductResponse.status()).toBe(200)
       const preservedProducts = (await preservedProductResponse.json()).products
-      expect(preservedProducts).toHaveLength(1)
-      expect(preservedProducts[0]).toMatchObject({
+      const preservedProduct = preservedProducts.find(
+        (product: { id: number }) => product.id === createdProduct.id,
+      )
+      expect(preservedProduct).toMatchObject({
         ...productRequest(updatedProduct),
       })
 
@@ -269,7 +271,9 @@ test.describe('REQ-003/004/005/006 admin product CRUD regression', () => {
         { headers: { authorization: adminToken } },
       )
       expect(finalProductResponse.status()).toBe(200)
-      expect((await finalProductResponse.json()).products).toEqual([])
+      const finalProducts = (await finalProductResponse.json()).products
+      expect(finalProducts.some((product: { id: number }) => product.id === createdProduct.id))
+        .toBe(false)
     } finally {
       try {
         await buyerContext.close()

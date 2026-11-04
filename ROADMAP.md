@@ -288,20 +288,31 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 
 **Amaç:** Giriş yapmış müşteri ürünleri sepete ekleyebilsin, miktarı değiştirebilsin ve sepetten çıkarabilsin.
 
-- Ürün ve miktarı içeren kullanıcıya ait sepet/kalem modeli; miktar pozitif tam sayı olmalı.
-- Sepete ekleme, güncelleme ve silme API'leri; kullanıcı yalnızca kendi sepetini değiştirebilmeli.
-- Ürün bulunamama, sıfır/negatif/kesirli miktar, stok sınırını aşma, başka kullanıcının sepetine erişme ve eşzamanlı stok değişimi negatif koşulları tanımlanmalı.
-- UI'da sepet özeti ve boş/yükleniyor/hata durumları; katalogdan sepete ekleme ile miktar ve kaldırma akışı.
+**Kararlar:** Sepet Keycloak subject'iyle kullanıcıya bağlanır. Ürünü tekrar eklemek miktarı artırır; sepet güncel katalog fiyatını gösterir ve checkout'ta yeniden doğrular; her ekleme/güncelleme güncel stoğa göre kontrol edilir. Ürün silinince satır korunur, kullanılamaz görünür ve yalnızca kaldırılabilir.
 
-**Geliştirme tamamlandıktan hemen sonra — test geliştirme planı:**
+**Durum:** Backend, UI, migration ve katmanlı regresyon testleri tamamlandı. Backend 212 test ve %99,47 coverage; frontend 128 test ve tüm ölçümlerde %100 coverage; gerçek Keycloak E2E 8/8 geçti. PostgreSQL üzerinde eşzamanlı sepet mutation davranışının doğrulanması açık QA maddesidir.
 
-- **Unit:** Miktar, stok, fiyat/özet hesapları ve sepet iş kuralları; sınır değerleri.
-- **API/entegrasyon:** Ekle/güncelle/sil/listele; anonim erişim; başka kullanıcının sepeti; bulunmayan/silinmiş ürün; invalid miktar; duplicate kalem ve stok değişimi.
-- **DB/migration:** Kullanıcı-sepet-ürün ilişkileri, kısıtlar, migration upgrade/downgrade, transaction ve eşzamanlı güncellemeler.
-- **Component:** Katalogdan ekleme, sepet özeti, miktar güncelleme/kaldırma, boş/yükleniyor/hata ve API yanıtlarının UI'ya yansıması.
-- **E2E:** Buyer'ın gerçek akışta ürünü sepete ekleyip değiştirmesi/kaldırması; başka kullanıcı verisinin görünmemesi ve kritik yolun yenileme sonrası tutarlılığı.
+- Buyer-only API'de sepet sahibi istemciden alınmamalı; her kullanıcı sadece kendi sepetini okuyup değiştirebilmelidir.
+- Ürün/miktar doğrulaması, tekrar eklemede miktar artırma ve güncel stok kontrolü backend'de atomik olmalıdır.
+- Ürün silme, cart item'ı korumalı ve ürün referansını boşaltmalıdır; son bilinen ürün adı gösterilebilmelidir.
+- UI'da katalogdan ekleme, sepet özeti, miktar değişikliği ve kaldırma; boş/yükleniyor/hata/stok uyuşmazlığı durumları ele alınmalıdır.
 
-**Çıkış ölçütü:** Müşteri kendi sepetini güvenilir biçimde düzenler; hatalı veya yetkisiz değişiklikler kalıcılaşmaz; stok ve miktar kuralları backend'de atomik olarak korunur.
+**Geliştirme ve test planı:**
+
+- **Unit/şema:** Katı pozitif tam sayı miktarı, güncel fiyat/ara toplam/uygunluk hesapları ve silinmiş ürün temsili.
+- **API/entegrasyon:** Listele/ekle/tekrar ekle/güncelle/sil; anonim ve buyer olmayan kullanıcı; başka kullanıcı kalemi; olmayan/silinmiş ürün; invalid miktar; stok/fiyat değişikliği; başarısız işlemde rollback.
+- **DB/migration:** Benzersiz cart-owner ve cart/product ilişkileri, miktar ve FK kısıtları; upgrade/downgrade; ürün silinince satırın korunması; eşzamanlı mutation kontrolleri.
+- **Component:** Katalogdan ekleme, sepet özeti, güncelleme/kaldırma ve boş/yükleniyor/hata/stok çakışması durumları.
+- **E2E:** Gerçek Keycloak alıcısı ürün ekler, miktarı değiştirip kaldırır; ikinci kullanıcı ilk kullanıcının sepetini göremez; yenileme sonrası kalıcılık ve ürün silinmesi sonrası kullanılamaz satır doğrulanır.
+
+**İlerleme kontrol listesi**
+
+- [x] Backend API, modeller, migration, sahiplik/stok kuralları ve API/DB testleri tamamlandı.
+- [x] Web sepet akışı ve hata/yükleme/boş/stok durumları component testleriyle doğrulandı; frontend coverage tüm ölçümlerde %100.
+- [x] Backend regresyonu ve coverage, Ruff/format, web lint/build ve gerçek Keycloak E2E kalite kapıları geçti.
+- [ ] PostgreSQL üzerinde eşzamanlı sepet mutation ve stok kontrolü doğrulanmalı; SQLite testleri `SELECT ... FOR UPDATE` kilit davranışını kanıtlamaz.
+
+**Çıkış ölçütü:** Alıcı yalnızca kendi sepetini düzenler; hatalı, stok dışı veya yetkisiz mutation kalıcılaşmaz; API, UI, migration ve regresyon testleri geçer. PostgreSQL eşzamanlılık doğrulaması tamamlanmadan bu gereksinimin tüm QA maddeleri kapatılmış sayılmaz.
 
 ### Öncelik 5 — REQ-010: Sipariş oluşturma
 

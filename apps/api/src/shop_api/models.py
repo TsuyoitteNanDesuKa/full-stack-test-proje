@@ -9,6 +9,7 @@ from sqlalchemy import (
     Index,
     Numeric,
     String,
+    UniqueConstraint,
     false,
     text,
 )
@@ -145,3 +146,37 @@ class SellerApplicationAudit(Base):
     from_status: Mapped[str] = mapped_column(String(32), nullable=False)
     to_status: Mapped[str] = mapped_column(String(32), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class Cart(Base):
+    __tablename__ = "carts"
+    __table_args__ = (UniqueConstraint("owner_subject", name="uq_carts_owner_subject"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class CartItem(Base):
+    __tablename__ = "cart_items"
+    __table_args__ = (
+        CheckConstraint("quantity BETWEEN 1 AND 999999", name="ck_cart_items_quantity_range"),
+        UniqueConstraint("cart_id", "product_id", name="uq_cart_items_cart_product"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cart_id: Mapped[int] = mapped_column(
+        ForeignKey("carts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    product_id: Mapped[int | None] = mapped_column(
+        ForeignKey("products.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    product_name: Mapped[str] = mapped_column(String(32), nullable=False)
+    quantity: Mapped[int] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

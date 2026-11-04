@@ -1,0 +1,167 @@
+import { expect, test } from '@playwright/test'
+import type { Page, Response } from '@playwright/test'
+import { createTestProduct } from '../src/test/testData'
+import { createKeycloakAdminClient, createKeycloakTestAdmin } from './keycloakAdmin'
+
+const keycloakE2EEnabled = process.env.E2E_KEYCLOAK_E2E === '1'
+
+function createBuyerCredentials() {
+  const uniqueId = `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`
+  return {
+    email: `cart-buyer-${uniqueId}@example.com`,
+    password: `LivaE2E-${uniqueId}!Aa`,
+  }
+}
+
+async function registerBuyer(
+  page: Page,
+  email: string,
+  password: string,
+): Promise<Response> {
+  await page.goto('/')
+  await page.getByRole('button', { name: /alıcı hesabı oluştur/i }).click()
+  await expect(page).toHaveURL(/localhost:8080/)
+  await page.getByRole('link', { name: 'Register' }).click()
+  await page.locator('#firstName').fill('Test')
+  await page.locator('#lastName').fill('Cart Buyer')
+  await page.locator('#email').fill(email)
+  const username = page.locator('#username')
+  if (await username.count()) await username.fill(email)
+  await page.locator('#password').fill(password)
+  await page.locator('#password-confirm').fill(password)
+
+  const identityResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/v1/auth/me') &&
+      response.request().method() === 'GET',
+  )
+  await page.locator('#kc-register-form input[type="submit"]').click()
+  return identityResponse
+}
+
+async function login(page: Page, email: string, password: string): Promise<Response> {
+  await page.goto('/')
+  await page.getByRole('button', { name: /giriş yap/i }).click()
+  await expect(page).toHaveURL(/localhost:8080/)
+  await page.locator('#username').fill(email)
+  await page.locator('#password').fill(password)
+
+  const identityResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/v1/auth/me') &&
+      response.request().method() === 'GET',
+  )
+  await page.getByRole('button', { name: 'Sign In' }).click()
+  return identityResponse
+}
+
+async function createProduct(page: Page, product: ReturnType<typeof createTestProduct>) {
+  await page.getByRole('button', { name: '+ Ürün ekle' }).click()
+  await page.getByLabel('Ürün adı').fill(product.name)
+  await page.getByLabel('Kategori').fill(product.category)
+  await page.getByLabel('Açıklama').fill(product.description)
+  await page.getByLabel('Fiyat (TL)').fill(product.price)
+  await page.getByLabel('Stok adedi').fill(String(product.stock))
+  const createResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/v1/products') &&
+      response.request().method() === 'POST',
+  )
+  await page.getByRole('button', { name: 'Ürünü kaydet' }).click()
+  return createResponse
+}
+
+test.describe('REQ-009 customer cart', () => {
+  test.skip(
+    !keycloakE2EEnabled,
+    'Set E2E_KEYCLOAK_E2E=1 and configure the local Keycloak admin credentials.',
+  )
+
+  test('buyer manages a persistent private cart and can remove a deleted product', async ({
+    browser,
+    page: adminPage,
+    request,
+  }) => {
+    test.setTimeout(120_000)
+    const admin = await createKeycloakTestAdmin(request)
+    const firstBuyerContext = await browser.newContext()
+    const firstBuyerPage = await firstBuyerContext.newPage()
+    const secondBuyerContext = await browser.newContext()
+    const secondBuyerPage = await secondBuyerContext.newPage()
+    const firstBuyer = createBuyerCredentials()
+    const secondBuyer = createBuyerCredentials()
+    const product = createTestProduct({ stock: 5, price: '12.50' })
+
+    try {
+      const adminLogin = await login(adminPage, admin.email, admin.password)
+      expect(adminLogin.status()).toBe(200)
+      const productResponse = await createProduct(adminPage, product)
+      expect(productResponse.status()).toBe(201)
+      const createdProduct = (await productResponse.json()) as { id: number }
+
+      const firstRegistration = await registerBuyer(
+        firstBuyerPage,
+        firstBuyer.email,
+        firstBuyer.password,
+      )
+      expect(firstRegistration.status()).toBe(200)
+      expect((await firstRegistration.json()).roles).toContain('buyer')
+      await firstBuyerPage.getByRole('button', {
+        name: `Sepete ekle ${product.name}`,
+      }).click()
+      await expect(firstBuyerPage.getByRole('heading', { name: 'Sepetim' })).toBeVisible()
+      const quantity = firstBuyerPage.getByRole('spinbutton', {
+        name: `Miktar: ${product.name}`,
+      })
+      await quantity.fill('2')
+      await firstBuyerPage.getByRole('button', { name: 'Miktarı güncelle' }).click()
+      await expect(firstBuyerPage.getByRole('button', { name: 'Sepet (2)' })).toBeVisible()
+
+      await firstBuyerPage.reload()
+      await expect(firstBuyerPage.getByRole('button', { name: 'Sepet (2)' })).toBeVisible()
+      await firstBuyerPage.getByRole('button', { name: 'Sepet (2)' }).click()
+      await expect(
+        firstBuyerPage.getByRole('spinbutton', { name: `Miktar: ${product.name}` }),
+      ).toHaveValue('2')
+
+      const secondRegistration = await registerBuyer(
+        secondBuyerPage,
+        secondBuyer.email,
+        secondBuyer.password,
+      )
+      expect(secondRegistration.status()).toBe(200)
+      await expect(secondBuyerPage.getByRole('button', { name: 'Sepet (0)' })).toBeVisible()
+      await secondBuyerPage.getByRole('button', { name: 'Sepet (0)' }).click()
+      await expect(secondBuyerPage.getByText('Sepetin henüz boş.')).toBeVisible()
+
+      adminPage.on('dialog', (dialog) => dialog.accept())
+      const deleteResponse = adminPage.waitForResponse(
+        (response) =>
+          response.url().endsWith(`/api/v1/products/${createdProduct.id}`) &&
+          response.request().method() === 'DELETE',
+      )
+      await adminPage.getByRole('button', { name: `Sil ${product.name}` }).click()
+      expect((await deleteResponse).status()).toBe(204)
+
+      await firstBuyerPage.reload()
+      await firstBuyerPage.getByRole('button', { name: 'Sepet (2)' }).click()
+      await expect(firstBuyerPage.getByText('Ürün artık mevcut değil.')).toBeVisible()
+      await firstBuyerPage.getByRole('button', { name: 'Sepetten kaldır' }).click()
+      await expect(firstBuyerPage.getByText('Sepetin henüz boş.')).toBeVisible()
+    } finally {
+      try {
+        const keycloakAdmin = await createKeycloakAdminClient(request)
+        await Promise.all([
+          keycloakAdmin.deleteUserByEmail(firstBuyer.email),
+          keycloakAdmin.deleteUserByEmail(secondBuyer.email),
+        ])
+      } finally {
+        try {
+          await admin.cleanup()
+        } finally {
+          await Promise.all([firstBuyerContext.close(), secondBuyerContext.close()])
+        }
+      }
+    }
+  })
+})

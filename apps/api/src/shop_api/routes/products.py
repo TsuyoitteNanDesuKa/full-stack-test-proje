@@ -2,13 +2,13 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from shop_api.database import get_db
 from shop_api.dependencies import get_current_user
-from shop_api.models import Product, SellerApplication
+from shop_api.models import CartItem, Product, SellerApplication
 from shop_api.schemas import (
     ProductCreateRequest,
     ProductListResponse,
@@ -148,6 +148,9 @@ def delete_product(
             detail="Ürün bulunamadı.",
         )
 
+    db.execute(
+        update(CartItem).where(CartItem.product_id == product.id).values(product_name=product.name)
+    )
     db.delete(product)
     db.commit()
 

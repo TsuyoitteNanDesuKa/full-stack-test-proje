@@ -235,3 +235,28 @@ class ProductListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class CartAddItemRequest(BaseModel):
+    product_id: int = Field(ge=1, strict=True)
+    quantity: int = Field(ge=1, le=999999, strict=True)
+
+
+class CartUpdateItemRequest(BaseModel):
+    quantity: int = Field(ge=1, le=999999, strict=True)
+
+
+class CartItemResponse(BaseModel):
+    id: int
+    product_id: int | None
+    product_name: str
+    unit_price: Decimal | None
+    quantity: int
+    available_stock: int | None
+    is_available: bool
+    line_total: Decimal | None
+
+
+class CartResponse(BaseModel):
+    items: list[CartItemResponse]
+    subtotal: Decimal

@@ -1,16 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  addCartItem,
   ApiError,
   createProduct,
   createSellerApplication,
+  deleteCartItem,
   deleteProduct,
   getCurrentUser,
   getHome,
+  getMyCart,
   getMySellerApplication,
   getProducts,
   getSellerApplications,
   reviewSellerApplication,
   submitMySellerApplication,
+  updateCartItem,
   updateProduct,
   updateMySellerApplication,
   withdrawMySellerApplication,
@@ -153,6 +157,59 @@ describe('storefront API client', () => {
       '/api/v1/products?limit=20&offset=0',
       expect.any(Object),
     )
+  })
+
+  it('loads the signed-in buyer cart with an authorization header', async () => {
+    const cart = { items: [], subtotal: '0.00' }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(cart))
+
+    await expect(getMyCart('buyer-token')).resolves.toEqual(cart)
+    expect(fetch).toHaveBeenCalledWith('/api/v1/cart', expect.any(Object))
+    expect(vi.mocked(fetch).mock.calls[0]?.[1]?.headers).toHaveProperty('Authorization')
+  })
+
+  it('adds and updates cart quantities', async () => {
+    const cart = { items: [], subtotal: '0.00' }
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse(cart))
+      .mockResolvedValueOnce(jsonResponse(cart))
+
+    await expect(
+      addCartItem('buyer-token', { product_id: 42, quantity: 2 }),
+    ).resolves.toEqual(cart)
+    await expect(
+      updateCartItem('buyer-token', 7, { quantity: 3 }),
+    ).resolves.toEqual(cart)
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      '/api/v1/cart/items',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ product_id: 42, quantity: 2 }),
+      }),
+    )
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/cart/items/7',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({ quantity: 3 }),
+      }),
+    )
+    for (const [, init] of vi.mocked(fetch).mock.calls) {
+      expect(init?.headers).toHaveProperty('Authorization')
+    }
+  })
+
+  it('removes a cart item and accepts the empty response', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 204 }))
+
+    await expect(deleteCartItem('buyer-token', 7)).resolves.toBeUndefined()
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/cart/items/7',
+      expect.objectContaining({ method: 'DELETE' }),
+    )
+    expect(vi.mocked(fetch).mock.calls[0]?.[1]?.headers).toHaveProperty('Authorization')
   })
 
   it('preserves product endpoint failures for the caller', async () => {

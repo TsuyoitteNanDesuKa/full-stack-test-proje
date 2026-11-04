@@ -545,6 +545,48 @@ Keycloak erişim/rol atama hatasında işlem başarı gibi raporlanmaz; başvuru
 
 **Çıkış ölçütü:** Admin yetkisi yalnızca güvenilir Keycloak yönetim kanalından verilir/alınır; public kayıttan rol yükseltilemez; admin olay kaydı hassas ayrıntı saklamadan etkin; son admin kontrolü açıkça operasyonel ve manuel olarak uygulanır; API ve Keycloak regresyonları geçer.
 
+## REQ-009 — Müşteri sepeti
+
+- **Öncelik:** P1
+- **Durum:** Backend, UI, migration ve katmanlı testler tamamlandı. Backend'de 212 test, frontend'de 128 test geçti; backend coverage %99,47, frontend coverage tüm ölçümlerde %100. Gerçek Keycloak E2E senaryoları 8/8 geçti. PostgreSQL üzerinde eşzamanlı sepet mutation davranışı ayrıca doğrulanmadı.
+- **Kullanıcı hikâyesi:** Giriş yapmış bir alıcı olarak ürünleri sepete ekleyip miktarlarını değiştirmek veya kaldırmak istiyorum; böylece satın almadan önce seçimlerimi gözden geçirebilirim.
+- **Kimlik ve sahiplik:** Sepet Keycloak `sub` değeriyle kullanıcıya bağlanır. İstemci sepet sahibi veya başka kullanıcıya ait sepet kimliği gönderemez. Alıcı rolü olmayan oturumlar sepet API'sine erişemez.
+- **Tekrar ekleme:** Sepetteki ürünü yeniden ekleme mevcut satırın miktarını artırır; aynı ürün için ikinci satır oluşmaz.
+- **Fiyat:** Sepet ürünün güncel katalog fiyatını gösterir; sepete ekleme anındaki fiyat sabitlenmez. Sipariş/checkout aşamasında fiyat ayrıca doğrulanır.
+- **Stok:** Ekleme ve miktar güncelleme sırasında güncel stok kontrol edilir. Stok yetersizliği değişikliği reddeder; başarılı olmayan değişiklik veritabanına yazılmaz. Checkout kendi atomik stok doğrulamasını ayrıca yapacaktır.
+- **Silinmiş ürün:** Ürün silindiğinde sepet satırı korunur, kullanılamaz olarak gösterilir ve yalnızca sepetten kaldırılabilir. Sepet özeti kullanılabilir ürünlerin güncel fiyatlarından hesaplanır; kullanılamaz satır toplam tutara eklenmez.
+
+### Kabul kriterleri
+
+1. Alıcı `GET /api/v1/cart` ile yalnızca kendi sepetini görür; sepeti yoksa boş sepet ve sıfır toplam döner.
+2. `POST /api/v1/cart/items` ürün kimliği ve pozitif tam sayı miktarını alır. Ürün bulunamaz/silinmişse `404`, miktar geçersizse `422`, stok yetersizse `409` döner.
+3. Aynı ürün yeniden eklenince mevcut miktar artar; sonuç güncel stoğu aşacaksa `409` döner ve miktar değişmez.
+4. `PUT /api/v1/cart/items/{item_id}` yalnızca kullanıcının satırını günceller. Pozitif tam sayı ve stok sınırları uygulanır; silinmiş ürün satırı değiştirilemez.
+5. `DELETE /api/v1/cart/items/{item_id}` yalnızca kullanıcının satırını siler. Başka kullanıcıya ait veya bulunmayan satır `404` döner.
+6. İstek kimliği bulunmayan/geçersiz token için `401`; buyer rolü olmayan kullanıcı için `403` döner. Uygulama subject'i istek gövdesinden veya path'inden almaz.
+7. Yanıtta satır kimliği, ürün kimliği (ürün silinmişse `null`), ürün adı, mevcutsa güncel birim fiyatı, miktar, stok/uygunluk durumu ve satır tutarı yer alır. Sepet toplamı silinmiş veya stok dışı kalmış ürünleri dahil etmez.
+8. Ürün fiyatı veya stoğu değişince bir sonraki sepet okuması güncel bilgiyi yansıtır. Başarısız mutation hiçbir kısmi miktar değişikliği bırakmaz.
+9. Sepet kalemleri migration ile kalıcılaşır; ürün silme kalemi silmez, ürün referansı `null` olur ve son bilinen ürün adı korunur. Migration downgrade cart tablolarını bağımlılık sırasına göre kaldırır.
+10. Ürün kataloğundan sepete ekleme, sepeti görüntüleme, miktarı değiştirme ve kalemi kaldırma UI'dan yapılabilir; boş, yükleniyor, hata ve stok uyuşmazlığı durumları kullanıcıya bildirilir.
+
+### API sözleşmesi
+
+- `GET /api/v1/cart` — alıcının sepeti.
+- `POST /api/v1/cart/items` — `{ "product_id": 1, "quantity": 1 }`; aynı üründe miktar eklenir.
+- `PUT /api/v1/cart/items/{item_id}` — `{ "quantity": 2 }`; miktarı belirtilen değere ayarlar.
+- `DELETE /api/v1/cart/items/{item_id}` — başarılı durumda `204`.
+- Miktarlar pozitif tam sayıdır. Fiyat ve satır toplamı backend'de güncel ürün fiyatıyla hesaplanır; istemciden fiyat/toplam kabul edilmez.
+
+### Geliştirme ve test planı
+
+- **Unit/şema:** Katı pozitif tam sayı miktarı, ürün ve satır yanıtı, güncel fiyat/ara toplam/uygunluk hesapları ve silinmiş ürün temsili.
+- **API/entegrasyon:** Listele/ekle/tekrar ekle/güncelle/sil; anonim ve buyer olmayan kullanıcı; başka kullanıcı kalemi; olmayan/silinmiş ürün; invalid miktar; stok sınırı; fiyat/stock değişikliği; işlem hatasında rollback.
+- **DB/migration:** Benzersiz cart-owner ve cart/product ilişkileri, pozitif miktar ve FK davranışı; migration upgrade/downgrade; ürün silinince cart item'ın korunması; eşzamanlı cart mutation ve stok kontrolü.
+- **Component:** Katalogdan ekleme, sepet özeti, miktar güncelleme/kaldırma, boş/yükleniyor/hata/stok çakışması durumları ve API hatalarının erişilebilir bildirimi.
+- **E2E:** Gerçek Keycloak alıcısı ürün ekler, miktarı değiştirip siler; başka kullanıcı sepeti göremez; yenileme sonrası sepet kalıcılığı ve ürün silinmesi sonrası kullanılamaz satır davranışı doğrulanır.
+
+**Çıkış ölçütü:** Alıcı yalnızca kendi sepetini düzenler; hatalı, stok dışı veya yetkisiz mutation kalıcılaşmaz; stok ve miktar kuralları backend transaction'ı içinde kontrol edilir; regresyon ve migration kapıları geçer.
+
 ## İleri gereksinim adayları
 
 Bu maddeler kapsamı erkenden sabitlememek için henüz kabul kriterlerine dönüştürülmemiştir:

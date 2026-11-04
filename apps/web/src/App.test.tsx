@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import type { AdminSellerApplication, Product } from './api'
+import type { AdminSellerApplication, CartItem, CartResponse, Product } from './api'
 import { createTestProduct, productRequest } from './test/testData'
 import { beginLogin, beginRegistration, endSession, getCurrentSession } from './auth'
 import type { AuthSession } from './auth'
@@ -48,8 +48,10 @@ function deferred<T>() {
 function setupApi(options: {
   isAdmin?: boolean
   isSeller?: boolean
+  buyerRole?: boolean
   email?: string
   products?: Product[]
+  cart?: CartResponse
   sellerApplications?: AdminSellerApplication[]
   homeError?: Response
   deleteError?: Response
@@ -57,6 +59,7 @@ function setupApi(options: {
   const fetchMock = vi.mocked(fetch)
   let sellerApplication: Record<string, unknown> | null = null
   let sellerApplications = options.sellerApplications ?? []
+  let cart: CartResponse = options.cart ?? { items: [], subtotal: '0.00' }
   fetchMock.mockImplementation(async (input, init) => {
     const path = String(input)
     if (path === '/api/v1/auth/me') {
@@ -65,7 +68,7 @@ function setupApi(options: {
         email: options.email ?? 'customer@example.com',
         roles: [
           ...(options.isAdmin ? ['admin'] : []),
-          'buyer',
+          ...(options.buyerRole === false ? [] : ['buyer']),
           ...(options.isSeller ? ['seller'] : []),
         ],
         is_admin: options.isAdmin ?? false,
@@ -76,6 +79,90 @@ function setupApi(options: {
         message: 'Alışverişe hoş geldiniz',
         featured_categories: [],
       })
+    }
+    if (path === '/api/v1/cart' && init?.method !== 'POST') {
+      return jsonResponse(cart)
+    }
+    if (path === '/api/v1/cart/items' && init?.method === 'POST') {
+      const request = JSON.parse(String(init.body)) as {
+        product_id: number
+        quantity: number
+      }
+      const product = (options.products ?? [sampleProduct]).find(
+        (item) => item.id === request.product_id,
+      )
+      if (!product) return jsonResponse({ detail: 'Ürün bulunamadı.' }, 404)
+      const existing = cart.items.find((item) => item.product_id === product.id)
+      const quantity = (existing?.quantity ?? 0) + request.quantity
+      const cartItem: CartItem = {
+        id: existing?.id ?? 901,
+        product_id: product.id,
+        product_name: product.name,
+        unit_price: product.price,
+        quantity,
+        available_stock: product.stock,
+        is_available: quantity <= product.stock,
+        line_total: quantity <= product.stock
+          ? (Number(product.price) * quantity).toFixed(2)
+          : null,
+      }
+      cart = {
+        items: existing
+          ? cart.items.map((item) => item.id === existing.id ? cartItem : item)
+          : [...cart.items, cartItem],
+        subtotal: quantity <= product.stock
+          ? (
+              Number(cart.subtotal) -
+              (existing?.line_total ? Number(existing.line_total) : 0) +
+              Number(product.price) * quantity
+            ).toFixed(2)
+          : cart.subtotal,
+      }
+      return jsonResponse(cart)
+    }
+    if (/^\/api\/v1\/cart\/items\/\d+$/.test(path) && init?.method === 'PUT') {
+      const itemId = Number(path.split('/').at(-1))
+      const request = JSON.parse(String(init.body)) as { quantity: number }
+      cart = {
+        items: cart.items.map((item) => {
+          if (item.id !== itemId) return item
+          const lineTotal = item.unit_price === null
+            ? null
+            : (Number(item.unit_price) * request.quantity).toFixed(2)
+          return {
+            ...item,
+            quantity: request.quantity,
+            line_total: lineTotal,
+            is_available: item.available_stock !== null &&
+              request.quantity <= item.available_stock,
+          }
+        }),
+        subtotal: cart.items
+          .map((item) => {
+            if (item.id !== itemId) {
+              return item.is_available ? Number(item.line_total ?? 0) : 0
+            }
+            return item.available_stock !== null &&
+              request.quantity <= item.available_stock &&
+              item.unit_price !== null
+              ? Number(item.unit_price) * request.quantity
+              : 0
+          })
+          .reduce((total, line) => total + line, 0)
+          .toFixed(2),
+      }
+      return jsonResponse(cart)
+    }
+    if (/^\/api\/v1\/cart\/items\/\d+$/.test(path) && init?.method === 'DELETE') {
+      const itemId = Number(path.split('/').at(-1))
+      cart = {
+        items: cart.items.filter((item) => item.id !== itemId),
+        subtotal: cart.items
+          .filter((item) => item.id !== itemId && item.is_available)
+          .reduce((total, item) => total + Number(item.line_total ?? 0), 0)
+          .toFixed(2),
+      }
+      return new Response(null, { status: 204 })
     }
     if (path === '/api/v1/seller-applications/me' && init?.method === 'PUT') {
       sellerApplication = {
@@ -158,6 +245,18 @@ function setupApi(options: {
       return options.deleteError ?? new Response(null, { status: 204 })
     }
     return jsonResponse({ detail: 'unexpected request' }, 500)
+  })
+}
+
+function failCartRequest(path: string, failure: Response | Error) {
+  const fetchMock = vi.mocked(fetch)
+  const originalFetch = fetchMock.getMockImplementation()
+  if (!originalFetch) throw new Error('Expected the storefront API mock to be configured.')
+  fetchMock.mockImplementation((input, init) => {
+    if (String(input) === path) {
+      return failure instanceof Error ? Promise.reject(failure) : Promise.resolve(failure)
+    }
+    return originalFetch(input, init)
   })
 }
 
@@ -247,6 +346,177 @@ describe('Keycloak authentication and storefront', () => {
     render(<App />)
 
     expect(await screen.findByText(/fallback@example.com olarak giriş yaptın/)).toBeInTheDocument()
+  })
+
+  it('lets a buyer add a product, update quantity, and remove it from the cart', async () => {
+    const product = createTestProduct({ stock: 5, price: '12.50' })
+    setupApi({ products: [product] })
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', {
+      name: `Sepete ekle ${product.name}`,
+    }))
+    expect(await screen.findByRole('heading', { name: 'Sepetim' })).toBeInTheDocument()
+    expect(screen.getByText('Sepet (1)')).toBeInTheDocument()
+    const quantity = screen.getByRole('spinbutton', { name: `Miktar: ${product.name}` })
+    await user.clear(quantity)
+    await user.type(quantity, '3')
+    await user.click(screen.getByRole('button', { name: 'Miktarı güncelle' }))
+    expect(await screen.findByText(/37,50/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Sepetten kaldır' }))
+    expect(await screen.findByText('Sepetin henüz boş.')).toBeInTheDocument()
+    expect(screen.getByText('Sepet (0)')).toBeInTheDocument()
+  })
+
+  it('retries after the cart request fails', async () => {
+    setupApi()
+    let shouldFail = true
+    const fetchMock = vi.mocked(fetch)
+    const originalFetch = fetchMock.getMockImplementation()
+    if (!originalFetch) throw new Error('Expected the storefront API mock to be configured.')
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input) === '/api/v1/cart' && shouldFail) {
+        return Promise.reject(new TypeError('Network unavailable'))
+      }
+      return originalFetch(input, init)
+    })
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Sepet (0)' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Sepet yüklenemedi.')
+    shouldFail = false
+    await user.click(screen.getByRole('button', { name: 'Tekrar dene' }))
+
+    expect(await screen.findByText('Sepetin henüz boş.')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('does not update state when a pending cart response resolves after unmount', async () => {
+    setupApi()
+    const pendingCart = deferred<Response>()
+    const fetchMock = vi.mocked(fetch)
+    const originalFetch = fetchMock.getMockImplementation()
+    if (!originalFetch) throw new Error('Expected the storefront API mock to be configured.')
+    fetchMock.mockImplementation((input, init) => (
+      String(input) === '/api/v1/cart' ? pendingCart.promise : originalFetch(input, init)
+    ))
+    const { unmount } = render(<App />)
+    await screen.findByRole('button', { name: 'Sepet (0)' })
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/cart',
+      expect.anything(),
+    ))
+
+    unmount()
+    await act(async () => {
+      pendingCart.resolve(jsonResponse({ items: [], subtotal: '0.00' }))
+      await pendingCart.promise
+    })
+  })
+
+  it('does not update state when a pending cart request rejects after unmount', async () => {
+    setupApi()
+    const pendingCart = deferred<Response>()
+    const fetchMock = vi.mocked(fetch)
+    const originalFetch = fetchMock.getMockImplementation()
+    if (!originalFetch) throw new Error('Expected the storefront API mock to be configured.')
+    fetchMock.mockImplementation((input, init) => (
+      String(input) === '/api/v1/cart' ? pendingCart.promise : originalFetch(input, init)
+    ))
+    const { unmount } = render(<App />)
+    await screen.findByRole('button', { name: 'Sepet (0)' })
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/cart',
+      expect.anything(),
+    ))
+
+    unmount()
+    await act(async () => {
+      pendingCart.reject(new Error('Network unavailable'))
+      await pendingCart.promise.catch(() => undefined)
+    })
+  })
+
+  it('shows unavailable stock without allowing the buyer to add the product', async () => {
+    const outOfStockProduct = createTestProduct({ stock: 0 })
+    setupApi({ products: [outOfStockProduct] })
+    render(<App />)
+
+    const addButton = await screen.findByRole('button', {
+      name: `Sepete ekle ${outOfStockProduct.name}`,
+    })
+    expect(addButton).toBeDisabled()
+    expect(addButton).toHaveTextContent('Stokta yok')
+  })
+
+  it.each([
+    {
+      failure: new TypeError('Network unavailable'),
+      message: 'Sunucuya bağlanılamadı. Sepet işlemi tamamlanamadı.',
+      title: 'network errors',
+    },
+    {
+      failure: jsonResponse({ detail: 'Stock conflict' }, 409),
+      message: 'İstenen miktar mevcut stoktan fazla.',
+      title: 'stock conflicts',
+    },
+    {
+      failure: jsonResponse({ detail: 'Unexpected error' }, 500),
+      message: 'Sepet işlemi tamamlanamadı. Lütfen tekrar dene.',
+      title: 'unexpected API errors',
+    },
+  ])('shows a useful cart-add error for $title', async ({ failure, message }) => {
+    const product = createTestProduct({ stock: 3 })
+    setupApi({ products: [product] })
+    failCartRequest('/api/v1/cart/items', failure)
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', {
+      name: `Sepete ekle ${product.name}`,
+    }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
+  })
+
+  it('shows authentication and missing-item errors for cart update and removal', async () => {
+    const product = createTestProduct({ id: 871, stock: 4, price: '12.50' })
+    const cartItem = {
+      id: 872,
+      product_id: product.id,
+      product_name: product.name,
+      unit_price: product.price,
+      quantity: 1,
+      available_stock: product.stock,
+      is_available: true,
+      line_total: product.price,
+    }
+    setupApi({
+      products: [product],
+      cart: { items: [cartItem], subtotal: product.price },
+    })
+    let failure = jsonResponse({ detail: 'Item not found' }, 404)
+    const fetchMock = vi.mocked(fetch)
+    const originalFetch = fetchMock.getMockImplementation()
+    if (!originalFetch) throw new Error('Expected the storefront API mock to be configured.')
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input) === `/api/v1/cart/items/${cartItem.id}`) {
+        return Promise.resolve(failure)
+      }
+      return originalFetch(input, init)
+    })
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Sepet (1)' }))
+    await user.click(screen.getByRole('button', { name: 'Miktarı güncelle' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Ürün veya sepet satırı')
+    failure = jsonResponse({ detail: 'Session expired' }, 401)
+    await user.click(screen.getByRole('button', { name: 'Sepetten kaldır' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Oturum süren dolmuş.')
   })
 
   it('uses a generic account label when neither source provides an email', async () => {
@@ -542,13 +812,14 @@ describe('Keycloak authentication and storefront', () => {
   })
 
   it('allows an admin to open the seller application review queue', async () => {
-    setupApi({ isAdmin: true })
+    setupApi({ isAdmin: true, buyerRole: false })
     const user = userEvent.setup()
     render(<App />)
 
     await user.click(await screen.findByRole('button', { name: 'Satıcı başvurularını yönet' }))
 
     expect(await screen.findByRole('heading', { name: 'Satıcı başvuruları' })).toBeInTheDocument()
+    expect(fetch).not.toHaveBeenCalledWith('/api/v1/cart', expect.anything())
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(
         '/api/v1/seller-applications',

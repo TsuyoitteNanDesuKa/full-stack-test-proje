@@ -36,6 +36,31 @@ export interface ProductCreateRequest {
   stock: number
 }
 
+export interface CartItem {
+  id: number
+  product_id: number | null
+  product_name: string
+  unit_price: string | null
+  quantity: number
+  available_stock: number | null
+  is_available: boolean
+  line_total: string | null
+}
+
+export interface CartResponse {
+  items: CartItem[]
+  subtotal: string
+}
+
+export interface CartAddItemRequest {
+  product_id: number
+  quantity: number
+}
+
+export interface CartUpdateItemRequest {
+  quantity: number
+}
+
 export type SellerApplicantType = 'individual' | 'sole_proprietor' | 'company'
 export type SellerApplicationStatus =
   | 'draft'
@@ -172,6 +197,42 @@ export function updateProduct(
 
 export function deleteProduct(token: string, productId: number): Promise<void> {
   return request<void>(`/api/v1/products/${productId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function getMyCart(token: string): Promise<CartResponse> {
+  return request<CartResponse>('/api/v1/cart', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function addCartItem(
+  token: string,
+  item: CartAddItemRequest,
+): Promise<CartResponse> {
+  return request<CartResponse>('/api/v1/cart/items', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(item),
+  })
+}
+
+export function updateCartItem(
+  token: string,
+  itemId: number,
+  item: CartUpdateItemRequest,
+): Promise<CartResponse> {
+  return request<CartResponse>(`/api/v1/cart/items/${itemId}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(item),
+  })
+}
+
+export function deleteCartItem(token: string, itemId: number): Promise<void> {
+  return request<void>(`/api/v1/cart/items/${itemId}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   })
