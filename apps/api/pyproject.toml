@@ -33,6 +33,7 @@ packages = ["src/shop_api"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = ["postgres: integration tests requiring a dedicated PostgreSQL test database"]
 
 [tool.coverage.run]
 branch = true

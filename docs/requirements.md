@@ -553,7 +553,7 @@ Keycloak erişim/rol atama hatasında işlem başarı gibi raporlanmaz; başvuru
 - **Kimlik ve sahiplik:** Sepet Keycloak `sub` değeriyle kullanıcıya bağlanır. İstemci sepet sahibi veya başka kullanıcıya ait sepet kimliği gönderemez. Alıcı rolü olmayan oturumlar sepet API'sine erişemez.
 - **Tekrar ekleme:** Sepetteki ürünü yeniden ekleme mevcut satırın miktarını artırır; aynı ürün için ikinci satır oluşmaz.
 - **Fiyat:** Sepet ürünün güncel katalog fiyatını gösterir; sepete ekleme anındaki fiyat sabitlenmez. Sipariş/checkout aşamasında fiyat ayrıca doğrulanır.
-- **Stok:** Ekleme ve miktar güncelleme sırasında güncel stok kontrol edilir. Stok yetersizliği değişikliği reddeder; başarılı olmayan değişiklik veritabanına yazılmaz. Checkout kendi atomik stok doğrulamasını ayrıca yapacaktır.
+- **Stok:** Ekleme ve miktar güncelleme sırasında güncel stok kontrol edilir. Stok yetersizliği değişikliği reddeder; başarılı olmayan değişiklik veritabanına yazılmaz. Sepet stok rezervasyonu değildir; farklı alıcıların sepet toplamı mevcut stoğu aşabilir. Checkout kendi atomik stok doğrulamasını ayrıca yapacaktır.
 - **Silinmiş ürün:** Ürün silindiğinde sepet satırı korunur, kullanılamaz olarak gösterilir ve yalnızca sepetten kaldırılabilir. Sepet özeti kullanılabilir ürünlerin güncel fiyatlarından hesaplanır; kullanılamaz satır toplam tutara eklenmez.
 
 ### Kabul kriterleri
@@ -582,6 +582,7 @@ Keycloak erişim/rol atama hatasında işlem başarı gibi raporlanmaz; başvuru
 - **Unit/şema:** Katı pozitif tam sayı miktarı, ürün ve satır yanıtı, güncel fiyat/ara toplam/uygunluk hesapları ve silinmiş ürün temsili.
 - **API/entegrasyon:** Listele/ekle/tekrar ekle/güncelle/sil; anonim ve buyer olmayan kullanıcı; başka kullanıcı kalemi; olmayan/silinmiş ürün; invalid miktar; stok sınırı; fiyat/stock değişikliği; işlem hatasında rollback.
 - **DB/migration:** Benzersiz cart-owner ve cart/product ilişkileri, pozitif miktar ve FK davranışı; migration upgrade/downgrade; ürün silinince cart item'ın korunması; eşzamanlı cart mutation ve stok kontrolü.
+- **PostgreSQL entegrasyon:** Ayrı `_test` veritabanında gerçek migration; eşzamanlı ilk sepet oluşturma ve aynı alıcının stok sınırı; farklı alıcıların stok rezervasyonu olmadan sepet kullanımı; silinen ürün FK davranışı ve benzersiz cart-item kısıtı. Bu testler SQLite regresyon paketinden bağımsızdır.
 - **Component:** Katalogdan ekleme, sepet özeti, miktar güncelleme/kaldırma, boş/yükleniyor/hata/stok çakışması durumları ve API hatalarının erişilebilir bildirimi.
 - **E2E:** Gerçek Keycloak alıcısı ürün ekler, miktarı değiştirip siler; başka kullanıcı sepeti göremez; yenileme sonrası sepet kalıcılığı ve ürün silinmesi sonrası kullanılamaz satır davranışı doğrulanır.
 

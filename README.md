@@ -59,7 +59,16 @@ uv run uvicorn shop_api.main:create_app --factory --reload
 
 Compose PostgreSQL'i yalnızca yerel makineye (`127.0.0.1:5432`) açar ve kalıcılık için `postgres_data` volume'ünü kullanır. Varsayılan `shop-local-dev-only` parolası yalnızca yerel geliştirme içindir; paylaşılmış/uzak ortamlarda kullanmayın. İsterseniz Compose öncesinde `POSTGRES_DB`, `POSTGRES_USER` ve `POSTGRES_PASSWORD` ortam değişkenlerini tanımlayın ve aynı değerlerle `apps/api/.env` içindeki `SHOP_DATABASE_URL`'i güncelleyin. PostgreSQL verileri `docker compose down` ile silinmez; `docker compose down -v` veritabanı volume'ünü de kalıcı olarak siler.
 
-İlk kurulumdan sonra şema migration'ları PostgreSQL'e uygulanır. API testleri SQLite üzerinde izole çalışmaya devam eder; gerçek PostgreSQL entegrasyon/eşzamanlılık testleri ayrıca çalıştırılacaktır. Playwright E2E testleri de Keycloak dışındaki uygulama verisini birbirinden yalıtmak için geçici SQLite kullanır.
+İlk kurulumdan sonra şema migration'ları PostgreSQL'e uygulanır. Hızlı API regresyon testleri ve Playwright E2E testleri SQLite üzerinde izole çalışır; gerçek PostgreSQL sepet/migration entegrasyon testleri ise ayrı `shop_test` veritabanında çalıştırılır:
+
+```powershell
+docker compose exec -T postgres createdb -U shop shop_test
+Set-Location apps/api
+$env:SHOP_TEST_DATABASE_URL = "postgresql+psycopg://shop:shop-local-dev-only@127.0.0.1:5432/shop_test"
+uv run pytest -m postgres tests/test_cart_postgres.py
+```
+
+Bu test veritabanının adı `_test` ile bitmelidir; test fixture'ı bunu zorunlu tutar ve yalnızca bu veritabanındaki uygulama tablolarını temizler. Ayrıntılar [backend README](./apps/api/README.md#tests-and-lint) içindedir.
 
 Realm ve `shop-web` public OIDC istemcisi `infra/keycloak/realm-export.json` dosyasından ilk Keycloak başlangıcında içe aktarılır. Keycloak hazır olduğunda alıcı kayıt ve giriş ekranı `http://localhost:8080` üzerinden sunulur. `SHOP_OIDC_ISSUER` ve audience varsayılanları yerel realm ile eşleşir.
 

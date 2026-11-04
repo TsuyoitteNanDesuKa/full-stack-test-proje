@@ -68,7 +68,7 @@ The imported realm enables Keycloak admin-event recording without event details 
 
 ## Tests and lint
 
-The development API and Alembic migrations use PostgreSQL. API tests continue to use isolated SQLite databases and a test RSA/JWKS double for fast, deterministic unit and route coverage. They cover access-token signature and claim validation, role enforcement, JWKS unavailability, buyer cart ownership and stock behavior, deleted products, cart migration rollback, seller application/review and provisioning behavior, storefront/product behavior, and imported realm settings. PostgreSQL-specific locking/concurrency integration tests are a separate QA task and must run against the Compose database.
+The development API and Alembic migrations use PostgreSQL. API tests continue to use isolated SQLite databases and a test RSA/JWKS double for fast, deterministic unit and route coverage. They cover access-token signature and claim validation, role enforcement, JWKS unavailability, buyer cart ownership and stock behavior, deleted products, cart migration rollback, seller application/review and provisioning behavior, storefront/product behavior, and imported realm settings. PostgreSQL-specific cart persistence, constraints, and concurrency integration tests run separately against the dedicated Compose test database.
 
 ```powershell
 uv run pytest
@@ -76,5 +76,15 @@ uv run pytest --cov=shop_api --cov-report=term-missing
 uv run ruff check .
 uv run ruff format --check .
 ```
+
+The PostgreSQL cart suite is independent of the SQLite regression suite. It runs migrations against a dedicated database whose name ends in `_test`, truncates only that database's application tables between tests, and is skipped by the default pytest run unless `SHOP_TEST_DATABASE_URL` is set:
+
+```powershell
+docker compose exec -T postgres createdb -U shop shop_test
+$env:SHOP_TEST_DATABASE_URL = "postgresql+psycopg://shop:shop-local-dev-only@127.0.0.1:5432/shop_test"
+uv run pytest -m postgres tests/test_cart_postgres.py
+```
+
+The test database is separate from the persistent development database. The suite verifies real PostgreSQL migrations, concurrent first-cart creation, concurrent same-buyer stock limits, the intentional non-reservation of stock across different buyers' carts, deleted-product foreign-key behavior, and the unique cart-item constraint. Cart stock checks are per buyer's cart, not inventory reservations; checkout must recheck and reserve stock atomically.
 
 The Keycloak registration browser test lives in `apps/web/e2e`; see the web README for enabling it.
