@@ -23,12 +23,14 @@ function renderCart(
     cart,
     isLoading: false,
     isMutating: false,
+    isCheckingOut: false,
     error: '',
     isOpen: true,
     onToggle: vi.fn(),
     onRetry: vi.fn(),
     onUpdate: vi.fn().mockResolvedValue(undefined),
     onRemove: vi.fn().mockResolvedValue(undefined),
+    onCheckout: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   }
   return { ...render(<CartPanel {...props} />), props }
@@ -85,6 +87,30 @@ describe('cart panel', () => {
     expect(screen.getByRole('button', { name: 'Miktarı güncelle' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Sepetten kaldır' })).toBeEnabled()
     expect(screen.getByText(/0,00/)).toBeInTheDocument()
+  })
+
+  it('disables checkout for unavailable stock and while submitting', () => {
+    const unavailableItem = { ...availableItem, is_available: false }
+    const unavailable = renderCart({
+      items: [unavailableItem],
+      subtotal: '0.00',
+    })
+    expect(screen.getByRole('button', { name: 'Siparişi oluştur' })).toBeDisabled()
+    unavailable.unmount()
+
+    renderCart(undefined, { isCheckingOut: true })
+    expect(
+      screen.getByRole('button', { name: 'Sipariş oluşturuluyor...' }),
+    ).toBeDisabled()
+  })
+
+  it('starts checkout when the cart is available', async () => {
+    const user = userEvent.setup()
+    const { props } = renderCart()
+
+    await user.click(screen.getByRole('button', { name: 'Siparişi oluştur' }))
+
+    expect(props.onCheckout).toHaveBeenCalledOnce()
   })
 
   it('opens and closes when the cart toggle is activated', () => {

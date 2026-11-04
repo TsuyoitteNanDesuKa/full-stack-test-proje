@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from shop_api.config import Settings, get_settings
 from shop_api.database import create_database_engine
 from shop_api.keycloak_admin import KeycloakRoleProvisioner
-from shop_api.routes import auth, cart, home, products, seller_applications
+from shop_api.routes import auth, cart, home, orders, products, seller_applications
 
 
 def create_app(settings: Settings | None = None, db_engine: Engine | None = None) -> FastAPI:
@@ -59,4 +59,5 @@ def create_app(settings: Settings | None = None, db_engine: Engine | None = None
     app.include_router(products.router)
     app.include_router(seller_applications.router)
     app.include_router(cart.router)
+    app.include_router(orders.router)
     return app

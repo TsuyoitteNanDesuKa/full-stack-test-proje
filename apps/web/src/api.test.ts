@@ -3,12 +3,15 @@ import {
   addCartItem,
   ApiError,
   createProduct,
+  createOrder,
   createSellerApplication,
   deleteCartItem,
   deleteProduct,
   getCurrentUser,
   getHome,
   getMyCart,
+  getMyOrder,
+  getMyOrders,
   getMySellerApplication,
   getProducts,
   getSellerApplications,
@@ -210,6 +213,60 @@ describe('storefront API client', () => {
       expect.objectContaining({ method: 'DELETE' }),
     )
     expect(vi.mocked(fetch).mock.calls[0]?.[1]?.headers).toHaveProperty('Authorization')
+  })
+
+  it('creates an order with the idempotency key and no client-supplied prices', async () => {
+    const order = {
+      id: 44,
+      status: 'pending_payment' as const,
+      total_amount: '25.00',
+      created_at: '2026-11-04T20:00:00Z',
+      items: [],
+    }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(order, 201))
+
+    await expect(createOrder('buyer-token', 'retry-safe-key')).resolves.toEqual(order)
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/orders',
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer buyer-token',
+          'Idempotency-Key': 'retry-safe-key',
+        },
+      }),
+    )
+    expect(vi.mocked(fetch).mock.calls[0]?.[1]).not.toHaveProperty('body')
+  })
+
+  it('loads the buyer order history and a single order', async () => {
+    const order = {
+      id: 44,
+      status: 'pending_payment' as const,
+      total_amount: '25.00',
+      created_at: '2026-11-04T20:00:00Z',
+      items: [],
+    }
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse([order]))
+      .mockResolvedValueOnce(jsonResponse(order))
+
+    await expect(getMyOrders('buyer-token')).resolves.toEqual([order])
+    await expect(getMyOrder('buyer-token', order.id)).resolves.toEqual(order)
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      '/api/v1/orders',
+      expect.any(Object),
+    )
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/orders/44',
+      expect.any(Object),
+    )
+    for (const [, init] of vi.mocked(fetch).mock.calls) {
+      expect(init?.headers).toHaveProperty('Authorization', 'Bearer buyer-token')
+    }
   })
 
   it('preserves product endpoint failures for the caller', async () => {

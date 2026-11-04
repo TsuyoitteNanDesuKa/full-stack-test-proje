@@ -61,6 +61,25 @@ export interface CartUpdateItemRequest {
   quantity: number
 }
 
+export type OrderStatus = 'pending_payment' | 'paid' | 'cancelled'
+
+export interface OrderItem {
+  id: number
+  product_id: number | null
+  product_name: string
+  unit_price: string
+  quantity: number
+  line_total: string
+}
+
+export interface CustomerOrder {
+  id: number
+  status: OrderStatus
+  total_amount: string
+  created_at: string
+  items: OrderItem[]
+}
+
 export type SellerApplicantType = 'individual' | 'sole_proprietor' | 'company'
 export type SellerApplicationStatus =
   | 'draft'
@@ -234,6 +253,31 @@ export function updateCartItem(
 export function deleteCartItem(token: string, itemId: number): Promise<void> {
   return request<void>(`/api/v1/cart/items/${itemId}`, {
     method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function createOrder(
+  token: string,
+  idempotencyKey: string,
+): Promise<CustomerOrder> {
+  return request<CustomerOrder>('/api/v1/orders', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Idempotency-Key': idempotencyKey,
+    },
+  })
+}
+
+export function getMyOrders(token: string): Promise<CustomerOrder[]> {
+  return request<CustomerOrder[]>('/api/v1/orders', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function getMyOrder(token: string, orderId: number): Promise<CustomerOrder> {
+  return request<CustomerOrder>(`/api/v1/orders/${orderId}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
 }

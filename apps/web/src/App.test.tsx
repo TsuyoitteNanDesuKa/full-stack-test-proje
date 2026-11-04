@@ -2,7 +2,13 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import type { AdminSellerApplication, CartItem, CartResponse, Product } from './api'
+import type {
+  AdminSellerApplication,
+  CartItem,
+  CartResponse,
+  CustomerOrder,
+  Product,
+} from './api'
 import { createTestProduct, productRequest } from './test/testData'
 import { beginLogin, beginRegistration, endSession, getCurrentSession } from './auth'
 import type { AuthSession } from './auth'
@@ -52,14 +58,19 @@ function setupApi(options: {
   email?: string
   products?: Product[]
   cart?: CartResponse
+  orders?: CustomerOrder[]
   sellerApplications?: AdminSellerApplication[]
   homeError?: Response
   deleteError?: Response
+  orderFailure?: Response | Error
 } = {}) {
   const fetchMock = vi.mocked(fetch)
   let sellerApplication: Record<string, unknown> | null = null
   let sellerApplications = options.sellerApplications ?? []
   let cart: CartResponse = options.cart ?? { items: [], subtotal: '0.00' }
+  const orders = options.orders ?? []
+  const ordersByIdempotencyKey = new Map<string, CustomerOrder>()
+  let orderFailure = options.orderFailure
   fetchMock.mockImplementation(async (input, init) => {
     const path = String(input)
     if (path === '/api/v1/auth/me') {
@@ -119,6 +130,46 @@ function setupApi(options: {
           : cart.subtotal,
       }
       return jsonResponse(cart)
+    }
+    if (path === '/api/v1/orders' && init?.method === 'POST') {
+      if (orderFailure) {
+        const failure = orderFailure
+        orderFailure = undefined
+        if (failure instanceof Error) throw failure
+        return failure
+      }
+      const key = new Headers(init.headers).get('Idempotency-Key')
+      if (!key) return jsonResponse({ detail: 'Missing idempotency key' }, 422)
+      const existingOrder = ordersByIdempotencyKey.get(key)
+      if (existingOrder) return jsonResponse(existingOrder, 200)
+      if (cart.items.length === 0) {
+        return jsonResponse({ detail: 'Empty cart' }, 409)
+      }
+      const items = cart.items.map((item, index) => ({
+        id: index + 1,
+        product_id: item.product_id,
+        product_name: item.product_name,
+        unit_price: item.unit_price ?? '0.00',
+        quantity: item.quantity,
+        line_total: item.line_total ?? '0.00',
+      }))
+      const order: CustomerOrder = {
+        id: orders.length + ordersByIdempotencyKey.size + 1,
+        status: 'pending_payment',
+        total_amount: cart.subtotal,
+        created_at: new Date().toISOString(),
+        items,
+      }
+      ordersByIdempotencyKey.set(key, order)
+      orders.unshift(order)
+      cart = { items: [], subtotal: '0.00' }
+      return jsonResponse(order, 201)
+    }
+    if (path === '/api/v1/orders') return jsonResponse(orders)
+    if (/^\/api\/v1\/orders\/\d+$/.test(path)) {
+      const orderId = Number(path.split('/').at(-1))
+      const order = orders.find((item) => item.id === orderId)
+      return order ? jsonResponse(order) : jsonResponse({ detail: 'not found' }, 404)
     }
     if (/^\/api\/v1\/cart\/items\/\d+$/.test(path) && init?.method === 'PUT') {
       const itemId = Number(path.split('/').at(-1))
@@ -368,6 +419,172 @@ describe('Keycloak authentication and storefront', () => {
     await user.click(screen.getByRole('button', { name: 'Sepetten kaldır' }))
     expect(await screen.findByText('Sepetin henüz boş.')).toBeInTheDocument()
     expect(screen.getByText('Sepet (0)')).toBeInTheDocument()
+  })
+
+  it('creates an order, empties the cart, and displays the order in history', async () => {
+    const product = createTestProduct({ id: 881, stock: 5, price: '12.50' })
+    setupApi({
+      products: [product],
+      cart: {
+        items: [{
+          id: 882,
+          product_id: product.id,
+          product_name: product.name,
+          unit_price: product.price,
+          quantity: 2,
+          available_stock: product.stock,
+          is_available: true,
+          line_total: '25.00',
+        }],
+        subtotal: '25.00',
+      },
+    })
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Sepet (2)' }))
+    await user.click(screen.getByRole('button', { name: 'Siparişi oluştur' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Siparişin oluşturuldu: #1. Ödeme adımı bekleniyor.',
+    )
+    expect(screen.getByText('Sepetin henüz boş.')).toBeInTheDocument()
+    const checkoutRequest = vi.mocked(fetch).mock.calls.find(([input]) =>
+      String(input) === '/api/v1/orders',
+    )
+    expect(checkoutRequest?.[1]?.method).toBe('POST')
+    const checkoutHeaders = new Headers(checkoutRequest?.[1]?.headers)
+    expect(checkoutHeaders.has('Authorization')).toBe(true)
+    expect(checkoutHeaders.get('Idempotency-Key')).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: 'Siparişlerim' }))
+    expect(await screen.findByRole('heading', { name: 'Sipariş #1' })).toBeInTheDocument()
+    expect(screen.getByText(`${product.name} · 2 adet · ₺25,00`)).toBeInTheDocument()
+  })
+
+  it('retries a network-failed checkout with the same idempotency key', async () => {
+    const product = createTestProduct({ id: 883, stock: 3 })
+    setupApi({
+      products: [product],
+      cart: {
+        items: [{
+          id: 884,
+          product_id: product.id,
+          product_name: product.name,
+          unit_price: product.price,
+          quantity: 1,
+          available_stock: product.stock,
+          is_available: true,
+          line_total: product.price,
+        }],
+        subtotal: product.price,
+      },
+      orderFailure: new TypeError('Network unavailable'),
+    })
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Sepet (1)' }))
+    await user.click(screen.getByRole('button', { name: 'Siparişi oluştur' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Aynı istekle tekrar deneyebilirsin.',
+    )
+    await user.click(screen.getByRole('button', { name: 'Siparişi oluştur' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Siparişin oluşturuldu: #1.')
+    const checkoutRequests = vi.mocked(fetch).mock.calls.filter(([input]) =>
+      String(input) === '/api/v1/orders',
+    )
+    expect(checkoutRequests).toHaveLength(2)
+    const firstKey = new Headers(checkoutRequests[0]?.[1]?.headers).get('Idempotency-Key')
+    const retryKey = new Headers(checkoutRequests[1]?.[1]?.headers).get('Idempotency-Key')
+    expect(firstKey).toBeTruthy()
+    expect(retryKey).toBe(firstKey)
+  })
+
+  it.each([
+    {
+      failure: jsonResponse({ detail: 'Cart changed' }, 409),
+      message: 'Sepetindeki ürün veya stok değişti.',
+      title: 'stale carts',
+    },
+    {
+      failure: jsonResponse({ detail: 'Session expired' }, 401),
+      message: 'Oturum süren dolmuş.',
+      title: 'expired sessions',
+    },
+    {
+      failure: jsonResponse({ detail: 'Unexpected error' }, 500),
+      message: 'Sipariş oluşturulamadı.',
+      title: 'unexpected API errors',
+    },
+  ])('shows a useful checkout error for $title', async ({ failure, message }) => {
+    const product = createTestProduct({ id: 885, stock: 2 })
+    setupApi({
+      products: [product],
+      cart: {
+        items: [{
+          id: 886,
+          product_id: product.id,
+          product_name: product.name,
+          unit_price: product.price,
+          quantity: 1,
+          available_stock: product.stock,
+          is_available: true,
+          line_total: product.price,
+        }],
+        subtotal: product.price,
+      },
+      orderFailure: failure,
+    })
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Sepet (1)' }))
+    await user.click(screen.getByRole('button', { name: 'Siparişi oluştur' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
+  })
+
+  it('surfaces cart-refresh failures after a checkout conflict', async () => {
+    const product = createTestProduct({ id: 887, stock: 2 })
+    setupApi({
+      products: [product],
+      cart: {
+        items: [{
+          id: 888,
+          product_id: product.id,
+          product_name: product.name,
+          unit_price: product.price,
+          quantity: 1,
+          available_stock: product.stock,
+          is_available: true,
+          line_total: product.price,
+        }],
+        subtotal: product.price,
+      },
+      orderFailure: jsonResponse({ detail: 'Cart changed' }, 409),
+    })
+    const fetchMock = vi.mocked(fetch)
+    const originalFetch = fetchMock.getMockImplementation()
+    if (!originalFetch) throw new Error('Expected the storefront API mock to be configured.')
+    let cartRequests = 0
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input) === '/api/v1/cart' && ++cartRequests === 2) {
+        return Promise.reject(new TypeError('Network unavailable'))
+      }
+      return originalFetch(input, init)
+    })
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Sepet (1)' }))
+    await user.click(screen.getByRole('button', { name: 'Siparişi oluştur' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Sepetindeki ürün veya stok değişti.',
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent('Sunucuya bağlanılamadı.')
   })
 
   it('retries after the cart request fails', async () => {

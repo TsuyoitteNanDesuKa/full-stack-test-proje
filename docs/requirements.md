@@ -548,7 +548,7 @@ Keycloak erişim/rol atama hatasında işlem başarı gibi raporlanmaz; başvuru
 ## REQ-009 — Müşteri sepeti
 
 - **Öncelik:** P1
-- **Durum:** Backend, UI, migration ve katmanlı testler tamamlandı. Backend'de 213 test, frontend'de 128 test geçti; backend coverage %99,47, frontend coverage tüm ölçümlerde %100. Gerçek Keycloak E2E senaryoları 8/8 geçti. PostgreSQL geliştirme bağlantısı ve migration doğrulandı; PostgreSQL üzerinde eşzamanlı sepet mutation davranışı ayrıca doğrulanmadı.
+- **Durum:** Tamamlandı. Backend SQLite regresyonunda 213, ayrı PostgreSQL entegrasyonunda 6 test geçti; birleşik backend koşusu 219/219 başarılı ve coverage %99,47. Frontend'de 128 test, %100 statement/branch/function/line coverage; gerçek Keycloak E2E 8/8 geçti. PostgreSQL migration, eşzamanlı ilk sepet oluşturma ve alıcı bazlı stok sınırı doğrulandı.
 - **Kullanıcı hikâyesi:** Giriş yapmış bir alıcı olarak ürünleri sepete ekleyip miktarlarını değiştirmek veya kaldırmak istiyorum; böylece satın almadan önce seçimlerimi gözden geçirebilirim.
 - **Kimlik ve sahiplik:** Sepet Keycloak `sub` değeriyle kullanıcıya bağlanır. İstemci sepet sahibi veya başka kullanıcıya ait sepet kimliği gönderemez. Alıcı rolü olmayan oturumlar sepet API'sine erişemez.
 - **Tekrar ekleme:** Sepetteki ürünü yeniden ekleme mevcut satırın miktarını artırır; aynı ürün için ikinci satır oluşmaz.
@@ -588,6 +588,48 @@ Keycloak erişim/rol atama hatasında işlem başarı gibi raporlanmaz; başvuru
 
 **Çıkış ölçütü:** Alıcı yalnızca kendi sepetini düzenler; hatalı, stok dışı veya yetkisiz mutation kalıcılaşmaz; stok ve miktar kuralları backend transaction'ı içinde kontrol edilir; regresyon ve migration kapıları geçer.
 
+## REQ-010 — Sipariş oluşturma
+
+- **Öncelik:** P1
+- **Durum:** Tamamlandı. Backend SQLite ve PostgreSQL testleri 231/231 geçti, coverage %99,54; web testleri 141/141 ve %100 coverage; checkout içeren Keycloak E2E 8/8, frontend build, Oxlint ve Ruff kontrolleri başarılı.
+- **Kullanıcı hikâyesi:** Giriş yapmış bir alıcı olarak uygun sepetimi siparişe dönüştürmek ve daha sonra siparişimin satın alma anındaki ayrıntılarını görebilmek istiyorum.
+- **Kapsam:** Tek adımlı checkout, sipariş oluşturma/onayı ve alıcı sipariş geçmişi. Adres/teslimat ve ödeme sağlayıcısı REQ-011/sonraki dilimlerin kapsamındadır.
+- **Stok ve sipariş durumu kararı:** Checkout anında ürün ve stok satır kilitleriyle doğrulanır; her kalemin güncel stok miktarı aynı transaction içinde düşülür. Yeni sipariş `pending_payment` durumunda oluşturulur. Bu aşamada ödeme alınmaz; ödeme sonucu ve başarısız/terk edilmiş siparişlerde stok iadesi REQ-011 kapsamında ele alınır.
+- **Sepet kararı:** Sipariş ve tüm sipariş kalemleri başarılı biçimde kaydedildikten sonra sepet kalemleri aynı transaction içinde silinir. Başarısız checkout sepeti korur.
+- **Idempotency kararı:** `POST /api/v1/orders` zorunlu `Idempotency-Key` başlığı alır. Aynı alıcının aynı anahtarla tekrarı yeni sipariş yaratmadan ilk siparişin aynısını döndürür; farklı alıcılar anahtarı bağımsız kullanabilir.
+- **Fiyat/snapshot:** İstek gövdesinden fiyat veya toplam alınmaz. Sunucu kilitlediği güncel ürün ve stok kayıtlarını doğrular; ürün adı, birim fiyat, miktar, satır toplamı ve sipariş toplamı sipariş anında snapshot olarak saklanır. Ürün sonradan güncellense/silinse sipariş geçmişi değişmez.
+
+### Kabul kriterleri
+
+1. Yalnızca buyer rolündeki kimliği doğrulanmış kullanıcı sipariş oluşturabilir ve yalnızca kendi sipariş geçmişini görebilir.
+2. `POST /api/v1/orders` boş gövde ve zorunlu, biçimi/uzunluğu doğrulanmış `Idempotency-Key` başlığıyla çalışır; istemciden fiyat/toplam kabul edilmez.
+3. Boş sepet, silinmiş ürün veya sepet miktarını karşılamayan güncel stok durumunda `409` döner; sipariş, stok ve sepet kalıcı durumu değişmez.
+4. Başarılı checkout bütün kalemler için sipariş snapshot'ı üretir, tutarları güncel katalog fiyatından hesaplar, stokları düşer, durumu `pending_payment` yapar ve sepet kalemlerini tek DB transaction'ında temizler.
+5. Aynı alıcının aynı idempotency anahtarıyla eşzamanlı/tekrarlı istekleri tek siparişe karşılık gelir ve aynı sipariş yanıtını döndürür.
+6. İki alıcının eşzamanlı checkout'ı aynı son stok için yarışırsa stok negatif olmaz; yalnızca stok koşulunu sağlayan sipariş oluşur, diğeri `409` alır.
+7. Oluşan sipariş ve kalem snapshot'ları alıcının sipariş geçmişinde sıralı ve tutarlı biçimde sunulur. Sipariş başka alıcı tarafından okunamaz; bulunmayan veya başka kullanıcıya ait kimlik `404` döner.
+8. Bir ürün sonradan güncellense veya silinse bile sipariş adı/fiyat/adet/toplam snapshot'ı korunur.
+9. Herhangi bir DB/transaction hatasında sipariş, kalemler, stok düşümü ve sepet temizliği birlikte rollback edilir.
+10. UI sepetten sipariş başlatır; onay/işlemde/hata/başarı durumlarını gösterir, başarıda sepeti günceller ve yeni siparişi görünür kılar. Ağ hatasında tekrar deneme aynı idempotency anahtarını kullanır.
+
+### API sözleşmesi
+
+- `POST /api/v1/orders` — buyer token ve `Idempotency-Key` başlığı; istek gövdesi yok; başarılı ilk istek `201`, aynı anahtarın tekrarı aynı siparişle `200`.
+- `GET /api/v1/orders` — yalnızca oturum sahibinin sipariş geçmişi.
+- `GET /api/v1/orders/{order_id}` — yalnızca oturum sahibinin sipariş ayrıntısı.
+- Yanıt sipariş kimliği/durumu/tarih/toplam ve her kalemin ürün adı, ürün kimliği (ürün silinmişse `null`), birim fiyat snapshot'ı, miktarı ve satır toplamını içerir.
+
+### Geliştirme ve test planı
+
+- **Unit/şema:** Sipariş durum enum'u, snapshot/ara toplam/toplam hesapları, para yuvarlama ve idempotency başlığı doğrulaması.
+- **SQLite API/regresyon:** Buyer yetkisi/sahipliği, boş sepet, geçersiz anahtar, güncel fiyat/stok, silinmiş ürün, duplicate replay, başka alıcı erişimi, ürün güncelleme/silme sonrası snapshot.
+- **DB/transaction:** Sipariş + kalem + stok azaltımı + sepet temizliği atomikliği; her yazma aşamasında enjekte edilmiş hata ve rollback; migration upgrade/downgrade/kısıtlar.
+- **PostgreSQL entegrasyon:** Gerçek migration ve eşzamanlı aynı anahtar/aynı alıcı checkout; iki alıcının son stok için yarışması; yalnızca bir sipariş ve tutarlı stok/sepet sonucu.
+- **Component:** Checkout onayı/işlemde; başarı ve sipariş özeti; boş/uygun olmayan sepet; validation, API ve bağlantı hatası; yeniden denemede aynı anahtar.
+- **E2E:** Gerçek Keycloak buyer ürün ekleyip sipariş verir ve sipariş geçmişinde görür; sepet boşalır; başka buyer siparişi okuyamaz; stok yetersiz/ürün silme negatif yolu ve tekrar gönderim doğrulanır.
+
+**Çıkış ölçütü:** Sipariş veya ilgili stok/sepet etkileri kısmi kalmaz; sipariş fiyatı istemci verisine dayanmaz; snapshot ve sahiplik korunur; SQLite regresyonu, PostgreSQL eşzamanlılık, UI ve Keycloak E2E kalite kapıları geçer.
+
 ## İleri gereksinim adayları
 
 Bu maddeler kapsamı erkenden sabitlememek için henüz kabul kriterlerine dönüştürülmemiştir:
@@ -595,6 +637,5 @@ Bu maddeler kapsamı erkenden sabitlememek için henüz kabul kriterlerine dön�
 - Satıcı işletme/kimlik KYC doğrulaması, belge alımı ve hukuki uygunluk; satıcı çalışan/alt rol yönetimi.
 - Satıcı başvuruları için otomatik kimlik/işletme doğrulama sağlayıcısı veya yetkili resmî entegrasyon araştırması; kapsam, erişim izni, KVKK, maliyet ve manuel fallback değerlendirmesi.
 - Ürün kataloğunda arama ve filtreleme.
-- Sepet yönetimi ve stok/ürün fiyatı kuralları.
 - Adres ve teslimat seçenekleriyle sipariş oluşturma.
 - Ödeme sağlayıcısı entegrasyonu, sipariş geçmişi ve iptal/iade.

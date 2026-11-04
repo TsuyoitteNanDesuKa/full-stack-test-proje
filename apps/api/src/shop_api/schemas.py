@@ -260,3 +260,26 @@ class CartItemResponse(BaseModel):
 class CartResponse(BaseModel):
     items: list[CartItemResponse]
     subtotal: Decimal
+
+
+class OrderStatus(StrEnum):
+    PENDING_PAYMENT = "pending_payment"
+    PAID = "paid"
+    CANCELLED = "cancelled"
+
+
+class OrderItemResponse(BaseModel):
+    id: int
+    product_id: int | None
+    product_name: str
+    unit_price: Decimal
+    quantity: int
+    line_total: Decimal
+
+
+class OrderResponse(BaseModel):
+    id: int
+    status: OrderStatus
+    total_amount: Decimal
+    created_at: datetime
+    items: list[OrderItemResponse]

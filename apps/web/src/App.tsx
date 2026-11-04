@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import {
   addCartItem,
+  createOrder,
   deleteCartItem,
   deleteProduct,
   getCurrentUser,
@@ -10,10 +11,11 @@ import {
   getProducts,
   updateCartItem,
 } from './api'
-import type { CartResponse, Product } from './api'
+import type { CartResponse, CustomerOrder, Product } from './api'
 import { beginLogin, beginRegistration, endSession, getCurrentSession } from './auth'
 import AdminSellerApplicationsPanel from './AdminSellerApplicationsPanel'
 import CartPanel from './CartPanel'
+import OrderHistoryPanel from './OrderHistoryPanel'
 import ProductCreatePage from './ProductCreatePage'
 import SellerApplicationPanel from './SellerApplicationPanel'
 
@@ -155,6 +157,10 @@ function HomePage({
   const [isCartMutating, setIsCartMutating] = useState(false)
   const [cartError, setCartError] = useState('')
   const [addingProductId, setAddingProductId] = useState<number | null>(null)
+  const [isCheckingOut, setIsCheckingOut] = useState(false)
+  const [latestOrder, setLatestOrder] = useState<CustomerOrder | null>(null)
+  const [orderHistoryRefreshVersion, setOrderHistoryRefreshVersion] = useState(0)
+  const checkoutIdempotencyKey = useRef<string | null>(null)
   const canCreateProducts = isAdmin || roles.includes('seller')
   const isBuyer = roles.includes('buyer')
 
@@ -276,6 +282,38 @@ function HomePage({
     }
   }
 
+  async function handleCheckout() {
+    setIsCheckingOut(true)
+    setCartError('')
+    checkoutIdempotencyKey.current ??= globalThis.crypto.randomUUID()
+    try {
+      const order = await createOrder(token, checkoutIdempotencyKey.current)
+      checkoutIdempotencyKey.current = null
+      setLatestOrder(order)
+      setCart({ items: [], subtotal: '0.00' })
+      setOrderHistoryRefreshVersion((version) => version + 1)
+    } catch (error) {
+      if (error instanceof TypeError) {
+        setCartError('Sunucuya bağlanılamadı. Aynı istekle tekrar deneyebilirsin.')
+      } else if (error instanceof Error && 'status' in error && error.status === 409) {
+        setCartError('Sepetindeki ürün veya stok değişti. Sepetini kontrol edip tekrar dene.')
+        try {
+          setCart(await getMyCart(token))
+        } catch (refreshError) {
+          setCartError(
+            `Sepetindeki ürün veya stok değişti. ${getCartErrorMessage(refreshError)}`,
+          )
+        }
+      } else if (error instanceof Error && 'status' in error && error.status === 401) {
+        setCartError('Oturum süren dolmuş. Yeniden giriş yapıp tekrar dene.')
+      } else {
+        setCartError('Sipariş oluşturulamadı. Lütfen aynı isteği tekrar dene.')
+      }
+    } finally {
+      setIsCheckingOut(false)
+    }
+  }
+
   async function handleDeleteProduct(product: Product) {
     if (
       !window.confirm(
@@ -362,21 +400,30 @@ function HomePage({
         </button>
       </header>
       {isBuyer && (
-        <CartPanel
-          cart={cart}
-          error={cartError || cartLoadError}
-          isLoading={isCartLoading}
-          isMutating={isCartMutating}
-          isOpen={isCartOpen}
-          onRemove={handleCartRemove}
-          onRetry={() => {
-            setIsCartLoading(true)
-            setCartLoadError('')
-            setCartRetryCount((count) => count + 1)
-          }}
-          onToggle={() => setIsCartOpen((open) => !open)}
-          onUpdate={handleCartUpdate}
-        />
+        <>
+          <CartPanel
+            cart={cart}
+            error={cartError || cartLoadError}
+            isCheckingOut={isCheckingOut}
+            isLoading={isCartLoading}
+            isMutating={isCartMutating}
+            isOpen={isCartOpen}
+            onCheckout={handleCheckout}
+            onRemove={handleCartRemove}
+            onRetry={() => {
+              setIsCartLoading(true)
+              setCartLoadError('')
+              setCartRetryCount((count) => count + 1)
+            }}
+            onToggle={() => setIsCartOpen((open) => !open)}
+            onUpdate={handleCartUpdate}
+          />
+          <OrderHistoryPanel
+            latestOrder={latestOrder}
+            refreshVersion={orderHistoryRefreshVersion}
+            token={token}
+          />
+        </>
       )}
       {sessionError && (
         <p className="products-error" role="alert">{sessionError}</p>

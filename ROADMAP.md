@@ -333,10 +333,12 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 
 **Amaç:** Müşteri sepetini doğrulayarak siparişe dönüştürebilsin; sipariş geçmişi satın alma anındaki ürün/fiyat bilgisini korusun.
 
-- Sipariş ve sipariş kalemleri; ürün adı/fiyat/adet gibi satın alma anındaki değerlerin snapshot'ı, toplam tutar ve açık sipariş durumları.
-- Checkout öncesi sepet, stok ve fiyat doğrulaması; sipariş ve stok güncellemesi tek transaction içinde yapılmalı.
-- Boş sepet, silinmiş ürün, yetersiz/değişmiş stok, istemcinin değiştirdiği fiyat/toplam, yinelenen gönderim ve transaction hatası negatif koşulları.
-- Sipariş onay özeti ve sipariş geçmişi; yükleniyor/başarı/hata durumları.
+- **Durum:** Tamamlandı. Backend SQLite ve PostgreSQL testleri 231/231 geçti, coverage %99,54; web testleri 141/141 ve %100 coverage; Keycloak E2E 8/8, build, Oxlint ve Ruff kalite kapıları başarılı.
+- **Kararlar:** Checkout'ta güncel fiyat/stok doğrulanır ve stok aynı transaction içinde düşürülür. Sipariş `pending_payment` olur (REQ-011'e kadar ödeme yoktur). Başarılı checkout sepeti aynı transaction içinde boşaltır. `Idempotency-Key` zorunlu; aynı alıcı/anahtar tekrarı aynı siparişi döndürür. Sipariş kalemleri satın alma anı snapshot'larını korur.
+- Sipariş, satır snapshot'ları, toplam, owner ve açık durum geçişleri için model/migration.
+- Buyer-only checkout ve yalnızca sahibine açık sıralı sipariş geçmişi/detayı.
+- Boş sepet, silinmiş ürün, yetersiz/değişmiş stok, duplicate/replay, transaction hatası ve eşzamanlı son stok yarışları.
+- Sepetten checkout başlatma, onay özeti, işlemde/başarı/hata ve sipariş geçmişi arayüzü.
 
 **Geliştirme tamamlandıktan hemen sonra — test geliştirme planı:**
 
@@ -347,6 +349,14 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 - **E2E:** Buyer sepetten sipariş verir, geçmişte siparişi görür; ürün sonradan güncellense/silinse snapshot korunur; tekrar gönderim ikinci sipariş oluşturmaz.
 
 **Çıkış ölçütü:** Sipariş ya tüm kalemleriyle ve stok etkisiyle oluşur ya da hiçbir değişiklik kalıcılaşmaz; sipariş tutarı istemci girdisine güvenmez ve daha sonra ürün değişse/silinse bile geçmiş tutar korunur.
+
+**İlerleme kontrol listesi**
+
+- [x] Stok düşürme/`pending_payment`, sepeti temizleme ve zorunlu idempotency-key kararları alındı; kabul kriterleri ve katmanlı test planı yazıldı.
+- [x] Sipariş modeli/migration, transaction-safe checkout, sahiplik ve idempotent API.
+- [x] SQLite unit/API/transaction/migration testleri ile PostgreSQL concurrency testleri.
+- [x] Web sipariş oluşturma/onay ve geçmiş görünümü; component ve Keycloak E2E regresyonları.
+- [x] Backend, frontend, PostgreSQL, Keycloak E2E ve build kalite kapıları.
 
 ### Öncelik 6 — REQ-011: Ödeme entegrasyonu
 

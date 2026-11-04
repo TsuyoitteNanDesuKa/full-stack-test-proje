@@ -180,3 +180,60 @@ class CartItem(Base):
     quantity: Mapped[int] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class CustomerOrder(Base):
+    __tablename__ = "orders"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending_payment', 'paid', 'cancelled')",
+            name="ck_orders_status",
+        ),
+        CheckConstraint("total_amount >= 0", name="ck_orders_total_amount_nonnegative"),
+        UniqueConstraint(
+            "owner_subject",
+            "idempotency_key",
+            name="uq_orders_owner_idempotency_key",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_subject: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    total_amount: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class OrderItem(Base):
+    __tablename__ = "order_items"
+    __table_args__ = (
+        CheckConstraint(
+            "quantity BETWEEN 1 AND 999999",
+            name="ck_order_items_quantity_range",
+        ),
+        CheckConstraint(
+            "unit_price >= 0.01 AND unit_price <= 999999.99",
+            name="ck_order_items_unit_price_range",
+        ),
+        CheckConstraint(
+            "line_total >= 0",
+            name="ck_order_items_line_total_nonnegative",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(
+        ForeignKey("orders.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    product_id: Mapped[int | None] = mapped_column(
+        ForeignKey("products.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    product_name: Mapped[str] = mapped_column(String(32), nullable=False)
+    unit_price: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False)
+    quantity: Mapped[int] = mapped_column(nullable=False)
+    line_total: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)

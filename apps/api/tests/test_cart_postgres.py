@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from shop_api.config import Settings, get_settings
 from shop_api.database import create_database_engine
 from shop_api.main import create_app
-from shop_api.models import Base, Cart, CartItem, Product
+from shop_api.models import Base, Cart, CartItem, CustomerOrder, Product
 
 POSTGRES_TEST_DATABASE_URL = os.getenv("SHOP_TEST_DATABASE_URL")
 pytestmark = [
@@ -130,6 +130,22 @@ def _cart_counts(engine: Engine) -> tuple[int, int, int]:
         item_count = session.scalar(select(func.count()).select_from(CartItem))
         quantity = session.scalar(select(func.coalesce(func.sum(CartItem.quantity), 0)))
         return cart_count or 0, item_count or 0, quantity or 0
+
+
+def _checkout(
+    engine: Engine,
+    barrier: Barrier,
+    *,
+    subject: str,
+    idempotency_key: str,
+) -> tuple[int, int | None]:
+    with _client_for_engine(engine) as client:
+        headers = _auth_headers(client, subject)
+        headers["Idempotency-Key"] = idempotency_key
+        barrier.wait(timeout=10)
+        response = client.post("/api/v1/orders", headers=headers)
+        order_id = response.json().get("id") if response.status_code in {200, 201} else None
+        return response.status_code, order_id
 
 
 def test_postgres_cart_api_persists_and_enforces_stock(postgres_client: TestClient) -> None:
@@ -323,3 +339,84 @@ def test_postgres_constraint_blocks_duplicate_product_rows(
             session.commit()
         assert "uq_cart_items_cart_product" in str(error.value)
         session.rollback()
+
+
+def test_postgres_concurrent_checkout_replays_one_order_for_same_idempotency_key(
+    postgres_engine: Engine,
+    postgres_client: TestClient,
+) -> None:
+    product_id = _create_product(postgres_client, stock=5)
+    buyer_subject = "postgres-checkout-idempotent-buyer"
+    headers = _auth_headers(postgres_client, buyer_subject)
+    cart_response = postgres_client.post(
+        "/api/v1/cart/items",
+        json={"product_id": product_id, "quantity": 2},
+        headers=headers,
+    )
+    assert cart_response.status_code == 200
+    workers = 8
+    barrier = Barrier(workers)
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        results = list(
+            executor.map(
+                lambda _: _checkout(
+                    postgres_engine,
+                    barrier,
+                    subject=buyer_subject,
+                    idempotency_key="parallel-same-key",
+                ),
+                range(workers),
+            )
+        )
+
+    statuses = [status_code for status_code, _ in results]
+    order_ids = {order_id for _, order_id in results}
+    assert statuses.count(201) == 1
+    assert statuses.count(200) == workers - 1
+    assert len(order_ids) == 1
+    with Session(postgres_engine) as session:
+        product = session.get(Product, product_id)
+        assert product is not None and product.stock == 3
+        assert session.scalar(select(func.count()).select_from(CustomerOrder)) == 1
+        assert _cart_counts(postgres_engine) == (1, 0, 0)
+
+
+def test_postgres_competing_buyers_cannot_checkout_last_units(
+    postgres_engine: Engine,
+    postgres_client: TestClient,
+) -> None:
+    available_stock = 3
+    product_id = _create_product(postgres_client, stock=available_stock)
+    buyer_subjects = [f"postgres-last-stock-buyer-{index}" for index in range(2)]
+    for buyer_subject in buyer_subjects:
+        response = postgres_client.post(
+            "/api/v1/cart/items",
+            json={"product_id": product_id, "quantity": available_stock},
+            headers=_auth_headers(postgres_client, buyer_subject),
+        )
+        assert response.status_code == 200
+    barrier = Barrier(len(buyer_subjects))
+
+    with ThreadPoolExecutor(max_workers=len(buyer_subjects)) as executor:
+        results = list(
+            executor.map(
+                lambda index: _checkout(
+                    postgres_engine,
+                    barrier,
+                    subject=buyer_subjects[index],
+                    idempotency_key=f"last-stock-checkout-{index}",
+                ),
+                range(len(buyer_subjects)),
+            )
+        )
+
+    statuses = [status_code for status_code, _ in results]
+    assert statuses.count(201) == 1
+    assert statuses.count(409) == 1
+    with Session(postgres_engine) as session:
+        product = session.get(Product, product_id)
+        assert product is not None and product.stock == 0
+        assert session.scalar(select(func.count()).select_from(CustomerOrder)) == 1
+        cart_quantity = session.scalar(select(func.coalesce(func.sum(CartItem.quantity), 0)))
+        assert cart_quantity == available_stock

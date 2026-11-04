@@ -6,12 +6,14 @@ interface CartPanelProps {
   cart: CartResponse | null
   isLoading: boolean
   isMutating: boolean
+  isCheckingOut: boolean
   error: string
   isOpen: boolean
   onToggle: () => void
   onRetry: () => void
   onUpdate: (itemId: number, quantity: number) => Promise<void>
   onRemove: (itemId: number) => Promise<void>
+  onCheckout: () => Promise<void>
 }
 
 function CartItemRow({
@@ -103,12 +105,14 @@ export default function CartPanel({
   cart,
   isLoading,
   isMutating,
+  isCheckingOut,
   error,
   isOpen,
   onToggle,
   onRetry,
   onUpdate,
   onRemove,
+  onCheckout,
 }: CartPanelProps) {
   const itemCount = cart?.items.reduce((count, item) => count + item.quantity, 0) ?? 0
   const subtotal = new Intl.NumberFormat('tr-TR', {
@@ -172,6 +176,21 @@ export default function CartPanel({
               </div>
               <p className="cart-price-note">
                 Fiyatlar güncel katalog fiyatlarına göre gösterilir.
+              </p>
+              <button
+                className="checkout-button"
+                disabled={
+                  isMutating ||
+                  isCheckingOut ||
+                  cart.items.some((item) => !item.is_available)
+                }
+                onClick={() => void onCheckout()}
+                type="button"
+              >
+                {isCheckingOut ? 'Sipariş oluşturuluyor...' : 'Siparişi oluştur'}
+              </button>
+              <p className="cart-price-note">
+                Bu adımda ödeme alınmaz; siparişin ödeme adımı bekleniyor.
               </p>
             </>
           )}

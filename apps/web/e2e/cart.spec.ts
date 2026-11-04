@@ -71,7 +71,7 @@ async function createProduct(page: Page, product: ReturnType<typeof createTestPr
   return createResponse
 }
 
-test.describe('REQ-009 customer cart', () => {
+test.describe('REQ-009 cart and REQ-010 checkout', () => {
   test.skip(
     !keycloakE2EEnabled,
     'Set E2E_KEYCLOAK_E2E=1 and configure the local Keycloak admin credentials.',
@@ -124,6 +124,35 @@ test.describe('REQ-009 customer cart', () => {
         firstBuyerPage.getByRole('spinbutton', { name: `Miktar: ${product.name}` }),
       ).toHaveValue('2')
 
+      const checkoutResponse = firstBuyerPage.waitForResponse(
+        (response) =>
+          response.url().endsWith('/api/v1/orders') &&
+          response.request().method() === 'POST',
+      )
+      await firstBuyerPage.getByRole('button', { name: 'Siparişi oluştur' }).click()
+      const createdOrderResponse = await checkoutResponse
+      expect(createdOrderResponse.status()).toBe(201)
+      const createdOrder = (await createdOrderResponse.json()) as {
+        id: number
+        total_amount: string
+      }
+      expect(createdOrder.total_amount).toBe('25.00')
+      await expect(firstBuyerPage.getByText('Ödeme adımı bekleniyor.')).toBeVisible()
+      await expect(firstBuyerPage.getByRole('button', { name: 'Sepet (0)' })).toBeVisible()
+
+      await firstBuyerPage.getByRole('button', { name: 'Siparişlerim' }).click()
+      await expect(
+        firstBuyerPage.getByRole('heading', { name: `Sipariş #${createdOrder.id}` }),
+      ).toBeVisible()
+      await expect(
+        firstBuyerPage.getByText(`${product.name} · 2 adet · ₺25,00`),
+      ).toBeVisible()
+
+      await firstBuyerPage.getByRole('button', {
+        name: `Sepete ekle ${product.name}`,
+      }).click()
+      await expect(firstBuyerPage.getByRole('button', { name: 'Sepet (1)' })).toBeVisible()
+
       const secondRegistration = await registerBuyer(
         secondBuyerPage,
         secondBuyer.email,
@@ -144,10 +173,14 @@ test.describe('REQ-009 customer cart', () => {
       expect((await deleteResponse).status()).toBe(204)
 
       await firstBuyerPage.reload()
-      await firstBuyerPage.getByRole('button', { name: 'Sepet (2)' }).click()
+      await firstBuyerPage.getByRole('button', { name: 'Sepet (1)' }).click()
       await expect(firstBuyerPage.getByText('Ürün artık mevcut değil.')).toBeVisible()
       await firstBuyerPage.getByRole('button', { name: 'Sepetten kaldır' }).click()
       await expect(firstBuyerPage.getByText('Sepetin henüz boş.')).toBeVisible()
+      await firstBuyerPage.getByRole('button', { name: 'Siparişlerim' }).click()
+      await expect(
+        firstBuyerPage.getByText(`${product.name} · 2 adet · ₺25,00`),
+      ).toBeVisible()
     } finally {
       try {
         const keycloakAdmin = await createKeycloakAdminClient(request)
