@@ -42,19 +42,24 @@ Tam kabul kriterleri [REQ-001](./docs/requirements.md#req-001-kayıtlı-müşter
 
 ## Backend'i çalıştırma
 
-FastAPI yerel geliştirmede SQLite kullanır. Keycloak, yerel Docker Compose servisi olarak başlatılır. Docker Desktop/Compose kurulu olmalıdır.
+FastAPI yerel geliştirmede Docker Compose ile çalışan PostgreSQL'i kullanır. SQLite, hızlı ve izole unit/API testleri ile Playwright E2E veritabanı için kullanılır. Docker Desktop/Compose kurulu olmalıdır.
 
 ```powershell
 Set-Location .
 $env:KEYCLOAK_ADMIN_PASSWORD = Read-Host "Yerel Keycloak yönetici parolası"
-docker compose up -d keycloak
+docker compose up -d postgres keycloak
+docker compose ps
 
 Set-Location apps/api
 uv sync
-Copy-Item .env.example .env
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 uv run alembic upgrade head
 uv run uvicorn shop_api.main:create_app --factory --reload
 ```
+
+Compose PostgreSQL'i yalnızca yerel makineye (`127.0.0.1:5432`) açar ve kalıcılık için `postgres_data` volume'ünü kullanır. Varsayılan `shop-local-dev-only` parolası yalnızca yerel geliştirme içindir; paylaşılmış/uzak ortamlarda kullanmayın. İsterseniz Compose öncesinde `POSTGRES_DB`, `POSTGRES_USER` ve `POSTGRES_PASSWORD` ortam değişkenlerini tanımlayın ve aynı değerlerle `apps/api/.env` içindeki `SHOP_DATABASE_URL`'i güncelleyin. PostgreSQL verileri `docker compose down` ile silinmez; `docker compose down -v` veritabanı volume'ünü de kalıcı olarak siler.
+
+İlk kurulumdan sonra şema migration'ları PostgreSQL'e uygulanır. API testleri SQLite üzerinde izole çalışmaya devam eder; gerçek PostgreSQL entegrasyon/eşzamanlılık testleri ayrıca çalıştırılacaktır. Playwright E2E testleri de Keycloak dışındaki uygulama verisini birbirinden yalıtmak için geçici SQLite kullanır.
 
 Realm ve `shop-web` public OIDC istemcisi `infra/keycloak/realm-export.json` dosyasından ilk Keycloak başlangıcında içe aktarılır. Keycloak hazır olduğunda alıcı kayıt ve giriş ekranı `http://localhost:8080` üzerinden sunulur. `SHOP_OIDC_ISSUER` ve audience varsayılanları yerel realm ile eşleşir.
 
@@ -65,7 +70,7 @@ Satıcı onayında API'nin Keycloak service account üzerinden `seller` realm ro
 ```powershell
 Set-Location apps/web
 npm ci
-Copy-Item .env.example .env
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 npm run dev
 ```
 
@@ -82,7 +87,7 @@ Set-Location apps/web
 npm run test:e2e
 ```
 
-Playwright testleri gerçek Keycloak kayıt/giriş ekranını kullanır; admin CRUD ve satıcı başvuru E2E'leri geçici test hesapları oluşturup temizler. Satıcı akışı için API service-account secret'ı ve yerel Keycloak realm rol eşlemeleri de yapılandırılmış olmalıdır. Ürün veritabanı izole geçici SQLite dosyasıdır. Keycloak E2E testleri varsayılan olarak atlanır; yalnızca yerel test realm'i çalışırken açıkça etkinleştirilmelidir.
+Playwright testleri gerçek Keycloak kayıt/giriş ekranını kullanır; admin CRUD ve satıcı başvuru E2E'leri geçici test hesapları oluşturup temizler. Satıcı akışı için API service-account secret'ı ve yerel Keycloak realm rol eşlemeleri de yapılandırılmış olmalıdır. E2E ürün veritabanı izole geçici SQLite dosyasıdır; uygulama geliştirme veritabanı PostgreSQL'dir. Keycloak E2E testleri varsayılan olarak atlanır; yalnızca yerel test realm'i çalışırken açıkça etkinleştirilmelidir.
 
 ## Önerilen teknoloji seti
 
@@ -99,7 +104,7 @@ Teknolojiler öğrenme hedefini desteklemek için seçilmiştir; her aracın tü
 | İstemci | React, Vite | Ekranlar, formlar ve kullanıcı etkileşimleri |
 | İstemci testi | Vitest, React Testing Library, jest-dom | Unit ve component testleri |
 | API dokümantasyonu | FastAPI OpenAPI/Swagger UI | İstek/yanıt sözleşmelerini görünür kılma |
-| Veritabanı | SQLite (ilk yerel dilim), PostgreSQL (sonraki ortam) | Kalıcı ilişkisel veri |
+| Veritabanı | PostgreSQL (yerel geliştirme ve uygulama), SQLite (izole testler) | Kalıcı ilişkisel veri |
 | ORM/migrasyon | SQLAlchemy 2, Alembic | Veri erişimi, modelleme ve şema migrasyonları |
 | Test otomasyonu | Playwright | Tarayıcı tabanlı uçtan uca ve sistem senaryoları |
 | Python bağımlılıkları | uv, `pyproject.toml` | Sanal ortam ve kilitli bağımlılık yönetimi |

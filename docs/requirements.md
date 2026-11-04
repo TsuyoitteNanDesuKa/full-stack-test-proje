@@ -12,7 +12,7 @@ Müşterilerin ürünleri bulup satın alabildiği bir çevrimiçi mağaza geli�
 - REQ-001'in yerel parola tabanlı ilk prototipi Keycloak/OIDC entegrasyonuyla değiştirilmektedir; alıcı self-registration REQ-006 kapsamındadır.
 - Alıcı, satıcı ve platform yöneticisi farklı iş profilleridir. Herkese açık kayıt yalnızca alıcı hesabı oluşturur; satıcı/yönetici rolü kullanıcı tarafından seçilemez veya yükseltilemez.
 - E-posta doğrulama ve parola sıfırlama daha sonraki dilimlere bırakılmıştır; ilk kayıt akışında e-posta doğrulaması zorunlu değildir.
-- Yerel geliştirme veritabanı SQLite'tır. PostgreSQL'e geçiş ayrı ortam çalışmasıdır.
+- Yerel geliştirme ve Alembic migration hedefi Docker Compose PostgreSQL'dir. Hızlı unit/API testleri ve izole Playwright E2E veritabanı olarak SQLite kullanılır. PostgreSQL bağlantı/migration temeli REQ-009 QA adımında kuruldu; PostgreSQL eşzamanlılık testleri kapanış koşulu olarak ayrıca çalıştırılacaktır.
 - Ana sayfa ve ürün kataloğu yalnızca doğrulanmış kullanıcılara sunulur. Ürün CRUD'u admin için mağaza genelinde, onaylı seller için yalnızca kendisine ait ürünlerde kullanılabilir.
 
 ## Gereksinim öncelikleri
@@ -548,7 +548,7 @@ Keycloak erişim/rol atama hatasında işlem başarı gibi raporlanmaz; başvuru
 ## REQ-009 — Müşteri sepeti
 
 - **Öncelik:** P1
-- **Durum:** Backend, UI, migration ve katmanlı testler tamamlandı. Backend'de 212 test, frontend'de 128 test geçti; backend coverage %99,47, frontend coverage tüm ölçümlerde %100. Gerçek Keycloak E2E senaryoları 8/8 geçti. PostgreSQL üzerinde eşzamanlı sepet mutation davranışı ayrıca doğrulanmadı.
+- **Durum:** Backend, UI, migration ve katmanlı testler tamamlandı. Backend'de 213 test, frontend'de 128 test geçti; backend coverage %99,47, frontend coverage tüm ölçümlerde %100. Gerçek Keycloak E2E senaryoları 8/8 geçti. PostgreSQL geliştirme bağlantısı ve migration doğrulandı; PostgreSQL üzerinde eşzamanlı sepet mutation davranışı ayrıca doğrulanmadı.
 - **Kullanıcı hikâyesi:** Giriş yapmış bir alıcı olarak ürünleri sepete ekleyip miktarlarını değiştirmek veya kaldırmak istiyorum; böylece satın almadan önce seçimlerimi gözden geçirebilirim.
 - **Kimlik ve sahiplik:** Sepet Keycloak `sub` değeriyle kullanıcıya bağlanır. İstemci sepet sahibi veya başka kullanıcıya ait sepet kimliği gönderemez. Alıcı rolü olmayan oturumlar sepet API'sine erişemez.
 - **Tekrar ekleme:** Sepetteki ürünü yeniden ekleme mevcut satırın miktarını artırır; aynı ürün için ikinci satır oluşmaz.

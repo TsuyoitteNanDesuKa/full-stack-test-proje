@@ -13,7 +13,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    database_url: str = "sqlite:///./shop.db"
+    database_url: str = "postgresql+psycopg://shop:shop-local-dev-only@127.0.0.1:5432/shop"
     oidc_issuer: str = "http://localhost:8080/realms/shop"
     oidc_audience: str = "shop-api"
     oidc_jwks_url: str | None = None

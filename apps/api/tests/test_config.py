@@ -4,6 +4,14 @@ from pydantic import ValidationError
 from shop_api.config import Settings, get_settings
 
 
+def test_default_database_uses_local_postgresql() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.database_url == (
+        "postgresql+psycopg://shop:shop-local-dev-only@127.0.0.1:5432/shop"
+    )
+
+
 def test_settings_derive_jwks_endpoint_from_issuer() -> None:
     settings = Settings(oidc_issuer="https://identity.example/realms/store/")
 

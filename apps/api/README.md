@@ -6,30 +6,31 @@ FastAPI storefront API secured by Keycloak access tokens. The API does not colle
 
 - Python 3.13+
 - `uv`
-- Local Keycloak from the repository's Docker Compose configuration
+- Docker Compose (local PostgreSQL and Keycloak services)
 
 ## Setup
 
-From the repository root, start Keycloak with a local-only bootstrap administrator password:
+From the repository root, start PostgreSQL and Keycloak. The PostgreSQL service binds to loopback only and uses a persistent Docker volume. Its default credentials are for local development only; override `POSTGRES_DB`, `POSTGRES_USER`, and `POSTGRES_PASSWORD` for other environments.
 
 ```powershell
 $env:KEYCLOAK_ADMIN_PASSWORD = Read-Host "Local Keycloak administrator password"
-docker compose up -d keycloak
+docker compose up -d postgres keycloak
+docker compose ps
 ```
 
 The `shop` realm, `shop-web` public OIDC client, buyer/seller/admin roles, and API audience mapper are imported from `infra/keycloak/realm-export.json`. The public realm issuer is `http://localhost:8080/realms/shop`.
 
 The `liva` login theme is mounted from `infra/keycloak/themes/liva` and uses generic duplicate-account errors to avoid revealing whether an email is registered. Realm import only initializes a new realm; it does not overwrite configuration in an existing persistent Keycloak volume. For an existing realm, select `liva` as the Login theme under Admin Console → Realm settings → Themes. Removing the volume also deletes its realm data and users.
 
-From this directory, configure the API and database:
+From this directory, configure the API and apply migrations to PostgreSQL:
 
 ```powershell
 uv sync
-Copy-Item .env.example .env
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 uv run alembic upgrade head
 ```
 
-The example settings point at the local Keycloak realm and `shop-api` audience. For non-local deployments, use HTTPS and configure `SHOP_OIDC_ISSUER`, `SHOP_OIDC_AUDIENCE`, and optionally `SHOP_OIDC_JWKS_URL`.
+The example settings point at the local PostgreSQL service and Keycloak realm (`SHOP_DATABASE_URL=postgresql+psycopg://shop:shop-local-dev-only@127.0.0.1:5432/shop`). If Compose credentials were overridden, update the URL accordingly. Existing `.env` files are not overwritten; if upgrading an existing checkout, change only its `SHOP_DATABASE_URL` entry rather than copying over the whole file. For non-local deployments, use HTTPS and configure `SHOP_OIDC_ISSUER`, `SHOP_OIDC_AUDIENCE`, `SHOP_DATABASE_URL`, and optionally `SHOP_OIDC_JWKS_URL`.
 
 ### Seller role provisioning
 
@@ -67,7 +68,7 @@ The imported realm enables Keycloak admin-event recording without event details 
 
 ## Tests and lint
 
-API tests use isolated SQLite databases and a test RSA/JWKS double. They cover access-token signature and claim validation, role enforcement, JWKS unavailability, buyer cart ownership and stock behavior, deleted products, cart migration rollback, seller application/review and provisioning behavior, storefront/product behavior, and imported realm settings.
+The development API and Alembic migrations use PostgreSQL. API tests continue to use isolated SQLite databases and a test RSA/JWKS double for fast, deterministic unit and route coverage. They cover access-token signature and claim validation, role enforcement, JWKS unavailability, buyer cart ownership and stock behavior, deleted products, cart migration rollback, seller application/review and provisioning behavior, storefront/product behavior, and imported realm settings. PostgreSQL-specific locking/concurrency integration tests are a separate QA task and must run against the Compose database.
 
 ```powershell
 uv run pytest

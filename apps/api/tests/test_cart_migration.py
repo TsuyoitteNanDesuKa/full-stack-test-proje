@@ -54,7 +54,7 @@ def test_cart_migration_preserves_items_when_products_are_deleted_and_downgrades
                 == "Cart product"
             )
 
-        command.downgrade(alembic_config, "0005_seller_applications_and_product_ownership")
+        command.downgrade(alembic_config, "0005_seller_products")
         with engine.connect() as connection:
             tables = set(
                 connection.scalars(

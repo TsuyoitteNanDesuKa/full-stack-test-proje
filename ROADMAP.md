@@ -284,13 +284,26 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 
 **Çıkış ölçütü:** Admin yetkisi yalnızca güvenilir Keycloak konsolundan verilir/alınır; public kayıtla rol yükseltilemez; admin olayları ayrıntısız kaydedilir; son-admin kontrolü ve break-glass prosedürü uygulanır; regresyon kapıları geçer.
 
+### Yerel PostgreSQL geliştirme ortamı
+
+**Amaç:** API'nin ve Alembic'in yerel geliştirmede PostgreSQL kullanması; SQLite'ın hızlı/izole testlerin veritabanı olarak kalması.
+
+**Durum:** Compose PostgreSQL servisi, kalıcı volume, loopback port eşlemesi ve SQLAlchemy/psycopg varsayılan bağlantısı eklendi. Mevcut migration zinciri PostgreSQL'e uygulandı. PostgreSQL uyumluluğu için 0005 revision kimliği 32 karakter sınırına indirildi.
+
+**İlerleme kontrol listesi**
+
+- [x] PostgreSQL Compose servisi, healthcheck, `postgres_data` volume'ü ve yalnızca `127.0.0.1:5432` portu.
+- [x] API varsayılanı ve `.env.example` PostgreSQL'e taşındı; mevcut yerel `.env` korunarak bağlantı ayarı güncellendi.
+- [x] Alembic migration zinciri gerçek PostgreSQL veritabanına uygulandı; `0006_customer_carts` head sürümü doğrulandı.
+- [ ] PostgreSQL API entegrasyon ve eşzamanlılık testlerini ekleyip çalıştır; SQLite testleri hızlı regresyon paketi olarak sürdür.
+
 ### Öncelik 4 — REQ-009: Müşteri sepeti
 
 **Amaç:** Giriş yapmış müşteri ürünleri sepete ekleyebilsin, miktarı değiştirebilsin ve sepetten çıkarabilsin.
 
 **Kararlar:** Sepet Keycloak subject'iyle kullanıcıya bağlanır. Ürünü tekrar eklemek miktarı artırır; sepet güncel katalog fiyatını gösterir ve checkout'ta yeniden doğrular; her ekleme/güncelleme güncel stoğa göre kontrol edilir. Ürün silinince satır korunur, kullanılamaz görünür ve yalnızca kaldırılabilir.
 
-**Durum:** Backend, UI, migration ve katmanlı regresyon testleri tamamlandı. Backend 212 test ve %99,47 coverage; frontend 128 test ve tüm ölçümlerde %100 coverage; gerçek Keycloak E2E 8/8 geçti. PostgreSQL üzerinde eşzamanlı sepet mutation davranışının doğrulanması açık QA maddesidir.
+**Durum:** Backend, UI, migration ve katmanlı regresyon testleri tamamlandı. Backend 213 test ve %99,47 coverage; frontend 128 test ve tüm ölçümlerde %100 coverage; gerçek Keycloak E2E 8/8 geçti. PostgreSQL geliştirme ortamı ve migration doğrulandı; PostgreSQL API/eşzamanlı mutation testleri açık QA maddesidir.
 
 - Buyer-only API'de sepet sahibi istemciden alınmamalı; her kullanıcı sadece kendi sepetini okuyup değiştirebilmelidir.
 - Ürün/miktar doğrulaması, tekrar eklemede miktar artırma ve güncel stok kontrolü backend'de atomik olmalıdır.
@@ -310,6 +323,7 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 - [x] Backend API, modeller, migration, sahiplik/stok kuralları ve API/DB testleri tamamlandı.
 - [x] Web sepet akışı ve hata/yükleme/boş/stok durumları component testleriyle doğrulandı; frontend coverage tüm ölçümlerde %100.
 - [x] Backend regresyonu ve coverage, Ruff/format, web lint/build ve gerçek Keycloak E2E kalite kapıları geçti.
+- [x] Yerel PostgreSQL servisi ayağa kaldırıldı ve Alembic head migration'ı uygulandı.
 - [ ] PostgreSQL üzerinde eşzamanlı sepet mutation ve stok kontrolü doğrulanmalı; SQLite testleri `SELECT ... FOR UPDATE` kilit davranışını kanıtlamaz.
 
 **Çıkış ölçütü:** Alıcı yalnızca kendi sepetini düzenler; hatalı, stok dışı veya yetkisiz mutation kalıcılaşmaz; API, UI, migration ve regresyon testleri geçer. PostgreSQL eşzamanlılık doğrulaması tamamlanmadan bu gereksinimin tüm QA maddeleri kapatılmış sayılmaz.
