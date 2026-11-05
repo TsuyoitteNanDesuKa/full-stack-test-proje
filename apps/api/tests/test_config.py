@@ -30,6 +30,28 @@ def test_settings_accept_explicit_jwks_endpoint() -> None:
     assert settings.jwks_endpoint() == "https://keys.example/shop"
 
 
+def test_mock_payment_settings_default_to_two_minutes() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.payment_provider == "mock"
+    assert settings.payment_expiry_seconds == 120
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"payment_provider": "stripe"},
+        {"payment_webhook_secret": "short"},
+        {"payment_expiry_seconds": 0},
+    ],
+)
+def test_settings_reject_unsupported_or_invalid_payment_configuration(
+    values: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, **values)
+
+
 @pytest.mark.parametrize(
     "issuer",
     [

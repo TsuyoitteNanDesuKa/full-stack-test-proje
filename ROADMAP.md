@@ -362,20 +362,34 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 
 **Amaç:** Sipariş, gerçek kart verisini uygulama sunucusuna almadan güvenilir bir ödeme sağlayıcısı üzerinden ödenebilsin.
 
-- Önce sağlayıcıdan bağımsız ödeme arayüzü ve sağlayıcının sandbox/hosted checkout akışı; kart numarası veya güvenlik kodu uygulama veritabanı/loglarında tutulmamalı.
-- Ödeme başlatma, beklemede/başarılı/başarısız durumları ve kullanıcıya sonuç ekranı; sipariş ve ödeme durum geçişleri açıkça tanımlanmalı.
-- İmzalı webhook doğrulaması, idempotency, tekrar/ters sıra/bozuk webhook, zaman aşımı, sağlayıcı hatası, iptal ve tutar uyuşmazlığı senaryoları.
+- **Durum:** Mock sandbox dilimi tamamlandı: son backend varsayılan test koşusunda 239 test geçti, PostgreSQL için ayrılmış 10 test `SHOP_TEST_DATABASE_URL` ayarlı olmadığından atlandı; coverage %97,19 (eşik %95). Web 144 test/%100 coverage ve Keycloak E2E 8/8 önceki tam doğrulamada geçti; build/lint, Ruff ve `git diff --check` başarılı. Gerçek PSP adapter'ı ve sandbox hesabı seçime kadar bekliyor.
+- **Kararlar:** Mock hosted checkout; iki dakikalık ödeme süresi; kesin başarısızlık/iptal/zaman aşımında REQ-010’dan düşülen stok bir transaction içinde ve tek sefer iade edilir. Webhook imzası, tutar/para birimi ve event ID doğrulanır. Kart bilgisi uygulamaya alınmaz.
+- Sağlayıcı adapter sözleşmesi ve yalnızca geliştirme/test için mock hosted checkout.
+- Ödeme modeli, migration, buyer sahipli ödeme başlatma/durum API’si ve zorunlu idempotency.
+- İmzalı webhook, yinelenen/ters sıradaki olayların idempotent işlenmesi; ödeme başarı/ret/iptal ve expiry stok iadesi.
+- Frontend hosted checkout yönlendirmesi ve sipariş ödeme durumlarının gösterimi.
+- Gerçek sağlayıcı (iyzico veya seçilecek PSP) sandbox hesabı ve credential’ları ayrıca sağlanınca adapter eklenir; canlı tahsilat bu dilimin dışında.
 
 **Geliştirme tamamlandıktan hemen sonra — test geliştirme planı:**
 
 - **Unit:** Ödeme/sipariş durum geçişleri, imza doğrulama, idempotency ve tutar eşleştirme kuralları.
-- **Adapter contract/entegrasyon:** Sağlayıcı sandbox sözleşmesi, başarı/ret/zaman aşımı/bozuk yanıt; imzasız, bozuk, tekrarlı ve sıra dışı webhook; sağlayıcı hatasında state tutarlılığı.
+- **Mock adapter contract/entegrasyon:** Tamamlandı; imzalı, bozuk, yinelenen ve sıra dışı webhook ile başarı/ret/zaman aşımı ve state tutarlılığı test edildi.
 - **API/DB:** Ödeme başlatma yetkisi ve sahiplik, idempotency, transaction sınırları, webhook tekrarında tek durum geçişi; kart verisinin DB/log/yanıt içinde bulunmadığı doğrulanmalı.
-- **Component:** Hosted checkout'a yönlendirme, beklemede/başarılı/başarısız/iptal ekranları ve tekrar deneme durumları.
-- **E2E:** Sandbox/hosted checkout ile baştan sona ödeme ve webhook sonucu; yalnızca sentetik sandbox bilgileri kullanılmalı, gerçek kart verisi kullanılmamalı.
+- **Component:** Tamamlandı; hosted checkout'a yönlendirme ile beklemede/başarılı/başarısız/iptal durumları doğrulandı. Başarısız/sona ermiş siparişte yeni ödeme denemesi desteklenmiyor; politika ayrıca ele alınmalı.
+- **E2E:** Tamamlandı; sentetik sandbox sonucu ile checkout→ödeme→sipariş durumu akışı doğrulandı, gerçek kart verisi kullanılmadı.
+- **Gerçek PSP için bekleyen:** Sağlayıcı seçimi ve sandbox hesabı/credential'ları sağlandıktan sonra adapter contract/entegrasyon testleri ve canlı olmayan sağlayıcı doğrulaması.
 - **Güvenlik/regresyon:** Webhook imzası atlatılamamalı; farklı sipariş/kullanıcıya ait ödeme güncellenememeli; önceki checkout akışı korunmalı.
 
-**Çıkış ölçütü:** Yinelenen veya doğrulanmamış bildirim ikinci kez tahsilat/sipariş geçişi yaratmaz; uygulama, sağlayıcı sonucu kesinleşene kadar siparişi tutarlı bir bekleme durumunda gösterir.
+**Çıkış ölçütü:** Yinelenen veya doğrulanmamış bildirim ikinci kez ödeme/sipariş/stok geçişi yaratmaz; iki dakika sonunda bekleyen ödeme sona erer ve stok bir kez serbest bırakılır; kart verisi uygulamaya hiç girmez.
+
+**İlerleme kontrol listesi**
+
+- [x] Mock-first sağlayıcı yaklaşımı, 2 dakikalık ödeme penceresi ve başarısız/iptal/sona erme stok kararı netleştirildi ve gereksinime işlendi.
+- [x] Ödeme modeli/migration, provider adapter ve hosted sandbox checkout.
+- [x] İmzalı webhook, ödeme/sipariş geçişleri, expiry worker ve transaction/idempotency testleri.
+- [x] Web ödeme yönlendirmesi ve durum ekranı; component/Keycloak E2E.
+- [x] SQLite + PostgreSQL testleri, frontend kalite kapıları ve mock sandbox kapsamındaki REQ-011 çıkış ölçütleri.
+- [ ] Gerçek PSP seçimi, sandbox hesabı/credential kurulumu ve sağlayıcı sözleşme testleri.
 
 ### Öncelik 7 — REQ-012: Sipariş takibi ve operasyonel tamamlayıcılar
 

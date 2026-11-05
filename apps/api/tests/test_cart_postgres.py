@@ -1,6 +1,8 @@
+import json
 import os
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime, timedelta
 from threading import Barrier
 
 import pytest
@@ -17,7 +19,18 @@ from sqlalchemy.orm import Session
 from shop_api.config import Settings, get_settings
 from shop_api.database import create_database_engine
 from shop_api.main import create_app
-from shop_api.models import Base, Cart, CartItem, CustomerOrder, Product
+from shop_api.models import (
+    Base,
+    Cart,
+    CartItem,
+    CustomerOrder,
+    OrderItem,
+    Payment,
+    PaymentWebhookEvent,
+    Product,
+)
+from shop_api.payment_expiry import expire_due_payments
+from shop_api.payment_providers import sign_webhook_body
 
 POSTGRES_TEST_DATABASE_URL = os.getenv("SHOP_TEST_DATABASE_URL")
 pytestmark = [
@@ -146,6 +159,38 @@ def _checkout(
         response = client.post("/api/v1/orders", headers=headers)
         order_id = response.json().get("id") if response.status_code in {200, 201} else None
         return response.status_code, order_id
+
+
+def _send_signed_payment_event(
+    engine: Engine,
+    *,
+    event_id: str,
+    payment_reference: str,
+    status: str,
+    amount: str,
+) -> tuple[int, bool]:
+    body = json.dumps(
+        {
+            "event_id": event_id,
+            "payment_reference": payment_reference,
+            "status": status,
+            "amount": amount,
+            "currency": "TRY",
+        },
+        separators=(",", ":"),
+    ).encode()
+    signature = sign_webhook_body(body, "local-mock-payment-webhook-secret")
+    app = create_app(
+        settings=Settings(database_url=str(engine.url)),
+        db_engine=engine,
+    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/payments/webhook",
+            content=body,
+            headers={"X-Payment-Signature": signature},
+        )
+        return response.status_code, response.json().get("duplicate", False)
 
 
 def test_postgres_cart_api_persists_and_enforces_stock(postgres_client: TestClient) -> None:
@@ -420,3 +465,102 @@ def test_postgres_competing_buyers_cannot_checkout_last_units(
         assert session.scalar(select(func.count()).select_from(CustomerOrder)) == 1
         cart_quantity = session.scalar(select(func.coalesce(func.sum(CartItem.quantity), 0)))
         assert cart_quantity == available_stock
+
+
+def test_postgres_duplicate_payment_webhook_restores_stock_once(
+    postgres_engine: Engine,
+    postgres_client: TestClient,
+) -> None:
+    product_id = _create_product(postgres_client, stock=5)
+    buyer_subject = "postgres-payment-webhook-buyer"
+    headers = _auth_headers(postgres_client, buyer_subject)
+    assert (
+        postgres_client.post(
+            "/api/v1/cart/items",
+            json={"product_id": product_id, "quantity": 2},
+            headers=headers,
+        ).status_code
+        == 200
+    )
+    order_response = postgres_client.post(
+        "/api/v1/orders",
+        headers={**headers, "Idempotency-Key": "postgres-payment-order"},
+    )
+    assert order_response.status_code == 201
+    payment_response = postgres_client.post(
+        f"/api/v1/orders/{order_response.json()['id']}/payments",
+        headers={**headers, "Idempotency-Key": "postgres-payment-start"},
+    )
+    assert payment_response.status_code == 201
+    payment_reference = payment_response.json()["provider_reference"]
+    payment_amount = order_response.json()["total_amount"]
+    workers = 6
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        results = list(
+            executor.map(
+                lambda _: _send_signed_payment_event(
+                    postgres_engine,
+                    event_id="postgres-payment-failure",
+                    payment_reference=payment_reference,
+                    status="failed",
+                    amount=payment_amount,
+                ),
+                range(workers),
+            )
+        )
+
+    assert [status_code for status_code, _ in results] == [200] * workers
+    assert sum(duplicate for _, duplicate in results) == workers - 1
+    with Session(postgres_engine) as session:
+        product = session.get(Product, product_id)
+        assert product is not None and product.stock == 5
+        assert session.scalar(select(func.count()).select_from(PaymentWebhookEvent)) == 1
+
+
+def test_postgres_concurrent_expiry_restores_inventory_once(
+    postgres_engine: Engine,
+    postgres_client: TestClient,
+) -> None:
+    product_id = _create_product(postgres_client, stock=5)
+    headers = _auth_headers(postgres_client, "postgres-payment-expiry-buyer")
+    assert (
+        postgres_client.post(
+            "/api/v1/cart/items",
+            json={"product_id": product_id, "quantity": 2},
+            headers=headers,
+        ).status_code
+        == 200
+    )
+    order = postgres_client.post(
+        "/api/v1/orders",
+        headers={**headers, "Idempotency-Key": "postgres-expiry-order"},
+    )
+    payment = postgres_client.post(
+        f"/api/v1/orders/{order.json()['id']}/payments",
+        headers={**headers, "Idempotency-Key": "postgres-expiry-payment"},
+    )
+    payment_id = payment.json()["id"]
+    with Session(postgres_engine) as session:
+        stored_payment = session.get(Payment, payment_id)
+        assert stored_payment is not None
+        stored_payment.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        session.commit()
+
+    def run_expiry(_: int) -> int:
+        with Session(postgres_engine) as session:
+            return expire_due_payments(session)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        expiry_counts = list(executor.map(run_expiry, range(2)))
+
+    assert sum(expiry_counts) == 1
+    with Session(postgres_engine) as session:
+        product = session.get(Product, product_id)
+        stored_payment = session.get(Payment, payment_id)
+        items = session.scalars(
+            select(OrderItem).where(OrderItem.order_id == payment.json()["order_id"])
+        ).all()
+        assert product is not None and product.stock == 5
+        assert stored_payment is not None and stored_payment.status == "expired"
+        assert len(items) == 1

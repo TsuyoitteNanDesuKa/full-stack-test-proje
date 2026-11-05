@@ -283,3 +283,52 @@ class OrderResponse(BaseModel):
     total_amount: Decimal
     created_at: datetime
     items: list[OrderItemResponse]
+
+
+class PaymentStatus(StrEnum):
+    PENDING = "pending"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    EXPIRED = "expired"
+
+
+class PaymentResult(StrEnum):
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class PaymentResponse(BaseModel):
+    id: int
+    order_id: int
+    provider_reference: str
+    status: PaymentStatus
+    amount: Decimal
+    currency: str
+    expires_at: datetime
+    checkout_url: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PaymentWebhookRequest(BaseModel):
+    event_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$")
+    payment_reference: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9._:-]+$",
+    )
+    status: PaymentResult
+    amount: Decimal = Field(gt=Decimal("0"), max_digits=16, decimal_places=2)
+    currency: str = Field(pattern=r"^[A-Z]{3}$")
+
+
+class PaymentWebhookResponse(BaseModel):
+    accepted: bool
+    duplicate: bool
+    payment: PaymentResponse
+
+
+class MockPaymentResultRequest(BaseModel):
+    status: PaymentResult

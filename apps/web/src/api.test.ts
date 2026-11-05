@@ -4,6 +4,7 @@ import {
   ApiError,
   createProduct,
   createOrder,
+  createPayment,
   createSellerApplication,
   deleteCartItem,
   deleteProduct,
@@ -267,6 +268,38 @@ describe('storefront API client', () => {
     for (const [, init] of vi.mocked(fetch).mock.calls) {
       expect(init?.headers).toHaveProperty('Authorization', 'Bearer buyer-token')
     }
+  })
+
+  it('starts a payment with an idempotency key and receives a hosted checkout URL', async () => {
+    const payment = {
+      id: 8,
+      order_id: 44,
+      provider_reference: 'mock-reference',
+      status: 'pending' as const,
+      amount: '25.00',
+      currency: 'TRY',
+      expires_at: '2026-11-04T20:02:00Z',
+      checkout_url: '/api/v1/payments/mock-checkout/8/token',
+      created_at: '2026-11-04T20:00:00Z',
+      updated_at: '2026-11-04T20:00:00Z',
+    }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(payment, 201))
+
+    await expect(
+      createPayment('buyer-token', 44, 'order-44-payment'),
+    ).resolves.toEqual(payment)
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/orders/44/payments',
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer buyer-token',
+          'Idempotency-Key': 'order-44-payment',
+        },
+      }),
+    )
+    expect(vi.mocked(fetch).mock.calls[0]?.[1]).not.toHaveProperty('body')
   })
 
   it('preserves product endpoint failures for the caller', async () => {

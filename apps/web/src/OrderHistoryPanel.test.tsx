@@ -1,10 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import OrderHistoryPanel from './OrderHistoryPanel'
-import { getMyOrders } from './api'
-import type { CustomerOrder } from './api'
+import { createPayment, getMyOrders } from './api'
+import type { CustomerOrder, CustomerPayment } from './api'
 
 vi.mock('./api', () => ({
+  createPayment: vi.fn(),
   getMyOrders: vi.fn(),
 }))
 
@@ -25,10 +26,24 @@ const sampleOrder: CustomerOrder = {
   ],
 }
 
+const samplePayment: CustomerPayment = {
+  id: 8,
+  order_id: sampleOrder.id,
+  provider_reference: 'mock-reference',
+  status: 'pending',
+  amount: '25.00',
+  currency: 'TRY',
+  expires_at: '2026-11-04T20:02:00Z',
+  checkout_url: '/api/v1/payments/mock-checkout/8/token',
+  created_at: '2026-11-04T20:00:00Z',
+  updated_at: '2026-11-04T20:00:00Z',
+}
+
 describe('OrderHistoryPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(getMyOrders).mockResolvedValue([])
+    vi.mocked(createPayment).mockResolvedValue(samplePayment)
   })
 
   it('loads and displays order snapshots when opened', async () => {
@@ -64,6 +79,47 @@ describe('OrderHistoryPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Siparişlerim' }))
 
     expect(await screen.findByText('Henüz siparişin yok.')).toBeInTheDocument()
+  })
+
+  it('starts payment and exposes the hosted checkout link', async () => {
+    vi.mocked(getMyOrders).mockResolvedValue([sampleOrder])
+    render(
+      <OrderHistoryPanel
+        latestOrder={null}
+        refreshVersion={0}
+        token="buyer-token"
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Siparişlerim' }))
+    await screen.findByRole('heading', { name: 'Sipariş #21' })
+    fireEvent.click(screen.getByRole('button', { name: 'Ödemeye devam et' }))
+
+    expect(await screen.findByRole('link', {
+      name: 'Güvenli test ödeme sayfasına git',
+    })).toHaveAttribute('href', samplePayment.checkout_url)
+    expect(createPayment).toHaveBeenCalledWith(
+      'buyer-token',
+      sampleOrder.id,
+      `order-${sampleOrder.id}-payment`,
+    )
+  })
+
+  it('reports a payment-start failure without hiding order history', async () => {
+    vi.mocked(getMyOrders).mockResolvedValue([sampleOrder])
+    vi.mocked(createPayment).mockRejectedValueOnce(new Error('Payment provider unavailable'))
+    render(
+      <OrderHistoryPanel
+        latestOrder={null}
+        refreshVersion={0}
+        token="buyer-token"
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Siparişlerim' }))
+    await screen.findByRole('heading', { name: 'Sipariş #21' })
+    fireEvent.click(screen.getByRole('button', { name: 'Ödemeye devam et' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Ödeme başlatılamadı.')
+    expect(screen.getByRole('heading', { name: 'Sipariş #21' })).toBeInTheDocument()
   })
 
   it('allows retrying a failed order-history request', async () => {

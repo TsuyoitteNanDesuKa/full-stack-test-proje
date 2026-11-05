@@ -147,6 +147,22 @@ test.describe('REQ-009 cart and REQ-010 checkout', () => {
       await expect(
         firstBuyerPage.getByText(`${product.name} · 2 adet · ₺25,00`),
       ).toBeVisible()
+      await firstBuyerPage.getByRole('button', { name: 'Ödemeye devam et' }).click()
+      const checkoutLink = firstBuyerPage.getByRole('link', {
+        name: 'Güvenli test ödeme sayfasına git',
+      })
+      await expect(checkoutLink).toBeVisible()
+      await checkoutLink.click()
+      await expect(firstBuyerPage.getByRole('heading', {
+        name: 'Test ödeme sayfası',
+      })).toBeVisible()
+      await firstBuyerPage.getByRole('button', {
+        name: 'Test ödemesini başarılı yap',
+      }).click()
+      await expect(firstBuyerPage.getByRole('status')).toHaveText('Ödeme durumu: succeeded')
+      await firstBuyerPage.goto('/')
+      await firstBuyerPage.getByRole('button', { name: 'Siparişlerim' }).click()
+      await expect(firstBuyerPage.getByText('Ödendi', { exact: true })).toBeVisible()
 
       await firstBuyerPage.getByRole('button', {
         name: `Sepete ekle ${product.name}`,

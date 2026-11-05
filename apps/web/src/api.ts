@@ -80,6 +80,21 @@ export interface CustomerOrder {
   items: OrderItem[]
 }
 
+export type PaymentStatus = 'pending' | 'succeeded' | 'failed' | 'cancelled' | 'expired'
+
+export interface CustomerPayment {
+  id: number
+  order_id: number
+  provider_reference: string
+  status: PaymentStatus
+  amount: string
+  currency: string
+  expires_at: string
+  checkout_url: string | null
+  created_at: string
+  updated_at: string
+}
+
 export type SellerApplicantType = 'individual' | 'sole_proprietor' | 'company'
 export type SellerApplicationStatus =
   | 'draft'
@@ -273,6 +288,20 @@ export function createOrder(
 export function getMyOrders(token: string): Promise<CustomerOrder[]> {
   return request<CustomerOrder[]>('/api/v1/orders', {
     headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function createPayment(
+  token: string,
+  orderId: number,
+  idempotencyKey: string,
+): Promise<CustomerPayment> {
+  return request<CustomerPayment>(`/api/v1/orders/${orderId}/payments`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Idempotency-Key': idempotencyKey,
+    },
   })
 }
 

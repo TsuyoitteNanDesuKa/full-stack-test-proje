@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { CustomerOrder } from './api'
-import { getMyOrders } from './api'
+import type { CustomerOrder, CustomerPayment } from './api'
+import { createPayment, getMyOrders } from './api'
 
 interface OrderHistoryPanelProps {
   token: string
@@ -36,6 +36,25 @@ export default function OrderHistoryPanel({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [retryCount, setRetryCount] = useState(0)
+  const [startingPaymentOrderId, setStartingPaymentOrderId] = useState<number | null>(null)
+  const [paymentsByOrder, setPaymentsByOrder] = useState<Record<number, CustomerPayment>>({})
+  const [paymentErrors, setPaymentErrors] = useState<Record<number, string>>({})
+
+  async function startPayment(orderId: number) {
+    setStartingPaymentOrderId(orderId)
+    setPaymentErrors((current) => ({ ...current, [orderId]: '' }))
+    try {
+      const payment = await createPayment(token, orderId, `order-${orderId}-payment`)
+      setPaymentsByOrder((current) => ({ ...current, [orderId]: payment }))
+    } catch {
+      setPaymentErrors((current) => ({
+        ...current,
+        [orderId]: 'Ödeme başlatılamadı. Lütfen tekrar dene.',
+      }))
+    } finally {
+      setStartingPaymentOrderId(null)
+    }
+  }
 
   useEffect(() => {
     if (!isOpen) return
@@ -123,6 +142,38 @@ export default function OrderHistoryPanel({
                   <p>
                     Toplam: <strong>{formatCurrency(order.total_amount)}</strong>
                   </p>
+                  {order.status === 'pending_payment' && (
+                    <div className="order-payment-action">
+                      <button
+                        className="checkout-button"
+                        disabled={startingPaymentOrderId === order.id}
+                        onClick={() => void startPayment(order.id)}
+                        type="button"
+                      >
+                        {startingPaymentOrderId === order.id
+                          ? 'Ödeme başlatılıyor...'
+                          : 'Ödemeye devam et'}
+                      </button>
+                      {paymentErrors[order.id] && (
+                        <p className="cart-error" role="alert">{paymentErrors[order.id]}</p>
+                      )}
+                      {paymentsByOrder[order.id]?.checkout_url && (
+                        <a
+                          className="payment-checkout-link"
+                          href={paymentsByOrder[order.id].checkout_url ?? undefined}
+                        >
+                          Güvenli test ödeme sayfasına git
+                        </a>
+                      )}
+                      {paymentsByOrder[order.id] && (
+                        <p className="payment-expiry-note">
+                          Ödeme süresi: {new Date(
+                            paymentsByOrder[order.id].expires_at,
+                          ).toLocaleTimeString('tr-TR')}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>

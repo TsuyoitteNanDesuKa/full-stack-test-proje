@@ -8,7 +8,7 @@ from shop_api.config import get_settings
 from shop_api.database import create_database_engine
 
 
-def test_order_migration_creates_snapshot_tables_and_downgrades(
+def test_order_and_payment_migrations_create_tables_and_downgrade(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -47,8 +47,37 @@ def test_order_migration_creates_snapshot_tables_and_downgrades(
             )
             assert (
                 connection.scalar(text("SELECT version_num FROM alembic_version"))
-                == "0007_customer_orders"
+                == "0008_payments"
             )
+            connection.execute(
+                text(
+                    "INSERT INTO payments "
+                    "(order_id, owner_subject, provider, provider_reference, idempotency_key, "
+                    "status, amount, currency, expires_at, created_at, updated_at) "
+                    "VALUES (1, 'migration-buyer', 'mock', 'mock-ref', 'payment-key', "
+                    "'pending', 25.00, 'TRY', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, "
+                    "CURRENT_TIMESTAMP)"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO payment_webhook_events "
+                    "(payment_id, provider, event_id, payload_sha256, received_at) "
+                    "VALUES (1, 'mock', 'migration-event', "
+                    "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', "
+                    "CURRENT_TIMESTAMP)"
+                )
+            )
+
+        command.downgrade(alembic_config, "0007_customer_orders")
+        with engine.connect() as connection:
+            tables = set(
+                connection.scalars(
+                    text("SELECT name FROM sqlite_master WHERE type = 'table'")
+                ).all()
+            )
+        assert "payments" not in tables
+        assert "payment_webhook_events" not in tables
 
         command.downgrade(alembic_config, "0006_customer_carts")
         with engine.connect() as connection:

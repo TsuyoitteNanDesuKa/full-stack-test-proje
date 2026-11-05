@@ -88,3 +88,7 @@ uv run pytest -m postgres tests/test_cart_postgres.py
 The test database is separate from the persistent development database. The suite verifies real PostgreSQL migrations, concurrent first-cart creation, concurrent same-buyer stock limits, the intentional non-reservation of stock across different buyers' carts, deleted-product foreign-key behavior, and the unique cart-item constraint. Cart stock checks are per buyer's cart, not inventory reservations; checkout must recheck and reserve stock atomically.
 
 The Keycloak registration browser test lives in `apps/web/e2e`; see the web README for enabling it.
+
+### Payments (REQ-011)
+
+The current `mock` provider is a local sandbox only. It simulates a hosted payment page, does not contact a payment network, and must not be exposed as a real checkout. Configure `SHOP_PAYMENT_WEBHOOK_SECRET` with a random value of at least 32 characters and keep it outside source control. The mock payment window defaults to 120 seconds (`SHOP_PAYMENT_EXPIRY_SECONDS`); the API's expiry worker cancels overdue pending orders and restores their remaining product stock exactly once. Real PSP credentials and live card processing are not configured in this milestone.

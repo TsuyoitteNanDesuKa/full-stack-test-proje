@@ -237,3 +237,60 @@ class OrderItem(Base):
     unit_price: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False)
     quantity: Mapped[int] = mapped_column(nullable=False)
     line_total: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
+
+
+class Payment(Base):
+    __tablename__ = "payments"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'succeeded', 'failed', 'cancelled', 'expired')",
+            name="ck_payments_status",
+        ),
+        CheckConstraint("amount > 0", name="ck_payments_amount_positive"),
+        UniqueConstraint("order_id", name="uq_payments_order_id"),
+        UniqueConstraint(
+            "owner_subject",
+            "idempotency_key",
+            name="uq_payments_owner_idempotency_key",
+        ),
+        UniqueConstraint(
+            "provider",
+            "provider_reference",
+            name="uq_payments_provider_reference",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(
+        ForeignKey("orders.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    owner_subject: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    provider_reference: Mapped[str] = mapped_column(String(128), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PaymentWebhookEvent(Base):
+    __tablename__ = "payment_webhook_events"
+    __table_args__ = (
+        UniqueConstraint("provider", "event_id", name="uq_payment_events_provider_event"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    payment_id: Mapped[int] = mapped_column(
+        ForeignKey("payments.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    event_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    payload_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

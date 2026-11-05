@@ -1,7 +1,7 @@
 from functools import lru_cache
 from urllib.parse import urlsplit
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,6 +19,19 @@ class Settings(BaseSettings):
     oidc_jwks_url: str | None = None
     keycloak_admin_client_id: str = "shop-api-admin"
     keycloak_admin_client_secret: str | None = None
+    payment_provider: str = "mock"
+    payment_webhook_secret: str = Field(
+        default="local-mock-payment-webhook-secret",
+        min_length=32,
+    )
+    payment_expiry_seconds: int = Field(default=120, gt=0, le=86400)
+
+    @field_validator("payment_provider")
+    @classmethod
+    def validate_payment_provider(cls, value: str) -> str:
+        if value != "mock":
+            raise ValueError("Only the mock sandbox provider is currently supported.")
+        return value
 
     @field_validator("oidc_issuer")
     @classmethod

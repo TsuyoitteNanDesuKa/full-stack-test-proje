@@ -630,6 +630,43 @@ Keycloak erişim/rol atama hatasında işlem başarı gibi raporlanmaz; başvuru
 
 **Çıkış ölçütü:** Sipariş veya ilgili stok/sepet etkileri kısmi kalmaz; sipariş fiyatı istemci verisine dayanmaz; snapshot ve sahiplik korunur; SQLite regresyonu, PostgreSQL eşzamanlılık, UI ve Keycloak E2E kalite kapıları geçer.
 
+## REQ-011 — Ödeme entegrasyonu
+
+- **Öncelik:** P1
+- **Durum:** Mock sandbox dilimi tamamlandı ve doğrulandı: son backend varsayılan test koşusunda 239 test geçti, PostgreSQL için ayrılmış 10 test `SHOP_TEST_DATABASE_URL` ayarlı olmadığından atlandı; coverage %97,19 (eşik %95). Web 144 test/%100 coverage ve Keycloak E2E 8/8 önceki tam doğrulamada geçti; frontend build/lint, Ruff ve `git diff --check` başarılı. Gerçek PSP adapter'ı ve sandbox hesabı sağlayıcı seçimine kadar beklemede.
+- **Kullanıcı hikâyesi:** Giriş yapmış bir alıcı olarak siparişimin ödemesini güvenli hosted checkout akışıyla tamamlayıp sonucunu görebilmek istiyorum.
+- **Sağlayıcı kararı:** İlk dilimde gerçek sağlayıcı hesabı/kimlik bilgisi gerektirmeyen mock sandbox adaptörü kullanıldı. Gerçek PSP seçimi ve sandbox hesabı sağlandığında ilgili adapter ve sağlayıcı sözleşme testleri ayrı iş olarak eklenecek. Mock adaptör gerçek tahsilat yapmaz ve canlı sağlayıcı olarak kullanılamaz.
+- **Kart verisi:** Kart numarası, CVC veya benzeri hassas ödeme bilgisi web/API uygulamasına gönderilmez, kaydedilmez veya loglanmaz. Ödeme bilgisi hosted checkout sağlayıcısının alanında girilir.
+- **Ödeme penceresi:** Ödeme başlatıldıktan sonra sipariş için 2 dakikalık süre tanınır. Süre içinde kesin başarı gelmezse sipariş sona ermiş sayılır.
+- **Stok iadesi:** REQ-010 checkout’ta düşülen stok, ödeme başarısız/iptal/zaman aşımına uğradığında aynı DB transaction’ında ve yalnızca bir kez geri eklenir. Başarılı ödeme stoku iade etmez.
+- **Durum kararı:** Sipariş `pending_payment` iken ödeme başlatılabilir; doğrulanmış başarı siparişi `paid`, kesin başarısızlık/iptal/zaman aşımı siparişi `cancelled` yapar. Son durumdan gelen yinelenen veya ters sıradaki bildirim sipariş/stok durumunu değiştirmez.
+- **Bildirim güvenliği:** Ödeme sonucu yalnızca doğrulanmış imzalı webhook veya sandbox adaptörünün eşdeğer güvenilir callback’i ile uygulanır. Webhook olay kimliği tekil/idempotent; tutar ve para birimi siparişle eşleşmelidir. Bilinmeyen/geçersiz imza reddedilir.
+- **Deneme sınırı:** Her sipariş için tek ödeme kaydı oluşturulur. Başarısız/iptal/süresi dolmuş sipariş için yeni ödeme denemesi bu dilimde desteklenmez; yeniden deneme politikası ayrıca kararlaştırılmalıdır.
+- **Kapsam dışı:** Gerçek PSP entegrasyonu/canlı tahsilat, iade/chargeback, sipariş iptal politikası ve geç gelen başarı bildirimleri için finansal mutabakat REQ-012 veya sağlayıcı entegrasyonu dilimine bırakılır.
+
+### Kabul kriterleri
+
+1. Yalnızca sipariş sahibi buyer ödeme başlatabilir; başka kullanıcının veya `pending_payment` olmayan siparişin ödemesi başlatılamaz.
+2. Ödeme başlatma idempotency anahtarı alır; aynı kullanıcı/anahtar tekrarı ikinci ödeme oturumu oluşturmaz.
+3. Sandbox hosted checkout'a yönlendirir; uygulama API’si kart/CVC alanı sunmaz ve kart verisi saklamaz.
+4. İmzalı sağlayıcı bildirimi ödeme sonucu ile sipariş tutarı/para birimini eşleştirir; doğrulanmamış bildirim kalıcı durumu değiştirmez.
+5. Başarı bildirimi siparişi `paid` yapar; yinelenen webhook aynı sonucu üretir ve stok miktarını değiştirmez.
+6. Başarısız/iptal/zaman aşımı bildirimi ödeme ve siparişi sonlandırır, sipariş snapshot’ındaki hâlâ mevcut ürün stoklarını tek transaction içinde tam bir kez iade eder.
+7. Geçersiz imza, bilinmeyen ödeme, tutar uyuşmazlığı, yinelenen/ters sıradaki olay güvenli biçimde reddedilir veya etkisiz tekrar yanıtı verir; ikinci kez stok iadesi/ödeme geçişi olmaz.
+8. Buyer ödeme durumunu yalnızca kendi siparişleri için görebilir. Dışarıya sağlayıcı gizli anahtarı, webhook anahtarı veya kart verisi dönmez.
+9. 2 dakikalık ödeme süresi dolan bekleyen siparişler sona erdirilir ve stokları bir kez serbest bırakılır; expiry işleyişi yinelenen çalışanlara karşı güvenlidir.
+
+### API sözleşmesi ve test planı
+
+- `POST /api/v1/orders/{order_id}/payments` — buyer token ve zorunlu `Idempotency-Key`; hosted checkout URL’si ve ödeme özeti döner.
+- `GET /api/v1/orders/{order_id}/payments/{payment_id}` — yalnızca sipariş sahibi ödeme durumunu ve gerekli hosted checkout yönlendirmesini görür.
+- `POST /api/v1/payments/webhook` — sağlayıcı event ID, payment reference, durum, tutar/para birimi ve sağlayıcı imzası; kart verisi payload şemasında bulunmaz.
+- `/api/v1/payments/mock-checkout/{payment_id}/{token}` — mock adaptörün sentetik sonuç seçimi için hosted sandbox sayfası; gerçek ödeme veya kart girişi yoktur.
+- **Tamamlanan doğrulama:** Backend SQLite/PostgreSQL 249 test ve %97,46 coverage; web 144 test ve %100 coverage; Keycloak E2E 8/8; frontend build/lint, Ruff ve `git diff --check` başarılı.
+- **Gerçek PSP için bekleyen testler:** Seçilecek sağlayıcının sandbox sözleşme testleri, başarı/ret/zaman aşımı ve sağlayıcı hata yanıtları.
+
+**Mock sandbox çıkış ölçütü (tamamlandı):** Yetkili, tutarı doğrulanmış ödeme sonucu sipariş durumuna bir kez yansır; başarısız veya süresi dolmuş sipariş stoku bir kez iade eder; hassas ödeme verisi uygulamaya hiç girmez. Gerçek PSP entegrasyonunun çıkış ölçütleri sağlayıcı seçimi ve sandbox erişimi sağlandığında tamamlanacaktır.
+
 ## İleri gereksinim adayları
 
 Bu maddeler kapsamı erkenden sabitlememek için henüz kabul kriterlerine dönüştürülmemiştir:
@@ -638,4 +675,4 @@ Bu maddeler kapsamı erkenden sabitlememek için henüz kabul kriterlerine dön�
 - Satıcı başvuruları için otomatik kimlik/işletme doğrulama sağlayıcısı veya yetkili resmî entegrasyon araştırması; kapsam, erişim izni, KVKK, maliyet ve manuel fallback değerlendirmesi.
 - Ürün kataloğunda arama ve filtreleme.
 - Adres ve teslimat seçenekleriyle sipariş oluşturma.
-- Ödeme sağlayıcısı entegrasyonu, sipariş geçmişi ve iptal/iade.
+- Gerçek ödeme sağlayıcısı adapter'ı, sipariş geçmişi ve iptal/iade.
