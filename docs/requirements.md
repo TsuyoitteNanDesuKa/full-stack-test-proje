@@ -706,10 +706,43 @@ Keycloak erişim/rol atama hatasında işlem başarı gibi raporlanmaz; başvuru
 
 ## İleri gereksinim adayları
 
-Bu maddeler kapsamı erkenden sabitlememek için henüz kabul kriterlerine dönüştürülmemiştir:
+Proje canlı kullanıma alınmayacağı için dış sağlayıcı entegrasyonlarını ürün hedefi değil, gerektiğinde test doubles/contract testleriyle çalışılacak QA egzersizleri olarak ele alacağız. Önerilen sonraki sıra:
 
-- Satıcı işletme/kimlik KYC doğrulaması, belge alımı ve hukuki uygunluk; satıcı çalışan/alt rol yönetimi.
-- Satıcı başvuruları için otomatik kimlik/işletme doğrulama sağlayıcısı veya yetkili resmî entegrasyon araştırması; kapsam, erişim izni, KVKK, maliyet ve manuel fallback değerlendirmesi.
-- Ürün kataloğunda arama ve filtreleme.
-- Adres ve teslimat seçenekleriyle sipariş oluşturma.
-- Gerçek ödeme sağlayıcısı adapter'ı ve gerçek tahsilat/iade entegrasyonu.
+1. **REQ-013 — Katalog arama, filtreleme ve sıralama:** Tamamlandı.
+2. **REQ-014 — Teslimat sonrası yerel ürün iadesi:** Sipariş/kalem durum makinesi, gerekçeli karar, audit, stok ve idempotency kuralları için ayrı kabul kriterleri oluşturulacak; gerçek para iadesi yapılmayacak.
+3. **REQ-015 — Adres ve teslimat seçeneği snapshot'ı:** Adres doğrulama, seçenek/ücret kuralları ve sipariş anı verisinin korunması test edilecek; gerçek kargo sağlayıcısı bağlanmayacak.
+4. **QA-016 — API sözleşme/regresyon kapısı:** OpenAPI ve istemci beklentilerini CI'da karşılaştıran otomatik kontroller.
+5. **QA-017 — Erişilebilirlik:** Kritik akışlarda otomatik tarama ve klavye odaklı testler.
+6. **QA-018 — Performans başlangıç çizgisi:** Gerçekçi, sınırlı yük profili; ölçülebilir eşikler ve CI dışında tekrarlanabilir rapor.
+
+Önceliği olmayan/şimdilik ertelenenler: gerçek PSP/para transferi, otomatik KYC/KYB ve gerçek kargo sağlayıcısı; e-posta/parola yaşam döngüsü özellikleri ise harici e-posta servisi yerine test edilebilir yerel fake ile ele alınmalıdır.
+
+## REQ-013 — Katalog arama, filtreleme ve sıralama
+
+- **Öncelik:** P1 (QA odaklı sonraki dilim)
+- **Durum:** Tamamlandı. Backend regresyonu 249 geçti (%96,94 coverage); ayrı PostgreSQL entegrasyonu 12/12; web 152 test, tüm coverage ölçümlerinde %100; gerçek Keycloak E2E 8/8 geçti. Build, Oxlint, Ruff ve format kontrolleri başarılı.
+- **Kullanıcı hikâyesi:** Alıcı olarak ürün kataloğunda arama yapıp kategori ve fiyat aralığıyla sonuçları daraltmak, sonuçları sıralamak istiyorum.
+- **Kapsam:** Mevcut korumalı katalog endpoint'i ve ana sayfa UI'ı; harici arama servisi veya yeni veritabanı altyapısı yoktur. Arama adı, kategori ve açıklama içinde kısmi/case-insensitive eşleşir; kategori eşleşmesi tam ve case-insensitive'dir.
+
+### Kabul kriterleri
+
+1. `GET /api/v1/products` isteği `search`, `category`, `min_price`, `max_price` ve `sort` filtrelerini; mevcut `limit`/`offset` ile birlikte kabul eder.
+2. Arama metni trim edilir ve ad/kategori/açıklamada kısmi, büyük-küçük harf duyarsız aranır. Boş/yalnız boşluk arama filtresi uygulanmaz; `%` ve `_` gibi LIKE karakterleri literal aranır.
+3. Kategori trim edilir ve tam, büyük-küçük harf duyarsız eşleştirilir. Fiyat alt/üst sınırları dahildir; yalnız bir sınır gönderilebilir.
+4. `min_price > max_price`, tanımlı aralık dışı fiyat, aşırı uzun arama/kategori veya desteklenmeyen sıralama `422` döndürür; katalog değişmez.
+5. `sort` seçenekleri `id` (varsayılan), `name`, `price_asc`, `price_desc` değerleridir. Eşit ad/fiyat durumları ürün kimliğiyle kararlı sıralanır.
+6. `total`, pagination uygulanmadan önce filtrelenmiş sonuç sayısını verir; sonuç listesi yalnızca eşleşen ürünleri içerir.
+7. Katalog filtreleri yalnızca UI'da değil backend sorgusunda uygulanır. Filtre gönderimi, boş sonuç, filtre hatası ve yeniden deneme anlaşılır ve erişilebilir UI durumlarıyla gösterilir.
+8. Buyer/admin/seller'ın mevcut katalog görünürlüğü ve ürün yönetim yetkileri değişmez; filtre parametreleri yetki sınırını etkilemez.
+
+### Test planı ve izlenebilirlik
+
+- **Unit/API:** Arama alanları, trim/case davranışı, literal wildcard, kategori, dahil fiyat sınırları, tek taraflı aralık, sıralama ve tie-break; filtrelenmiş total/pagination; invalid parametre `422`.
+- **DB/entegrasyon:** SQLAlchemy sorgusunun SQLite ve PostgreSQL'de aynı eşleşme/sıralama sonuçlarını verdiği doğrulanır; migration beklenmez.
+- **Component/API client:** Filtre formu, query parametrelerinin doğru encode edilmesi, sonuç sayısı, boş sonuç ve ters fiyat aralığının gönderilmeden reddi.
+- **E2E:** Gerçek Keycloak alıcısı, admin tarafından önceden eklenen farklı kategori/fiyatlarda ürünleri arar, filtreler ve sıralar; URL/API sonucu ve görünür ürünler tutarlıdır.
+- **Regresyon:** Varsayılan katalog pagination'ı, admin/seller CRUD, buyer katalog görünümü ve sepet işlemleri korunur.
+
+**Test katmanı izlenebilirliği:** API ve PostgreSQL sorgu davranışı `apps/api/tests/test_products.py` ve `apps/api/tests/test_cart_postgres.py`; API istemcisi/component/form/boş durum `apps/web/src/api.test.ts` ve `apps/web/src/App.test.tsx`; gerçek Keycloak arama ve boş sonuç `apps/web/e2e/cart.spec.ts` ile doğrulanır.
+
+**Çıkış ölçütü:** Filtre ve sıralama backend'de doğru uygulanır, sayfalama/total tutarlıdır, geçersiz girdiler güvenli reddedilir ve otomatik API/component/E2E testleri geçer.

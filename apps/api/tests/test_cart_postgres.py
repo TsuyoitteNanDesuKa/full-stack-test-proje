@@ -119,6 +119,55 @@ def _create_product(client: TestClient, *, stock: int) -> int:
     return response.json()["id"]
 
 
+def test_postgres_product_filters_match_search_and_price_boundaries(
+    postgres_client: TestClient,
+) -> None:
+    headers = _auth_headers(postgres_client, "postgres-filter-admin", ["admin"])
+    products = [
+        product_payload(
+            name="Postgres Lavanta Kremi",
+            category="Kişisel Bakım",
+            description="Lavanta özlü nemlendirici krem.",
+            price="100.00",
+        ),
+        product_payload(
+            name="Postgres Lavanta Sabunu",
+            category="Kişisel Bakım",
+            description="Doğal sabun.",
+            price="150.00",
+        ),
+        product_payload(
+            name="Postgres Lavanta Mumu",
+            category="Ev Yaşam",
+            description="Kokulu ev mumu.",
+            price="150.01",
+        ),
+    ]
+    for product in products:
+        assert (
+            postgres_client.post(
+                "/api/v1/products",
+                json=product,
+                headers=headers,
+            ).status_code
+            == 201
+        )
+
+    response = postgres_client.get(
+        "/api/v1/products?search=LAVANTA&category=kişisel%20bakım"
+        "&min_price=100&max_price=150&sort=price_desc",
+        headers=_auth_headers(postgres_client, "postgres-filter-buyer"),
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["total"] == 2
+    assert [product["name"] for product in result["products"]] == [
+        "Postgres Lavanta Sabunu",
+        "Postgres Lavanta Kremi",
+    ]
+
+
 def _add_item(
     engine: Engine,
     barrier: Barrier,

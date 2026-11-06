@@ -28,6 +28,14 @@ export interface ProductListResponse {
   offset: number
 }
 
+export interface ProductSearchParams {
+  search?: string
+  category?: string
+  min_price?: string
+  max_price?: string
+  sort?: 'id' | 'name' | 'price_asc' | 'price_desc'
+}
+
 export interface ProductCreateRequest {
   name: string
   category: string
@@ -232,8 +240,14 @@ export function getProducts(
   token: string,
   limit = 20,
   offset = 0,
+  filters: ProductSearchParams = {},
 ): Promise<ProductListResponse> {
   const query = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) {
+      query.set(key, value)
+    }
+  }
   return request<ProductListResponse>(`/api/v1/products?${query}`, {
     headers: { Authorization: `Bearer ${token}` },
   })

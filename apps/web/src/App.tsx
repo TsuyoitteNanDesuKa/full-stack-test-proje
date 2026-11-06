@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { FormEvent } from 'react'
 import './App.css'
 import {
   addCartItem,
@@ -11,7 +12,7 @@ import {
   getProducts,
   updateCartItem,
 } from './api'
-import type { CartResponse, CustomerOrder, Product } from './api'
+import type { CartResponse, CustomerOrder, Product, ProductSearchParams } from './api'
 import { beginLogin, beginRegistration, endSession, getCurrentSession } from './auth'
 import AdminOrdersPanel from './AdminOrdersPanel'
 import AdminSellerApplicationsPanel from './AdminSellerApplicationsPanel'
@@ -145,6 +146,12 @@ function HomePage({
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [retryCount, setRetryCount] = useState(0)
+  const [productSearch, setProductSearch] = useState('')
+  const [productCategory, setProductCategory] = useState('')
+  const [productMinPrice, setProductMinPrice] = useState('')
+  const [productMaxPrice, setProductMaxPrice] = useState('')
+  const [productSort, setProductSort] = useState<ProductSearchParams['sort']>('id')
+  const [appliedProductFilters, setAppliedProductFilters] = useState<ProductSearchParams>({})
   const [isCreatingProduct, setIsCreatingProduct] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [deletingProductId, setDeletingProductId] = useState<number | null>(null)
@@ -165,9 +172,30 @@ function HomePage({
   const canCreateProducts = isAdmin || roles.includes('seller')
   const isBuyer = roles.includes('buyer')
 
+  function applyProductFilters(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (
+      productMinPrice &&
+      productMaxPrice &&
+      Number(productMinPrice) > Number(productMaxPrice)
+    ) {
+      setError('Minimum fiyat maksimum fiyattan büyük olamaz.')
+      return
+    }
+    setError('')
+    setIsLoading(true)
+    setAppliedProductFilters({
+      search: productSearch.trim(),
+      category: productCategory.trim(),
+      min_price: productMinPrice,
+      max_price: productMaxPrice,
+      sort: productSort === 'id' ? undefined : productSort,
+    })
+  }
+
   useEffect(() => {
     let active = true
-    getProducts(token)
+    getProducts(token, 20, 0, appliedProductFilters)
       .then((response) => {
         if (active) {
           setProducts(response.products)
@@ -191,7 +219,7 @@ function HomePage({
     return () => {
       active = false
     }
-  }, [retryCount, token])
+  }, [appliedProductFilters, retryCount, token])
 
   useEffect(() => {
     if (!isBuyer) {
@@ -328,9 +356,7 @@ function HomePage({
     setDeletingProductId(product.id)
     try {
       await deleteProduct(token, product.id)
-      setProducts((currentProducts) =>
-        currentProducts.filter((currentProduct) => currentProduct.id !== product.id),
-      )
+      setRetryCount((count) => count + 1)
     } catch (deleteFailure) {
       setDeleteError(
         deleteFailure instanceof TypeError
@@ -350,14 +376,8 @@ function HomePage({
           setIsCreatingProduct(false)
           setEditingProduct(null)
         }}
-        onSaved={(product) => {
-          setProducts((currentProducts) =>
-            editingProduct === null
-              ? [product, ...currentProducts]
-              : currentProducts.map((currentProduct) =>
-                  currentProduct.id === product.id ? product : currentProduct,
-                ),
-          )
+        onSaved={(_product) => {
+          setRetryCount((count) => count + 1)
           setIsCreatingProduct(false)
           setEditingProduct(null)
         }}
@@ -461,7 +481,7 @@ function HomePage({
             <h2 id="products-heading">Sana iyi gelecek ürünler</h2>
           </div>
           {!isLoading && !error && (
-            <span className="products-count">{products.length} ürün</span>
+            <span className="products-count">{products.length} ürün gösteriliyor</span>
           )}
           {canCreateProducts && (
             <button
@@ -478,6 +498,59 @@ function HomePage({
             <p>{deleteError}</p>
           </div>
         )}
+        <form className="product-search-form" onSubmit={applyProductFilters}>
+          <label>
+            Ürün ara
+            <input
+              onChange={(event) => setProductSearch(event.target.value)}
+              type="search"
+              value={productSearch}
+            />
+          </label>
+          <label>
+            Kategori
+            <input
+              onChange={(event) => setProductCategory(event.target.value)}
+              type="text"
+              value={productCategory}
+            />
+          </label>
+          <label>
+            En düşük fiyat
+            <input
+              min="0"
+              onChange={(event) => setProductMinPrice(event.target.value)}
+              step="0.01"
+              type="number"
+              value={productMinPrice}
+            />
+          </label>
+          <label>
+            En yüksek fiyat
+            <input
+              min="0"
+              onChange={(event) => setProductMaxPrice(event.target.value)}
+              step="0.01"
+              type="number"
+              value={productMaxPrice}
+            />
+          </label>
+          <label>
+            Sırala
+            <select
+              onChange={(event) =>
+                setProductSort(event.target.value as ProductSearchParams['sort'])
+              }
+              value={productSort}
+            >
+              <option value="id">Varsayılan</option>
+              <option value="name">Ürün adına göre</option>
+              <option value="price_asc">Fiyat: artan</option>
+              <option value="price_desc">Fiyat: azalan</option>
+            </select>
+          </label>
+          <button className="retry-button" type="submit">Filtrele</button>
+        </form>
         {isLoading ? (
           <p className="products-status" role="status">Ürünler yükleniyor...</p>
         ) : error ? (
@@ -498,8 +571,20 @@ function HomePage({
         ) : products.length === 0 ? (
           <div className="store-empty">
             <span aria-hidden="true">✳</span>
-            <p>Henüz listelenecek ürün yok.</p>
-            <small>Yeni ürünler eklendiğinde burada görebilirsin.</small>
+            {appliedProductFilters.search ||
+            appliedProductFilters.category ||
+            appliedProductFilters.min_price ||
+            appliedProductFilters.max_price ? (
+              <>
+                <p>Bu filtrelerle ürün bulunamadı.</p>
+                <small>Arama veya filtrelerini değiştirip tekrar deneyebilirsin.</small>
+              </>
+            ) : (
+              <>
+                <p>Henüz listelenecek ürün yok.</p>
+                <small>Yeni ürünler eklendiğinde burada görebilirsin.</small>
+              </>
+            )}
           </div>
         ) : (
           <div className="product-table-scroll">

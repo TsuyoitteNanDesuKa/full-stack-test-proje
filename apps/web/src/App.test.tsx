@@ -859,6 +859,64 @@ describe('Keycloak authentication and storefront', () => {
     expect(productCalls).toBe(2)
   })
 
+  it('submits catalog filters and rejects an inverted price range locally', async () => {
+    setupApi({ products: [sampleProduct] })
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByRole('row', { name: new RegExp(sampleProduct.name, 'i') })
+
+    await user.type(screen.getByRole('searchbox', { name: 'Ürün ara' }), 'Lavanta')
+    await user.type(screen.getByRole('textbox', { name: 'Kategori' }), 'Kişisel Bakım')
+    await user.type(screen.getByRole('spinbutton', { name: 'En düşük fiyat' }), '100')
+    await user.type(screen.getByRole('spinbutton', { name: 'En yüksek fiyat' }), '250')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Sırala' }), 'price_asc')
+    await user.click(screen.getByRole('button', { name: 'Filtrele' }))
+
+    await waitFor(() => {
+      const request = vi.mocked(fetch).mock.calls
+        .map(([input]) => String(input))
+        .find((url) => {
+          if (!url.startsWith('/api/v1/products?')) return false
+          return new URLSearchParams(url.split('?')[1]).has('search')
+        })
+      expect(request).toBeDefined()
+      const query = new URLSearchParams(request?.split('?')[1])
+      expect(query.get('search')).toBe('Lavanta')
+      expect(query.get('category')).toBe('Kişisel Bakım')
+      expect(query.get('min_price')).toBe('100')
+      expect(query.get('max_price')).toBe('250')
+      expect(query.get('sort')).toBe('price_asc')
+    })
+
+    const productRequests = vi.mocked(fetch).mock.calls.filter(([input]) =>
+      String(input).startsWith('/api/v1/products?'),
+    )
+    await user.clear(screen.getByRole('spinbutton', { name: 'En düşük fiyat' }))
+    await user.type(screen.getByRole('spinbutton', { name: 'En düşük fiyat' }), '300')
+    await user.click(screen.getByRole('button', { name: 'Filtrele' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Minimum fiyat maksimum fiyattan büyük olamaz.',
+    )
+    expect(
+      vi.mocked(fetch).mock.calls.filter(([input]) =>
+        String(input).startsWith('/api/v1/products?'),
+      ),
+    ).toHaveLength(productRequests.length)
+  })
+
+  it('shows a dedicated empty state when catalog filters find no products', async () => {
+    setupApi({ products: [] })
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByText('Henüz listelenecek ürün yok.')
+
+    await user.type(screen.getByRole('searchbox', { name: 'Ürün ara' }), 'not-found')
+    await user.click(screen.getByRole('button', { name: 'Filtrele' }))
+
+    expect(await screen.findByText('Bu filtrelerle ürün bulunamadı.')).toBeInTheDocument()
+  })
+
   it('ignores a catalog response that arrives after the storefront unmounts', async () => {
     const productsResponse = deferred<Response>()
     setupApi()
@@ -947,6 +1005,7 @@ describe('Keycloak authentication and storefront', () => {
     const newProduct = createTestProduct({ id: 700 })
     const editedProduct = createTestProduct({ id: 700 })
     const fetchMock = vi.mocked(fetch)
+    let listedProducts = [sampleProduct]
     fetchMock.mockImplementation(async (input, init) => {
       const path = String(input)
       if (path === '/api/v1/auth/me') {
@@ -960,20 +1019,31 @@ describe('Keycloak authentication and storefront', () => {
         return jsonResponse({ message: 'Welcome', featured_categories: [] })
       }
       if (path.startsWith('/api/v1/products?')) {
-        return jsonResponse(productList())
+        return jsonResponse(productList(listedProducts))
       }
       if (path === '/api/v1/products' && init?.method === 'POST') {
-        return jsonResponse({ ...newProduct, ...JSON.parse(String(init.body)), id: 700 }, 201)
+        const createdProduct = {
+          ...newProduct,
+          ...JSON.parse(String(init.body)),
+          id: 700,
+        }
+        listedProducts = [...listedProducts, createdProduct]
+        return jsonResponse(createdProduct, 201)
       }
       if (path === '/api/v1/products/700' && init?.method === 'PUT') {
-        return jsonResponse({
+        const updatedProduct = {
           ...editedProduct,
           ...JSON.parse(String(init.body)),
           id: 700,
           updated_at: new Date().toISOString(),
-        })
+        }
+        listedProducts = listedProducts.map((product) =>
+          product.id === 700 ? updatedProduct : product,
+        )
+        return jsonResponse(updatedProduct)
       }
       if (path === '/api/v1/products/700' && init?.method === 'DELETE') {
+        listedProducts = listedProducts.filter((product) => product.id !== 700)
         return new Response(null, { status: 204 })
       }
       return jsonResponse({}, 500)

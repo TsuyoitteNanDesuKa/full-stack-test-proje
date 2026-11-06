@@ -149,6 +149,44 @@ describe('storefront API client', () => {
     )
   })
 
+  it('sends catalog search, price, category, and sort filters', async () => {
+    const body = { products: [], total: 0, limit: 20, offset: 0 }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(body))
+
+    await expect(
+      getProducts('signed-token', 20, 0, {
+        search: 'Lavanta kremi',
+        category: 'Kişisel Bakım',
+        min_price: '100',
+        max_price: '250',
+        sort: 'price_asc',
+      }),
+    ).resolves.toEqual(body)
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/products?limit=20&offset=0&search=Lavanta+kremi&category=Ki%C5%9Fisel+Bak%C4%B1m&min_price=100&max_price=250&sort=price_asc',
+      expect.any(Object),
+    )
+  })
+
+  it('omits empty catalog filters from the listing URL', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ products: [], total: 0, limit: 20, offset: 0 }),
+    )
+
+    await getProducts('signed-token', 20, 0, {
+      search: '',
+      category: '',
+      min_price: '',
+      max_price: '',
+      sort: undefined,
+    })
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/products?limit=20&offset=0',
+      expect.any(Object),
+    )
+  })
+
   it('uses the default page size and offset for product listing', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       jsonResponse({ products: [], total: 0, limit: 20, offset: 0 }),

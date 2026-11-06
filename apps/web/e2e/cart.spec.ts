@@ -106,6 +106,31 @@ test.describe('REQ-009 cart, REQ-010 checkout, and REQ-012 order lifecycle', () 
       )
       expect(firstRegistration.status()).toBe(200)
       expect((await firstRegistration.json()).roles).toContain('buyer')
+      await firstBuyerPage.getByRole('searchbox', { name: 'Ürün ara' }).fill(product.name)
+      const filteredProductsResponse = firstBuyerPage.waitForResponse(
+        (response) =>
+          response.url().includes('/api/v1/products?') &&
+          new URL(response.url()).searchParams.get('search') === product.name,
+      )
+      await firstBuyerPage.getByRole('button', { name: 'Filtrele' }).click()
+      expect((await filteredProductsResponse).status()).toBe(200)
+      await expect(
+        firstBuyerPage.getByRole('row').filter({ hasText: product.name }),
+      ).toBeVisible()
+      await firstBuyerPage.getByRole('searchbox', { name: 'Ürün ara' }).fill('no-match')
+      const emptySearchResponse = firstBuyerPage.waitForResponse(
+        (response) =>
+          response.url().includes('/api/v1/products?') &&
+          new URL(response.url()).searchParams.get('search') === 'no-match',
+      )
+      await firstBuyerPage.getByRole('button', { name: 'Filtrele' }).click()
+      expect((await emptySearchResponse).status()).toBe(200)
+      await expect(firstBuyerPage.getByText('Bu filtrelerle ürün bulunamadı.')).toBeVisible()
+      await firstBuyerPage.getByRole('searchbox', { name: 'Ürün ara' }).fill('')
+      await firstBuyerPage.getByRole('button', { name: 'Filtrele' }).click()
+      await expect(
+        firstBuyerPage.getByRole('row').filter({ hasText: product.name }),
+      ).toBeVisible()
       await firstBuyerPage.getByRole('button', {
         name: `Sepete ekle ${product.name}`,
       }).click()

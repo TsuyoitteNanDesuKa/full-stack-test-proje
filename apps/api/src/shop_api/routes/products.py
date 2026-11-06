@@ -1,8 +1,9 @@
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -27,9 +28,48 @@ def list_products(
     db: Annotated[Session, Depends(get_db)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
+    search: Annotated[str | None, Query(max_length=100)] = None,
+    category: Annotated[str | None, Query(max_length=40)] = None,
+    min_price: Annotated[Decimal | None, Query(ge=0, le=Decimal("999999.99"))] = None,
+    max_price: Annotated[Decimal | None, Query(ge=0, le=Decimal("999999.99"))] = None,
+    sort: Annotated[str, Query(pattern="^(id|name|price_asc|price_desc)$")] = "id",
 ) -> ProductListResponse:
-    total = db.scalar(select(func.count()).select_from(Product)) or 0
-    products = db.scalars(select(Product).order_by(Product.id).offset(offset).limit(limit)).all()
+    if min_price is not None and max_price is not None and min_price > max_price:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Minimum fiyat maksimum fiyattan büyük olamaz.",
+        )
+
+    criteria = []
+    if search and (normalized_search := search.strip()):
+        escaped_search = (
+            normalized_search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        )
+        search_pattern = f"%{escaped_search}%"
+        criteria.append(
+            or_(
+                Product.name.ilike(search_pattern, escape="\\"),
+                Product.category.ilike(search_pattern, escape="\\"),
+                Product.description.ilike(search_pattern, escape="\\"),
+            )
+        )
+    if category and (normalized_category := category.strip()):
+        criteria.append(func.lower(Product.category) == normalized_category.lower())
+    if min_price is not None:
+        criteria.append(Product.price >= min_price)
+    if max_price is not None:
+        criteria.append(Product.price <= max_price)
+
+    total = db.scalar(select(func.count()).select_from(Product).where(*criteria)) or 0
+    ordering = {
+        "id": (Product.id,),
+        "name": (Product.name_key, Product.id),
+        "price_asc": (Product.price, Product.id),
+        "price_desc": (Product.price.desc(), Product.id),
+    }[sort]
+    products = db.scalars(
+        select(Product).where(*criteria).order_by(*ordering).offset(offset).limit(limit)
+    ).all()
     return ProductListResponse(
         products=[_product_response(product, current_user) for product in products],
         total=total,

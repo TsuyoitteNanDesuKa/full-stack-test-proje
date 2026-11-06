@@ -362,13 +362,13 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 
 **Amaç:** Sipariş, gerçek kart verisini uygulama sunucusuna almadan güvenilir bir ödeme sağlayıcısı üzerinden ödenebilsin.
 
-- **Durum:** Mock sandbox dilimi tamamlandı: son backend varsayılan test koşusunda 239 test geçti, PostgreSQL için ayrılmış 10 test `SHOP_TEST_DATABASE_URL` ayarlı olmadığından atlandı; coverage %97,19 (eşik %95). Web 144 test/%100 coverage ve Keycloak E2E 8/8 önceki tam doğrulamada geçti; build/lint, Ruff ve `git diff --check` başarılı. Gerçek PSP adapter'ı ve sandbox hesabı seçime kadar bekliyor.
+- **Durum:** Mock sandbox dilimi tamamlandı: son backend varsayılan test koşusunda 239 test geçti, PostgreSQL için ayrılmış 10 test `SHOP_TEST_DATABASE_URL` ayarlı olmadığından atlandı; coverage %97,19 (eşik %95). Web 144 test/%100 coverage ve Keycloak E2E 8/8 önceki tam doğrulamada geçti; build/lint, Ruff ve `git diff --check` başarılı. Canlı kullanım hedeflenmediğinden gerçek PSP entegrasyonu öncelikli değil; dış sağlayıcı davranışları gerekirse fake provider/contract testleriyle kapsanacak.
 - **Kararlar:** Mock hosted checkout; iki dakikalık ödeme süresi; kesin başarısızlık/iptal/zaman aşımında REQ-010’dan düşülen stok bir transaction içinde ve tek sefer iade edilir. Webhook imzası, tutar/para birimi ve event ID doğrulanır. Kart bilgisi uygulamaya alınmaz.
 - Sağlayıcı adapter sözleşmesi ve yalnızca geliştirme/test için mock hosted checkout.
 - Ödeme modeli, migration, buyer sahipli ödeme başlatma/durum API’si ve zorunlu idempotency.
 - İmzalı webhook, yinelenen/ters sıradaki olayların idempotent işlenmesi; ödeme başarı/ret/iptal ve expiry stok iadesi.
 - Frontend hosted checkout yönlendirmesi ve sipariş ödeme durumlarının gösterimi.
-- Gerçek sağlayıcı (iyzico veya seçilecek PSP) sandbox hesabı ve credential’ları ayrıca sağlanınca adapter eklenir; canlı tahsilat bu dilimin dışında.
+- Gerçek sağlayıcı (iyzico veya seçilecek PSP) sandbox hesabı ve credential'ları bu projenin kapsamı dışında; canlı tahsilat/iade yapılmayacak.
 
 **Geliştirme tamamlandıktan hemen sonra — test geliştirme planı:**
 
@@ -377,7 +377,7 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 - **API/DB:** Ödeme başlatma yetkisi ve sahiplik, idempotency, transaction sınırları, webhook tekrarında tek durum geçişi; kart verisinin DB/log/yanıt içinde bulunmadığı doğrulanmalı.
 - **Component:** Tamamlandı; hosted checkout'a yönlendirme ile beklemede/başarılı/başarısız/iptal durumları doğrulandı. Başarısız/sona ermiş siparişte yeni ödeme denemesi desteklenmiyor; politika ayrıca ele alınmalı.
 - **E2E:** Tamamlandı; sentetik sandbox sonucu ile checkout→ödeme→sipariş durumu akışı doğrulandı, gerçek kart verisi kullanılmadı.
-- **Gerçek PSP için bekleyen:** Sağlayıcı seçimi ve sandbox hesabı/credential'ları sağlandıktan sonra adapter contract/entegrasyon testleri ve canlı olmayan sağlayıcı doğrulaması.
+- **Test doubles:** Gerçek sağlayıcı gerektiren bir QA senaryosu çıkarsa fake provider ve contract testleri kullanılacak; gerçek sağlayıcı credential'ı gerekmiyor.
 - **Güvenlik/regresyon:** Webhook imzası atlatılamamalı; farklı sipariş/kullanıcıya ait ödeme güncellenememeli; önceki checkout akışı korunmalı.
 
 **Çıkış ölçütü:** Yinelenen veya doğrulanmamış bildirim ikinci kez ödeme/sipariş/stok geçişi yaratmaz; iki dakika sonunda bekleyen ödeme sona erer ve stok bir kez serbest bırakılır; kart verisi uygulamaya hiç girmez.
@@ -389,7 +389,7 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 - [x] İmzalı webhook, ödeme/sipariş geçişleri, expiry worker ve transaction/idempotency testleri.
 - [x] Web ödeme yönlendirmesi ve durum ekranı; component/Keycloak E2E.
 - [x] SQLite + PostgreSQL testleri, frontend kalite kapıları ve mock sandbox kapsamındaki REQ-011 çıkış ölçütleri.
-- [ ] Gerçek PSP seçimi, sandbox hesabı/credential kurulumu ve sağlayıcı sözleşme testleri.
+- [x] Canlı kullanım olmadığı için gerçek PSP/credential entegrasyonu ertelendi; sağlayıcı davranışları gerektiğinde fake provider ile test edilecek.
 
 ### Öncelik 7 — REQ-012: Sipariş takibi ve operasyonel tamamlayıcılar
 
@@ -420,6 +420,42 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 - [x] SQLite backend API/migration, coverage eşiği ve ödeme regresyon testleri; web testleri/build/lint.
 - [x] PostgreSQL entegrasyon ve eşzamanlılık testleri 11/11 geçti.
 - [x] Keycloak E2E 8/8 geçti; checkout → mock ödeme → admin durum/iade ve alıcı geçmişi dahil.
+
+### QA odaklı sonraki gereksinimler — sıralı backlog
+
+Canlıya çıkış, gerçek PSP/KYC/kargo entegrasyonu veya üretim altyapısı bu projenin hedefi değildir. Yeni dilimler; otomasyonla doğrulanabilir iş kurallarını ve test katmanlarını artıracak şekilde, dış servislere bağımlı olmadan ele alınır.
+
+1. **REQ-013 — Katalog arama, filtreleme ve sıralama (şimdi):** arama, kategori/fiyat filtreleri, kararlı sıralama, filtreli pagination; unit/API/component/Keycloak E2E ve SQLite/PostgreSQL sorgu uyumu.
+2. **REQ-014 — Teslimat sonrası yerel ürün iadesi:** kalem/sipariş durumları, rol sınırları, audit, kısmi/tam iade kararı, stok ve idempotency/transaction testleri; gerçek para iadesi yok.
+3. **REQ-015 — Adres ve teslimat seçenekleri:** doğrulama, seçenek/ücret kuralları ve checkout anı snapshot'ı; gerçek taşıyıcı yok.
+4. **QA-016 — API sözleşme/regresyon otomasyonu:** OpenAPI ve frontend API sözleşmesi drift kontrolleri.
+5. **QA-017 — Erişilebilirlik otomasyonu:** kritik akışlarda axe taraması, klavye ve odak davranışı.
+6. **QA-018 — Performans başlangıç çizgisi:** sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor; release/live ortamı gerektirmez.
+
+REQ-013'ün ayrıntılı kabul kriterleri ve test planı `docs/requirements.md` içinde tutulur.
+
+### Öncelik 8 — REQ-013: Katalog arama, filtreleme ve sıralama
+
+- **Durum:** Tamamlandı. Backend regresyonu 249 geçti (%96,94 coverage), PostgreSQL entegrasyonu 12/12, web 152 test ve %100 coverage, gerçek Keycloak E2E 8/8 geçti; build/lint/Ruff başarılı.
+- **Amaç:** Alıcının korumalı ürün kataloğunda arama yapıp kategori/fiyatla sonuçları daraltması ve sıralaması.
+- **Kapsam:** Mevcut ürün endpoint/UI; migration veya dış arama servisi yok. Search name/category/description içinde partial, case-insensitive; category exact case-insensitive. Price range inclusive; sıralama `id`, `name`, `price_asc`, `price_desc`; pagination sonrası değil filtre sonrası total.
+
+**Test planı / çıkış ölçütleri:**
+
+- **Unit/API:** trim/case/wildcard davranışı, alanlar arası arama, kategori, dahil fiyat uçları, tek taraflı filtre, invalid aralık/parametre, sıralama tie-break, filtreli total ve pagination.
+- **DB:** SQLite ve PostgreSQL'de aynı sorgu davranışı; yeni migration beklenmez.
+- **Component/API client:** Filtre formu ve URL parametreleri, sonuç sayısı, boş sonuç, ters fiyat aralığının API'ye gitmeden reddi, loading/error/retry.
+- **E2E:** Gerçek Keycloak alıcısı, önceden hazırlanmış ürünlerde arama/filtre/sıralama yapar; görünür sonuç ve backend yanıtı tutarlıdır.
+- **Regresyon:** Varsayılan katalog, buyer/seller/admin yetkileri, CRUD, sepet ve checkout akışları korunur.
+
+**İlerleme kontrol listesi**
+
+- [x] QA hedefi ve REQ-013 önceliği netleştirildi; gerçek PSP/canlı operasyon kapsam dışı bırakıldı.
+- [x] Kabul kriterleri ve test izlenebilirliği `docs/requirements.md` içinde dokümante edildi.
+- [x] Backend filtreleme/sıralama; arama alanı, wildcard, kategori, fiyat uçları, kararlı sıralama, hata ve pagination API testleri.
+- [x] Web/API client filtreleme arayüzü ve component testleri; web coverage %100.
+- [x] PostgreSQL sorgu uyumu 12/12 ve Keycloak E2E 8/8.
+- [x] Backend regresyon/coverage, web coverage/build/lint, Ruff/format ve `git diff --check`.
 
 ### Her incremental dilim için ortak Definition of Done
 

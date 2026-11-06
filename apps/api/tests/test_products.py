@@ -633,6 +633,166 @@ def test_list_products_supports_stable_pagination(
     assert response.json()["products"][0]["name"] == pagination_products[1]["name"]
 
 
+def test_list_products_filters_search_category_and_inclusive_price_range(
+    client: TestClient,
+    admin: User,
+) -> None:
+    headers = {"Authorization": f"Bearer {access_token(client, admin)}"}
+    products = [
+        product_payload(
+            name="Lavanta Kremi",
+            category="Kişisel Bakım",
+            description="Lavanta özlü nemlendirici krem.",
+            price="100.00",
+        ),
+        product_payload(
+            name="Lavanta Sabunu",
+            category="Kişisel Bakım",
+            description="Doğal sabun.",
+            price="150.00",
+        ),
+        product_payload(
+            name="Lavanta Balsamı",
+            category="Kişisel Bakım",
+            description="Lavanta özlü balsam.",
+            price="150.00",
+        ),
+        product_payload(
+            name="Lavanta Mum",
+            category="Ev Yaşam",
+            description="Ev için kokulu mum.",
+            price="150.00",
+        ),
+    ]
+    for product in products:
+        assert client.post("/api/v1/products", json=product, headers=headers).status_code == 201
+
+    response = client.get(
+        "/api/v1/products?search=LAVANTA&category=kişisel%20bakım"
+        "&min_price=100&max_price=150&limit=1&offset=1",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["total"] == 3
+    assert [product["name"] for product in result["products"]] == ["Lavanta Sabunu"]
+
+
+def test_list_products_searches_description_and_sorts_by_price(
+    client: TestClient,
+    admin: User,
+) -> None:
+    headers = {"Authorization": f"Bearer {access_token(client, admin)}"}
+    products = [
+        product_payload(
+            name="Lavanta Yağı",
+            category="Kişisel Bakım",
+            description="Gül kokulu bakım yağı.",
+            price="200.00",
+        ),
+        product_payload(
+            name="Gül Sabunu",
+            category="Kişisel Bakım",
+            description="Doğal gül özlü sabun.",
+            price="100.00",
+        ),
+        product_payload(
+            name="Gül Balsamı",
+            category="Kişisel Bakım",
+            description="Doğal bakım balsamı.",
+            price="100.00",
+        ),
+        product_payload(
+            name="Bakım Kremi",
+            category="Kişisel Bakım",
+            description="Günlük bakım kremi.",
+            price="150.00",
+        ),
+    ]
+    for product in products:
+        assert client.post("/api/v1/products", json=product, headers=headers).status_code == 201
+
+    for sort, expected_names in (
+        ("name", ["Gül Balsamı", "Gül Sabunu", "Lavanta Yağı"]),
+        ("price_asc", ["Gül Sabunu", "Gül Balsamı", "Lavanta Yağı"]),
+        ("price_desc", ["Lavanta Yağı", "Gül Sabunu", "Gül Balsamı"]),
+    ):
+        response = client.get(
+            f"/api/v1/products?search=gül&sort={sort}",
+            headers=headers,
+        )
+
+        assert response.status_code == 200
+        assert [product["name"] for product in response.json()["products"]] == expected_names
+        assert response.json()["total"] == 3
+
+
+def test_list_products_treats_search_wildcards_as_literal_text(
+    client: TestClient,
+    admin: User,
+) -> None:
+    headers = {"Authorization": f"Bearer {access_token(client, admin)}"}
+    products = [
+        product_payload(
+            name="Pamuklu Kumaş",
+            description="Yüzde 100% pamuklu kumaş_under.",
+        ),
+        product_payload(
+            name="Pamuklu İplik",
+            description="Doğal pamuklu iplik.",
+        ),
+    ]
+    for product in products:
+        assert client.post("/api/v1/products", json=product, headers=headers).status_code == 201
+
+    for search in ("%25", "_"):
+        response = client.get(f"/api/v1/products?search={search}", headers=headers)
+
+        assert response.status_code == 200
+        assert response.json()["total"] == 1, f"Wildcard search failed for {search!r}"
+        assert response.json()["products"][0]["name"] == "Pamuklu Kumaş"
+
+
+def test_list_products_ignores_blank_search_and_accepts_one_sided_price_filter(
+    client: TestClient,
+    admin: User,
+) -> None:
+    headers = {"Authorization": f"Bearer {access_token(client, admin)}"}
+    products = [
+        product_payload(name="Düşük Fiyat Ürün", price="50.00"),
+        product_payload(name="Yüksek Fiyat Ürün", price="500.00"),
+    ]
+    for product in products:
+        assert client.post("/api/v1/products", json=product, headers=headers).status_code == 201
+
+    response = client.get(
+        "/api/v1/products?search=%20%20&min_price=100",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    assert response.json()["products"][0]["name"] == "Yüksek Fiyat Ürün"
+
+
+def test_list_products_validates_filter_ranges_and_sort(
+    client: TestClient,
+    customer: User,
+) -> None:
+    headers = {"Authorization": f"Bearer {access_token(client, customer)}"}
+    for query in (
+        "min_price=200&max_price=100",
+        "min_price=-1",
+        "max_price=1000000",
+        "sort=unsupported",
+        f"search={'a' * 101}",
+        f"category={'a' * 41}",
+    ):
+        response = client.get(f"/api/v1/products?{query}", headers=headers)
+        assert response.status_code == 422
+
+
 @pytest.mark.parametrize("query", ["limit=0", "limit=101", "offset=-1"])
 def test_list_products_rejects_invalid_pagination(
     client: TestClient,
