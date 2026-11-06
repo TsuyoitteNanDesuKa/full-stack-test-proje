@@ -21,8 +21,37 @@ function orderStatusLabel(status: CustomerOrder['status']): string {
       return 'Ödeme bekleniyor'
     case 'paid':
       return 'Ödendi'
+    case 'processing':
+      return 'Hazırlanıyor'
+    case 'shipped':
+      return 'Kargoya verildi'
+    case 'delivered':
+      return 'Teslim edildi'
     case 'cancelled':
       return 'İptal edildi'
+  }
+}
+
+function historyActionLabel(action: string): string {
+  switch (action) {
+    case 'created':
+      return 'Sipariş oluşturuldu'
+    case 'payment_succeeded':
+      return 'Ödeme alındı'
+    case 'payment_failed':
+      return 'Ödeme başarısız oldu'
+    case 'payment_cancelled':
+      return 'Ödeme iptal edildi'
+    case 'payment_expired':
+      return 'Ödeme süresi doldu'
+    case 'admin_status_changed':
+      return 'Sipariş durumu güncellendi'
+    case 'admin_refund':
+      return 'Sipariş iptal edildi ve iade kaydı oluşturuldu'
+    case 'legacy_import':
+      return 'Sipariş durumu kaydı içe aktarıldı'
+    default:
+      return 'Sipariş güncellendi'
   }
 }
 
@@ -100,7 +129,20 @@ export default function OrderHistoryPanel({
       </button>
       {isOpen && (
         <div aria-labelledby="order-history-heading" className="order-history-panel">
-          <h2 id="order-history-heading">Sipariş geçmişim</h2>
+          <div className="order-history-panel-heading">
+            <h2 id="order-history-heading">Sipariş geçmişim</h2>
+            <button
+              className="retry-button"
+              onClick={() => {
+                setIsLoading(true)
+                setError('')
+                setRetryCount((count) => count + 1)
+              }}
+              type="button"
+            >
+              Yenile
+            </button>
+          </div>
           {error && (
             <div className="products-error" role="alert">
               <p>{error}</p>
@@ -132,6 +174,19 @@ export default function OrderHistoryPanel({
                   <time dateTime={order.created_at}>
                     {new Date(order.created_at).toLocaleString('tr-TR')}
                   </time>
+                  {order.history.length > 0 && (
+                    <ol aria-label={`Sipariş ${order.id} durum geçmişi`} className="order-status-history">
+                      {order.history.map((event, index) => (
+                        <li key={`${event.action}-${event.created_at}-${index}`}>
+                          <span>{historyActionLabel(event.action)}</span>
+                          <time dateTime={event.created_at}>
+                            {new Date(event.created_at).toLocaleString('tr-TR')}
+                          </time>
+                          {event.reason && <p>{event.reason}</p>}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
                   <ul aria-label={`Sipariş ${order.id} kalemleri`}>
                     {order.items.map((item) => (
                       <li key={item.id}>

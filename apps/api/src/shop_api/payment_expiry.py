@@ -7,8 +7,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from shop_api.models import CustomerOrder, OrderItem, Payment, Product
+from shop_api.order_lifecycle import record_order_status_event
 
 logger = logging.getLogger(__name__)
+
+
+class StockRestorationError(Exception):
+    pass
 
 
 def restore_order_stock(db: Session, order_id: int) -> None:
@@ -24,9 +29,19 @@ def restore_order_stock(db: Session, order_id: int) -> None:
     ).all()
     products_by_id = {product.id: product for product in products}
 
+    quantities_by_product: dict[int, int] = {}
     for item in items:
         if item.product_id is not None and item.product_id in products_by_id:
-            products_by_id[item.product_id].stock += item.quantity
+            quantities_by_product[item.product_id] = (
+                quantities_by_product.get(item.product_id, 0) + item.quantity
+            )
+
+    for product_id, quantity in quantities_by_product.items():
+        if products_by_id[product_id].stock + quantity > 999999:
+            raise StockRestorationError("Returning this order would exceed the stock limit.")
+
+    for product_id, quantity in quantities_by_product.items():
+        products_by_id[product_id].stock += quantity
 
 
 def expire_due_payments(db: Session, now: datetime | None = None) -> int:
@@ -50,8 +65,17 @@ def expire_due_payments(db: Session, now: datetime | None = None) -> int:
         payment.status = "expired"
         payment.updated_at = expiration_time
         if order.status == "pending_payment":
+            previous_status = order.status
             order.status = "cancelled"
             restore_order_stock(db, order.id)
+            record_order_status_event(
+                db,
+                order_id=order.id,
+                action="payment_expired",
+                from_status=previous_status,
+                to_status=order.status,
+                created_at=expiration_time,
+            )
         expired_count += 1
 
     if expired_count:

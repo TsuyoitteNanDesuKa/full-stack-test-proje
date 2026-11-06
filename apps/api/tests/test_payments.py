@@ -319,6 +319,35 @@ def test_expired_payment_restores_stock_exactly_once(client: TestClient, engine)
     )
 
 
+def test_expiry_stock_capacity_failure_rolls_back_and_returns_conflict(
+    client: TestClient,
+    engine,
+) -> None:
+    headers = auth_headers(client, "payment-expiry-capacity-buyer")
+    order_id, product_id = create_order(client, headers)
+    payment_body = start_payment(client, headers, order_id).json()
+    with Session(engine) as session:
+        payment = session.get(Payment, payment_body["id"])
+        product = session.get(Product, product_id)
+        assert payment is not None and product is not None
+        payment.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        product.stock = 999999
+        session.commit()
+
+    response = client.get(
+        f"/api/v1/orders/{order_id}/payments/{payment_body['id']}",
+        headers=headers,
+    )
+    assert response.status_code == 409
+    with Session(engine) as session:
+        payment = session.get(Payment, payment_body["id"])
+        order = session.get(CustomerOrder, order_id)
+        product = session.get(Product, product_id)
+        assert payment is not None and payment.status == "pending"
+        assert order is not None and order.status == "pending_payment"
+        assert product is not None and product.stock == 999999
+
+
 def test_expiry_skips_deleted_products_and_keeps_snapshot(client: TestClient, engine) -> None:
     headers = auth_headers(client, "payment-deleted-product-buyer")
     order_id, product_id = create_order(client, headers)

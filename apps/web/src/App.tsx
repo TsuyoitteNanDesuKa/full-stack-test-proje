@@ -13,6 +13,7 @@ import {
 } from './api'
 import type { CartResponse, CustomerOrder, Product } from './api'
 import { beginLogin, beginRegistration, endSession, getCurrentSession } from './auth'
+import AdminOrdersPanel from './AdminOrdersPanel'
 import AdminSellerApplicationsPanel from './AdminSellerApplicationsPanel'
 import CartPanel from './CartPanel'
 import OrderHistoryPanel from './OrderHistoryPanel'
@@ -440,13 +441,16 @@ function HomePage({
         )}
       </section>
       {isAdmin ? (
-        <button
-          className="retry-button"
-          onClick={() => setShowSellerApplications(true)}
-          type="button"
-        >
-          Satıcı başvurularını yönet
-        </button>
+        <>
+          <button
+            className="retry-button"
+            onClick={() => setShowSellerApplications(true)}
+            type="button"
+          >
+            Satıcı başvurularını yönet
+          </button>
+          <AdminOrdersPanel token={token} />
+        </>
       ) : (
         <SellerApplicationPanel token={token} />
       )}

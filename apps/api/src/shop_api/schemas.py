@@ -265,7 +265,25 @@ class CartResponse(BaseModel):
 class OrderStatus(StrEnum):
     PENDING_PAYMENT = "pending_payment"
     PAID = "paid"
+    PROCESSING = "processing"
+    SHIPPED = "shipped"
+    DELIVERED = "delivered"
     CANCELLED = "cancelled"
+
+
+class OrderFulfillmentStatus(StrEnum):
+    PROCESSING = "processing"
+    SHIPPED = "shipped"
+    DELIVERED = "delivered"
+
+
+class PaymentStatus(StrEnum):
+    PENDING = "pending"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    EXPIRED = "expired"
+    REFUNDED = "refunded"
 
 
 class OrderItemResponse(BaseModel):
@@ -277,20 +295,31 @@ class OrderItemResponse(BaseModel):
     line_total: Decimal
 
 
+class OrderStatusEventResponse(BaseModel):
+    action: str
+    from_status: OrderStatus | None
+    to_status: OrderStatus
+    reason: str | None
+    created_at: datetime
+
+
+class AdminOrderStatusEventResponse(OrderStatusEventResponse):
+    actor_subject: str | None
+
+
 class OrderResponse(BaseModel):
     id: int
     status: OrderStatus
     total_amount: Decimal
     created_at: datetime
     items: list[OrderItemResponse]
+    history: list[OrderStatusEventResponse]
 
 
-class PaymentStatus(StrEnum):
-    PENDING = "pending"
-    SUCCEEDED = "succeeded"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-    EXPIRED = "expired"
+class AdminOrderResponse(OrderResponse):
+    owner_subject: str
+    payment_status: PaymentStatus | None
+    history: list[AdminOrderStatusEventResponse]
 
 
 class PaymentResult(StrEnum):
@@ -332,3 +361,19 @@ class PaymentWebhookResponse(BaseModel):
 
 class MockPaymentResultRequest(BaseModel):
     status: PaymentResult
+
+
+class AdminOrderStatusRequest(BaseModel):
+    status: OrderFulfillmentStatus
+
+
+class AdminOrderRefundRequest(BaseModel):
+    reason: str = Field(min_length=5, max_length=500, strict=True)
+
+    @field_validator("reason")
+    @classmethod
+    def strip_and_validate_reason(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 5:
+            raise ValueError("İptal/iade nedeni en az 5 karakter olmalıdır.")
+        return normalized

@@ -923,8 +923,16 @@
   text-align: left;
 }
 
+.order-history-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
 .order-history-panel h2 {
-  margin: 0 0 16px;
+  margin: 0;
   color: #2e4433;
   font-family: var(--serif);
   font-size: 25px;
@@ -1007,6 +1015,29 @@
   color: #3d5a41;
 }
 
+.order-status-history {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+  padding-left: 20px;
+  color: #63715f;
+  font-size: 10px;
+}
+
+.order-status-history li {
+  padding-left: 2px;
+}
+
+.order-status-history time {
+  display: block;
+  margin-top: 3px;
+  color: #8a9286;
+}
+
+.order-status-history p {
+  margin: 4px 0 0;
+}
+
 .order-confirmation {
   margin: 0 0 12px;
   color: #3d5a41;
@@ -1038,6 +1069,91 @@
   font-family: var(--serif);
   font-size: 25px;
   font-weight: 500;
+}
+
+.admin-orders-panel {
+  text-align: left;
+}
+
+.admin-orders-disclaimer {
+  margin: -5px 0 18px;
+  color: #737d70;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.admin-order-list {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-order-card {
+  padding: 18px;
+  border: 1px solid #e6e8df;
+  border-radius: 5px;
+  background: #fff;
+  color: #657160;
+  font-size: 11px;
+}
+
+.admin-order-card .seller-panel-heading {
+  margin-bottom: 10px;
+}
+
+.admin-order-card h3 {
+  margin: 0;
+  color: #354a38;
+  font-size: 15px;
+}
+
+.admin-order-card .seller-panel-heading p,
+.admin-order-card > p {
+  margin: 6px 0 0;
+}
+
+.admin-order-items {
+  display: grid;
+  gap: 5px;
+  margin: 12px 0;
+  padding-left: 20px;
+}
+
+.admin-order-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.admin-refund-form {
+  display: grid;
+  width: min(100%, 430px);
+  gap: 7px;
+}
+
+.admin-refund-form label {
+  color: #53644f;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.admin-refund-form textarea {
+  min-height: 64px;
+  padding: 9px;
+  border: 1px solid #dfe5da;
+  border-radius: 4px;
+  font: inherit;
+  resize: vertical;
+}
+
+.admin-refund-form textarea:focus-visible {
+  outline: 2px solid #7d9273;
+  outline-offset: 2px;
+}
+
+.admin-order-actions button {
+  min-height: 36px;
 }
 
 .seller-application-card h3 {

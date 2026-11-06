@@ -61,7 +61,27 @@ export interface CartUpdateItemRequest {
   quantity: number
 }
 
-export type OrderStatus = 'pending_payment' | 'paid' | 'cancelled'
+export type OrderStatus =
+  | 'pending_payment'
+  | 'paid'
+  | 'processing'
+  | 'shipped'
+  | 'delivered'
+  | 'cancelled'
+
+export type OrderFulfillmentStatus = 'processing' | 'shipped' | 'delivered'
+
+export interface OrderStatusEvent {
+  action: string
+  from_status: OrderStatus | null
+  to_status: OrderStatus
+  reason: string | null
+  created_at: string
+}
+
+export interface AdminOrderStatusEvent extends OrderStatusEvent {
+  actor_subject: string | null
+}
 
 export interface OrderItem {
   id: number
@@ -78,9 +98,22 @@ export interface CustomerOrder {
   total_amount: string
   created_at: string
   items: OrderItem[]
+  history: OrderStatusEvent[]
 }
 
-export type PaymentStatus = 'pending' | 'succeeded' | 'failed' | 'cancelled' | 'expired'
+export interface AdminOrder extends Omit<CustomerOrder, 'history'> {
+  owner_subject: string
+  payment_status: PaymentStatus | null
+  history: AdminOrderStatusEvent[]
+}
+
+export type PaymentStatus =
+  | 'pending'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+  | 'expired'
+  | 'refunded'
 
 export interface CustomerPayment {
   id: number
@@ -308,6 +341,42 @@ export function createPayment(
 export function getMyOrder(token: string, orderId: number): Promise<CustomerOrder> {
   return request<CustomerOrder>(`/api/v1/orders/${orderId}`, {
     headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function getAdminOrders(token: string): Promise<AdminOrder[]> {
+  return request<AdminOrder[]>('/api/v1/admin/orders', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function updateAdminOrderStatus(
+  token: string,
+  orderId: number,
+  orderStatus: OrderFulfillmentStatus,
+): Promise<AdminOrder> {
+  return request<AdminOrder>(`/api/v1/admin/orders/${orderId}/status`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ status: orderStatus }),
+  })
+}
+
+export function refundAdminOrder(
+  token: string,
+  orderId: number,
+  reason: string,
+): Promise<AdminOrder> {
+  return request<AdminOrder>(`/api/v1/admin/orders/${orderId}/refund`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ reason }),
   })
 }
 

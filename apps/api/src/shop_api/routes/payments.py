@@ -15,7 +15,12 @@ from shop_api.config import Settings
 from shop_api.database import get_db
 from shop_api.dependencies import get_current_user
 from shop_api.models import CustomerOrder, Payment, PaymentWebhookEvent
-from shop_api.payment_expiry import expire_due_payments, restore_order_stock
+from shop_api.order_lifecycle import record_order_status_event
+from shop_api.payment_expiry import (
+    StockRestorationError,
+    expire_due_payments,
+    restore_order_stock,
+)
 from shop_api.payment_providers import MockPaymentProvider, PaymentProvider
 from shop_api.schemas import (
     MockPaymentResultRequest,
@@ -38,6 +43,17 @@ def _settings(request: Request) -> Settings:
 
 def _provider(request: Request) -> PaymentProvider:
     return request.app.state.payment_provider
+
+
+def _expire_due_payments(db: Session, now: datetime | None = None) -> int:
+    try:
+        return expire_due_payments(db, now)
+    except StockRestorationError as error:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Stok sınırı nedeniyle süresi dolan sipariş kapatılamadı.",
+        ) from error
 
 
 def _require_buyer(user: AuthenticatedUser) -> None:
@@ -110,7 +126,7 @@ def create_payment(
     _require_buyer(current_user)
     if not IDEMPOTENCY_KEY_PATTERN.fullmatch(idempotency_key):
         raise HTTPException(status_code=422, detail="Idempotency-Key geçersiz biçimde.")
-    expire_due_payments(db)
+    _expire_due_payments(db)
 
     existing = db.scalar(
         select(Payment).where(
@@ -183,7 +199,7 @@ def get_payment(
     db: Annotated[Session, Depends(get_db)],
 ) -> PaymentResponse:
     _require_buyer(current_user)
-    expire_due_payments(db)
+    _expire_due_payments(db)
     payment = db.scalar(
         select(Payment).where(
             Payment.id == payment_id,
@@ -202,7 +218,7 @@ def _apply_webhook(
     event: PaymentWebhookRequest,
     payload_sha256: str,
 ) -> PaymentWebhookResponse:
-    expire_due_payments(db)
+    _expire_due_payments(db)
     payment = db.scalar(
         select(Payment)
         .where(
@@ -241,7 +257,7 @@ def _apply_webhook(
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=UTC)
         if expires_at <= now:
-            expire_due_payments(db, now)
+            _expire_due_payments(db, now)
         elif event.status == PaymentResult.SUCCEEDED:
             payment.status = PaymentStatus.SUCCEEDED
             payment.updated_at = now
@@ -249,7 +265,16 @@ def _apply_webhook(
                 select(CustomerOrder).where(CustomerOrder.id == payment.order_id).with_for_update()
             )
             if order is not None and order.status == OrderStatus.PENDING_PAYMENT:
+                previous_status = order.status
                 order.status = OrderStatus.PAID
+                record_order_status_event(
+                    db,
+                    order_id=order.id,
+                    action="payment_succeeded",
+                    from_status=previous_status,
+                    to_status=order.status,
+                    created_at=now,
+                )
         else:
             payment.status = (
                 PaymentStatus.FAILED
@@ -261,8 +286,28 @@ def _apply_webhook(
                 select(CustomerOrder).where(CustomerOrder.id == payment.order_id).with_for_update()
             )
             if order is not None and order.status == OrderStatus.PENDING_PAYMENT:
+                previous_status = order.status
                 order.status = OrderStatus.CANCELLED
-                restore_order_stock(db, order.id)
+                try:
+                    restore_order_stock(db, order.id)
+                except StockRestorationError as error:
+                    db.rollback()
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Stok sınırı nedeniyle sipariş kapatılamadı.",
+                    ) from error
+                record_order_status_event(
+                    db,
+                    order_id=order.id,
+                    action=(
+                        "payment_failed"
+                        if event.status == PaymentResult.FAILED
+                        else "payment_cancelled"
+                    ),
+                    from_status=previous_status,
+                    to_status=order.status,
+                    created_at=now,
+                )
 
     db.add(
         PaymentWebhookEvent(
@@ -316,7 +361,7 @@ def mock_checkout_page(
     provider = _provider(request)
     if not isinstance(provider, MockPaymentProvider):
         raise HTTPException(status_code=404, detail="Ödeme sayfası bulunamadı.")
-    expire_due_payments(db)
+    _expire_due_payments(db)
     payment = db.get(Payment, payment_id)
     if (
         payment is None
@@ -370,7 +415,7 @@ def complete_mock_checkout(
     provider = _provider(request)
     if not isinstance(provider, MockPaymentProvider):
         raise HTTPException(status_code=404, detail="Ödeme sayfası bulunamadı.")
-    expire_due_payments(db)
+    _expire_due_payments(db)
     payment = db.scalar(select(Payment).where(Payment.id == payment_id).with_for_update())
     if (
         payment is None

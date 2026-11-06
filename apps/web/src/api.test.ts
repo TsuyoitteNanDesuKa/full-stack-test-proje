@@ -9,6 +9,7 @@ import {
   deleteCartItem,
   deleteProduct,
   getCurrentUser,
+  getAdminOrders,
   getHome,
   getMyCart,
   getMyOrder,
@@ -17,8 +18,10 @@ import {
   getProducts,
   getSellerApplications,
   reviewSellerApplication,
+  refundAdminOrder,
   submitMySellerApplication,
   updateCartItem,
+  updateAdminOrderStatus,
   updateProduct,
   updateMySellerApplication,
   withdrawMySellerApplication,
@@ -223,6 +226,7 @@ describe('storefront API client', () => {
       total_amount: '25.00',
       created_at: '2026-11-04T20:00:00Z',
       items: [],
+      history: [],
     }
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(order, 201))
 
@@ -248,6 +252,7 @@ describe('storefront API client', () => {
       total_amount: '25.00',
       created_at: '2026-11-04T20:00:00Z',
       items: [],
+      history: [],
     }
     vi.mocked(fetch)
       .mockResolvedValueOnce(jsonResponse([order]))
@@ -300,6 +305,58 @@ describe('storefront API client', () => {
       }),
     )
     expect(vi.mocked(fetch).mock.calls[0]?.[1]).not.toHaveProperty('body')
+  })
+
+  it('loads admin orders and sends status and local refund operations', async () => {
+    const order = {
+      id: 44,
+      owner_subject: 'buyer-subject',
+      status: 'processing' as const,
+      payment_status: 'succeeded' as const,
+      total_amount: '25.00',
+      created_at: '2026-11-04T20:00:00Z',
+      items: [],
+      history: [],
+    }
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse([order]))
+      .mockResolvedValueOnce(jsonResponse({ ...order, status: 'shipped' }))
+      .mockResolvedValueOnce(jsonResponse({
+        ...order,
+        status: 'cancelled',
+        payment_status: 'refunded',
+      }))
+
+    await expect(getAdminOrders('admin-token')).resolves.toEqual([order])
+    await expect(
+      updateAdminOrderStatus('admin-token', 44, 'shipped'),
+    ).resolves.toMatchObject({ status: 'shipped' })
+    await expect(
+      refundAdminOrder('admin-token', 44, 'Alıcı talebi'),
+    ).resolves.toMatchObject({ payment_status: 'refunded' })
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      '/api/v1/admin/orders',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer admin-token' }),
+      }),
+    )
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/admin/orders/44/status',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'shipped' }),
+      }),
+    )
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      '/api/v1/admin/orders/44/refund',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ reason: 'Alıcı talebi' }),
+      }),
+    )
   })
 
   it('preserves product endpoint failures for the caller', async () => {

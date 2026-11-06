@@ -667,6 +667,43 @@ Keycloak erişim/rol atama hatasında işlem başarı gibi raporlanmaz; başvuru
 
 **Mock sandbox çıkış ölçütü (tamamlandı):** Yetkili, tutarı doğrulanmış ödeme sonucu sipariş durumuna bir kez yansır; başarısız veya süresi dolmuş sipariş stoku bir kez iade eder; hassas ödeme verisi uygulamaya hiç girmez. Gerçek PSP entegrasyonunun çıkış ölçütleri sağlayıcı seçimi ve sandbox erişimi sağlandığında tamamlanacaktır.
 
+## REQ-012 — Sipariş takibi ve operasyonel yönetim
+
+- **Öncelik:** P1
+- **Durum:** İlk dilim tamamlandı: SQLite backend 244 test geçti (%96,89 coverage), PostgreSQL entegrasyon testleri 11/11, web 148 test (%100 coverage), Keycloak E2E 8/8 geçti; build/lint/Ruff başarılı.
+- **Kullanıcı hikâyesi:** Alıcı olarak siparişimin güncel durumunu ve geçmişini görmek; admin olarak siparişleri izleyip güvenli biçimde operasyon durumunu ilerletmek ve uygun siparişleri iptal/iade kaydına almak istiyorum.
+- **Alıcı görünümü:** Alıcı yalnızca kendi siparişlerini ve sistem/admin tarafından kaydedilen durum geçişlerini görür. Admin aktör kimliği alıcı yanıtında paylaşılmaz.
+- **Operasyon durumları:** Ödeme başarısı `paid` durumuna geçirir; admin yalnızca sırayla `paid → processing → shipped → delivered` ilerletebilir. Taşıyıcı/kargo entegrasyonu yoktur; durumlar admin tarafından manuel güncellenir.
+- **Ödeme bekleyen siparişler:** Mevcut REQ-011 davranışı değişmez; başarısız/iptal/zaman aşımında sipariş otomatik `cancelled` olur ve stok bir kez iade edilir. Buyer/admin tarafından ayrıca manuel iptal bu dilimde yoktur.
+- **Ödenmiş siparişte iade:** Yalnızca `paid` veya `processing` aşamasında admin iptal/iade kaydı oluşturabilir. Sipariş `cancelled`, mock ödeme kaydı `refunded` olur; neden, admin subject'i ve zaman audit geçmişinde saklanır. Aynı işlem tekrarı ek stok veya audit olayı oluşturmaz. `shipped`/`delivered` siparişler bu işlemle iptal edilemez; ürün geri kabul/iade süreci ayrı gereksinimdir.
+- **Mock ödeme sınırı:** `refunded` yalnızca uygulamadaki manuel test kaydıdır; PSP bağlı olmadığı için gerçek para transferi/iadesi yapılmaz.
+- **Stok kararı:** İade/iptal ve stok geri yükleme tek transaction içindedir; ürün artık silinmişse (sipariş kaleminde `product_id` null) mevcut stok geri yüklenemez, sipariş snapshot'ı korunur.
+
+### Kabul kriterleri
+
+1. Alıcı sipariş geçmişinde güncel durumu ve zaman damgalı durum geçmişini görebilir; başka alıcının siparişini okuyamaz ve audit aktör subject'i görmez.
+2. Sadece admin sipariş listesi/detayını ve actor dahil audit bilgisini görebilir; filtreleme ve sayfalama sınırları uygulanır.
+3. Admin durum güncellemesi yalnızca `paid → processing → shipped → delivered` sırasındaki tek sonraki geçişe izin verir. Aynı hedef durumun tekrarı idempotenttir; geçersiz atlama/geri alma reddedilir.
+4. Admin iadesi yalnızca `paid`/`processing` ve `succeeded` ödeme için mümkündür; gerekçe zorunludur. `pending_payment`, `shipped`, `delivered` veya ödeme başarıya ulaşmamış sipariş reddedilir.
+5. Yerel iade tek DB transaction'ında siparişi `cancelled`, ödemeyi `refunded` yapar, ürün stoklarını en fazla bir kez geri yükler ve admin/gerekçe/zaman audit kaydını yazar. Başarısız işlemde hiçbir parça kalıcı olmaz.
+6. İade işleminin tekrarı mevcut sonucu döndürür; stok ve audit kaydı ikinci kez değişmez. Kullanıcı/admin rol sınırı API'de zorunludur.
+7. Admin arayüzü durum geçişlerini ve gerekçe girişini gösterir; mock iadenin gerçek para transferi olmadığı kullanıcıya açıkça belirtilir.
+
+### API sözleşmesi ve test planı
+
+- `GET /api/v1/admin/orders?status=&limit=&offset=` ve `GET /api/v1/admin/orders/{order_id}` — yalnızca admin; sipariş, ödeme durumu ve audit geçmişi.
+- `PATCH /api/v1/admin/orders/{order_id}/status` — `{ "status": "processing" | "shipped" | "delivered" }`; yalnızca sıradaki geçiş.
+- `POST /api/v1/admin/orders/{order_id}/refund` — `{ "reason": "..." }`; yerel iade, gerçek para hareketi yok.
+- **Unit/API/DB:** Rol ve sahiplik, filtre/pagination, geçersiz/geçerli durum geçişleri, yeniden oynatma, ödeme durum doğrulaması, iade/stok atomikliği ve audit actor/gerekçe/zamanı.
+- **Migration:** Sipariş/ödeme check constraint güncellemesi, mevcut siparişlerin başlangıç audit geçmişinin backfill'i ve downgrade.
+- **Component:** Alıcı geçmişi ve admin listesi/durum/iade aksiyonları; hata/boş/loading ve mock iade açıklaması.
+- **E2E:** Buyer siparişi oluşturur ve durum geçmişini görür; admin operasyon durumunu ilerletir/iade kaydı oluşturur; buyer'ın admin endpoint değişikliği `403` ile reddedilir.
+- **Gerçek PSP/kargo:** Bu dilimde dış entegrasyon yok; sağlayıcı callback'i, para iadesi veya taşıyıcı olayları simüle edilmiyor.
+
+**Çıkış ölçütü:** Her sipariş durumu değişikliği yetkili ve denetlenebilir; alıcı/admin görünümü tutarlı; iade ve stok etkisi transaction içinde, idempotent ve yalnızca mock kayıt olarak uygulanır.
+
+**Mevcut doğrulama:** SQLite backend 244 geçti (%96,89 coverage); PostgreSQL entegrasyon/eşzamanlılık testleri 11/11 geçti. Web 148 geçti (%100 coverage), production build/Oxlint/Ruff ve `git diff --check` başarılı. Gerçek Keycloak E2E 8/8 geçti; sipariş checkout → mock ödeme → admin processing/iade → alıcı geçmişi senaryosu dahil.
+
 ## İleri gereksinim adayları
 
 Bu maddeler kapsamı erkenden sabitlememek için henüz kabul kriterlerine dönüştürülmemiştir:
@@ -675,4 +712,4 @@ Bu maddeler kapsamı erkenden sabitlememek için henüz kabul kriterlerine dön�
 - Satıcı başvuruları için otomatik kimlik/işletme doğrulama sağlayıcısı veya yetkili resmî entegrasyon araştırması; kapsam, erişim izni, KVKK, maliyet ve manuel fallback değerlendirmesi.
 - Ürün kataloğunda arama ve filtreleme.
 - Adres ve teslimat seçenekleriyle sipariş oluşturma.
-- Gerçek ödeme sağlayıcısı adapter'ı, sipariş geçmişi ve iptal/iade.
+- Gerçek ödeme sağlayıcısı adapter'ı ve gerçek tahsilat/iade entegrasyonu.

@@ -159,6 +159,7 @@ function setupApi(options: {
         total_amount: cart.subtotal,
         created_at: new Date().toISOString(),
         items,
+        history: [],
       }
       ordersByIdempotencyKey.set(key, order)
       orders.unshift(order)
@@ -171,6 +172,7 @@ function setupApi(options: {
       const order = orders.find((item) => item.id === orderId)
       return order ? jsonResponse(order) : jsonResponse({ detail: 'not found' }, 404)
     }
+    if (path === '/api/v1/admin/orders') return jsonResponse([])
     if (/^\/api\/v1\/cart\/items\/\d+$/.test(path) && init?.method === 'PUT') {
       const itemId = Number(path.split('/').at(-1))
       const request = JSON.parse(String(init.body)) as { quantity: number }
@@ -1164,6 +1166,9 @@ describe('Keycloak authentication and storefront', () => {
       }
       if (String(input) === '/api/v1/seller-applications/me') {
         return jsonResponse(null)
+      }
+      if (String(input) === '/api/v1/admin/orders') {
+        return jsonResponse([])
       }
       return jsonResponse(productList())
     })

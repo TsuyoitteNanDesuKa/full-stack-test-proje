@@ -393,18 +393,33 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 
 ### Öncelik 7 — REQ-012: Sipariş takibi ve operasyonel tamamlayıcılar
 
-- Müşteri sipariş geçmişi ve durum ayrıntıları; admin sipariş işleme yetkileri ayrı gereksinimle tanımlanmalı.
-- İptal, iade ve geri ödeme politikaları; stok iadesi ve ödeme sağlayıcı durumlarıyla transaction/idempotency kuralları belirlenmeli.
+- **Durum:** İlk dilim tamamlandı. SQLite backend 244 test geçti (%96,89 coverage), PostgreSQL entegrasyon testleri 11/11, web 148 test (%100 coverage), Keycloak E2E 8/8 geçti; build/lint/Ruff başarılı.
+- **Kararlar:** Buyer yalnızca kendi zaman damgalı sipariş geçmişini görür. Admin durumları sırayla `paid → processing → shipped → delivered` ilerletir; taşıyıcı entegrasyonu yoktur. Ödeme bekleyen siparişlerin otomatik iptal/stoğa iadesi REQ-011'deki gibi kalır. Admin, yalnızca ödenmiş ve kargoya verilmemiş siparişi gerekçe ile iptal edip yerel `refunded` kaydı oluşturabilir; sipariş iptal olur ve stok tek transaction'da bir kez döner. Bu işlem gerçek para iadesi değildir. `shipped`/`delivered` ürün iadesi ayrı gereksinimdir.
+- Sipariş durum geçmişi tablosu ve mevcut siparişleri kapsayan audit migration'ı.
+- Buyer sipariş geçmişinde güncel durum ve olay zaman çizelgesi; audit aktör kimliği buyer yanıtından gizlenir.
+- Admin sipariş liste/detay API'si, durum filtresi ve bounded pagination.
+- Sıradaki tek geçişe izin veren, tekrarlandığında yeni olay üretmeyen admin durum güncellemesi.
+- `paid`/`processing` + başarılı ödeme koşulunda gerekçeli admin yerel iadesi; payment `refunded`, order `cancelled`, stok ve audit atomik/idempotent.
+- Admin sipariş listesi, ilerleme ve yerel iade arayüzü; mock iadenin para transferi olmadığı görünür.
 
-**Geliştirme tamamlandıktan hemen sonra — test geliştirme planı:**
+**Test planı ve çıkış ölçütleri:**
 
-- **Unit:** İzin verilen sipariş/ödeme geçişleri, iptal/iade/geri ödeme ve stok iadesi iş kuralları.
-- **API/entegrasyon/DB:** Müşteri sahipliği, admin işlem yetkisi, idempotency, audit, transaction/rollback, sağlayıcıyla tutarlı durum ve hata kurtarma.
-- **Component:** Müşteri/admin durum görünümleri, işlem onayları, beklemede/hata ve erişilebilirlik davranışları.
-- **E2E:** Müşterinin sipariş takibi; yetkili admin operasyonu; yetkisiz kullanıcı değişikliği reddi; iptal/iade gibi kritik yaşam döngüsü akışları.
-- **Kalite/regresyon:** Audit bütünlüğü, erişilebilirlik ve risk bazlı performans ölçümleri; önceki sipariş/ödeme akışlarının regresyonları.
+- **Unit/API/DB:** Buyer/admin rol sınırı; geçiş sırası/atlama/tekrar; pending/shipped/delivered iade reddi; audit actor/gerekçe/zaman; tek sefer stok iadesi; migration upgrade/downgrade.
+- **Component:** Buyer geçmişi/timeline; admin liste/manuel durum/iade; boş/loading/error ve iade sınırı metni.
+- **E2E:** Buyer siparişi oluşturur ve izler; admin yetkili işlemi uygular; buyer admin mutation'ı `403` ile alamaz.
+- **Regresyon/kalite:** REQ-010 checkout ve REQ-011 mock ödeme/expiry akışları, PostgreSQL transaction/race ve web build/lint/testleri.
 
-**Çıkış ölçütü:** Sipariş/ödeme yaşam döngüsü izlenebilir; her durum değişimi yetkili, tekrara dayanıklı ve müşteri/admin görünümünde tutarlıdır.
+**Çıkış ölçütü:** Her sipariş geçişi yetkili ve denetlenebilir; admin/buyer görünümleri tutarlı; iade ve stok etkisi transaction içinde, idempotent ve açıkça yerel mock işlemidir.
+
+**İlerleme kontrol listesi**
+
+- [x] Kapsam, manuel durumlar ve kargoya verilmeden önce yerel iade/stock/audit politikası kararlaştırıldı.
+- [x] Order status audit modeli, migration/backfill ve API şemaları.
+- [x] Buyer timeline ve admin liste/durum/iade API'leri; rol, sıra ve tekrar güvenliği.
+- [x] Buyer/admin web arayüzleri ve component/API testleri.
+- [x] SQLite backend API/migration, coverage eşiği ve ödeme regresyon testleri; web testleri/build/lint.
+- [x] PostgreSQL entegrasyon ve eşzamanlılık testleri 11/11 geçti.
+- [x] Keycloak E2E 8/8 geçti; checkout → mock ödeme → admin durum/iade ve alıcı geçmişi dahil.
 
 ### Her incremental dilim için ortak Definition of Done
 

@@ -186,7 +186,8 @@ class CustomerOrder(Base):
     __tablename__ = "orders"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending_payment', 'paid', 'cancelled')",
+            "status IN ('pending_payment', 'paid', 'processing', 'shipped', "
+            "'delivered', 'cancelled')",
             name="ck_orders_status",
         ),
         CheckConstraint("total_amount >= 0", name="ck_orders_total_amount_nonnegative"),
@@ -202,6 +203,31 @@ class CustomerOrder(Base):
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class OrderStatusEvent(Base):
+    __tablename__ = "order_status_events"
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('created', 'payment_succeeded', 'payment_failed', "
+            "'payment_cancelled', 'payment_expired', 'admin_status_changed', "
+            "'admin_refund', 'legacy_import')",
+            name="ck_order_status_events_action",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(
+        ForeignKey("orders.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    actor_subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    from_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
@@ -243,7 +269,7 @@ class Payment(Base):
     __tablename__ = "payments"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending', 'succeeded', 'failed', 'cancelled', 'expired')",
+            "status IN ('pending', 'succeeded', 'failed', 'cancelled', 'expired', 'refunded')",
             name="ck_payments_status",
         ),
         CheckConstraint("amount > 0", name="ck_payments_amount_positive"),

@@ -74,5 +74,6 @@ def create_app(settings: Settings | None = None, db_engine: Engine | None = None
     app.include_router(seller_applications.router)
     app.include_router(cart.router)
     app.include_router(orders.router)
+    app.include_router(orders.admin_router)
     app.include_router(payments.router)
     return app

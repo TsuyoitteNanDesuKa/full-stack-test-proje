@@ -22,7 +22,7 @@ def test_order_and_payment_migrations_create_tables_and_downgrade(
     engine = create_database_engine(database_url)
 
     try:
-        command.upgrade(alembic_config, "head")
+        command.upgrade(alembic_config, "0008_payments")
         with engine.begin() as connection:
             connection.execute(
                 text(
@@ -38,16 +38,6 @@ def test_order_and_payment_migrations_create_tables_and_downgrade(
                     "(order_id, product_id, product_name, unit_price, quantity, line_total) "
                     "VALUES (1, NULL, 'Snapshot product', 12.50, 2, 25.00)"
                 )
-            )
-
-        with engine.connect() as connection:
-            assert (
-                connection.scalar(text("SELECT product_name FROM order_items WHERE id = 1"))
-                == "Snapshot product"
-            )
-            assert (
-                connection.scalar(text("SELECT version_num FROM alembic_version"))
-                == "0008_payments"
             )
             connection.execute(
                 text(
@@ -68,6 +58,32 @@ def test_order_and_payment_migrations_create_tables_and_downgrade(
                     "CURRENT_TIMESTAMP)"
                 )
             )
+
+        command.upgrade(alembic_config, "head")
+        with engine.connect() as connection:
+            assert (
+                connection.scalar(text("SELECT product_name FROM order_items WHERE id = 1"))
+                == "Snapshot product"
+            )
+            assert (
+                connection.scalar(text("SELECT version_num FROM alembic_version"))
+                == "0009_order_lifecycle"
+            )
+            assert (
+                connection.scalar(text("SELECT action FROM order_status_events WHERE order_id = 1"))
+                == "legacy_import"
+            )
+            connection.execute(text("UPDATE orders SET status = 'processing' WHERE id = 1"))
+
+        command.downgrade(alembic_config, "0008_payments")
+        with engine.connect() as connection:
+            tables = set(
+                connection.scalars(
+                    text("SELECT name FROM sqlite_master WHERE type = 'table'")
+                ).all()
+            )
+            assert "order_status_events" not in tables
+            assert "payments" in tables
 
         command.downgrade(alembic_config, "0007_customer_orders")
         with engine.connect() as connection:

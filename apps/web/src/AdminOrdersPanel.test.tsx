@@ -1,0 +1,104 @@
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import AdminOrdersPanel from './AdminOrdersPanel'
+import type { AdminOrder } from './api'
+import {
+  getAdminOrders,
+  refundAdminOrder,
+  updateAdminOrderStatus,
+} from './api'
+
+vi.mock('./api', () => ({
+  getAdminOrders: vi.fn(),
+  refundAdminOrder: vi.fn(),
+  updateAdminOrderStatus: vi.fn(),
+}))
+
+const sampleOrder: AdminOrder = {
+  id: 21,
+  owner_subject: 'buyer-subject',
+  status: 'paid',
+  payment_status: 'succeeded',
+  total_amount: '25.00',
+  created_at: '2026-11-04T20:00:00Z',
+  items: [
+    {
+      id: 31,
+      product_id: 12,
+      product_name: 'Sample product',
+      unit_price: '12.50',
+      quantity: 2,
+      line_total: '25.00',
+    },
+  ],
+  history: [
+    {
+      action: 'payment_succeeded',
+      from_status: 'pending_payment',
+      to_status: 'paid',
+      reason: null,
+      created_at: '2026-11-04T20:01:00Z',
+      actor_subject: null,
+    },
+  ],
+}
+
+describe('AdminOrdersPanel', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(getAdminOrders).mockResolvedValue([sampleOrder])
+  })
+
+  it('updates order fulfillment and records a local refund with a required reason', async () => {
+    const user = userEvent.setup()
+    const processingOrder: AdminOrder = {
+      ...sampleOrder,
+      status: 'processing',
+    }
+    const refundedOrder: AdminOrder = {
+      ...sampleOrder,
+      status: 'cancelled',
+      payment_status: 'refunded',
+    }
+    vi.mocked(updateAdminOrderStatus).mockResolvedValue(processingOrder)
+    vi.mocked(refundAdminOrder).mockResolvedValue(refundedOrder)
+
+    render(<AdminOrdersPanel token="admin-token" />)
+
+    await screen.findByText(/Sample product · 2 adet/)
+    await user.click(screen.getByRole('button', { name: 'Hazırlanıyor aşamasına geçir' }))
+    await waitFor(() => {
+      expect(updateAdminOrderStatus).toHaveBeenCalledWith(
+        'admin-token',
+        21,
+        'processing',
+      )
+    })
+
+    const reason = screen.getByRole('textbox', { name: 'İptal/iade nedeni' })
+    expect(screen.getByText(/gerçek para transferi yapmaz/)).toBeInTheDocument()
+    expect(screen.getByRole('button', {
+      name: 'İptal et ve yerel iade kaydı oluştur',
+    })).toBeDisabled()
+    await user.type(reason, 'Alıcı talebi')
+    await user.click(screen.getByRole('button', {
+      name: 'İptal et ve yerel iade kaydı oluştur',
+    }))
+
+    await waitFor(() => {
+      expect(refundAdminOrder).toHaveBeenCalledWith('admin-token', 21, 'Alıcı talebi')
+    })
+    expect(await screen.findByText('İptal edildi')).toBeInTheDocument()
+  })
+
+  it('shows an explicit message when orders cannot be loaded', async () => {
+    vi.mocked(getAdminOrders).mockRejectedValue(new Error('network error'))
+
+    render(<AdminOrdersPanel token="admin-token" />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Siparişler yüklenemedi. Lütfen tekrar dene.',
+    )
+  })
+})

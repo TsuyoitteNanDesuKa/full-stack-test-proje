@@ -25,6 +25,7 @@ from shop_api.models import (
     CartItem,
     CustomerOrder,
     OrderItem,
+    OrderStatusEvent,
     Payment,
     PaymentWebhookEvent,
     Product,
@@ -516,6 +517,80 @@ def test_postgres_duplicate_payment_webhook_restores_stock_once(
         product = session.get(Product, product_id)
         assert product is not None and product.stock == 5
         assert session.scalar(select(func.count()).select_from(PaymentWebhookEvent)) == 1
+
+
+def test_postgres_concurrent_admin_refunds_restore_inventory_once(
+    postgres_engine: Engine,
+    postgres_client: TestClient,
+) -> None:
+    product_id = _create_product(postgres_client, stock=5)
+    buyer_subject = "postgres-admin-refund-buyer"
+    buyer_headers = _auth_headers(postgres_client, buyer_subject)
+    assert (
+        postgres_client.post(
+            "/api/v1/cart/items",
+            json={"product_id": product_id, "quantity": 2},
+            headers=buyer_headers,
+        ).status_code
+        == 200
+    )
+    order_response = postgres_client.post(
+        "/api/v1/orders",
+        headers={**buyer_headers, "Idempotency-Key": "postgres-refund-order"},
+    )
+    assert order_response.status_code == 201
+    order_id = order_response.json()["id"]
+    payment_response = postgres_client.post(
+        f"/api/v1/orders/{order_id}/payments",
+        headers={**buyer_headers, "Idempotency-Key": "postgres-refund-payment"},
+    )
+    assert payment_response.status_code == 201
+    payment = payment_response.json()
+    assert (
+        _send_signed_payment_event(
+            postgres_engine,
+            event_id="postgres-refund-success",
+            payment_reference=payment["provider_reference"],
+            status="succeeded",
+            amount=payment["amount"],
+        )[0]
+        == 200
+    )
+
+    workers = 6
+    barrier = Barrier(workers)
+    admin_token = _auth_headers(postgres_client, "postgres-refund-admin", ["admin"])
+
+    def refund(_: int) -> int:
+        with _client_for_engine(postgres_engine) as client:
+            barrier.wait(timeout=10)
+            response = client.post(
+                f"/api/v1/admin/orders/{order_id}/refund",
+                json={"reason": "Concurrent test refund"},
+                headers=admin_token,
+            )
+            return response.status_code
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        statuses = list(executor.map(refund, range(workers)))
+
+    assert statuses == [200] * workers
+    with Session(postgres_engine) as session:
+        product = session.get(Product, product_id)
+        order = session.get(CustomerOrder, order_id)
+        stored_payment = session.get(Payment, payment["id"])
+        refund_event_count = session.scalar(
+            select(func.count())
+            .select_from(OrderStatusEvent)
+            .where(
+                OrderStatusEvent.order_id == order_id,
+                OrderStatusEvent.action == "admin_refund",
+            )
+        )
+        assert product is not None and product.stock == 5
+        assert order is not None and order.status == "cancelled"
+        assert stored_payment is not None and stored_payment.status == "refunded"
+        assert refund_event_count == 1
 
 
 def test_postgres_concurrent_expiry_restores_inventory_once(

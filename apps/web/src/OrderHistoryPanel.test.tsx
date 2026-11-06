@@ -14,6 +14,15 @@ const sampleOrder: CustomerOrder = {
   status: 'pending_payment',
   total_amount: '25.00',
   created_at: '2026-11-04T20:00:00Z',
+  history: [
+    {
+      action: 'created',
+      from_status: null,
+      to_status: 'pending_payment',
+      reason: null,
+      created_at: '2026-11-04T20:00:00Z',
+    },
+  ],
   items: [
     {
       id: 31,
@@ -60,6 +69,7 @@ describe('OrderHistoryPanel', () => {
 
     expect(await screen.findByRole('heading', { name: 'Sipariş #21' })).toBeInTheDocument()
     expect(screen.getByText('Ödeme bekleniyor')).toBeInTheDocument()
+    expect(screen.getByText('Sipariş oluşturuldu')).toBeInTheDocument()
     expect(screen.getByText('Liva krem · 2 adet · ₺25,00')).toBeInTheDocument()
     expect(getMyOrders).toHaveBeenCalledWith('buyer-token')
   })
@@ -79,6 +89,25 @@ describe('OrderHistoryPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Siparişlerim' }))
 
     expect(await screen.findByText('Henüz siparişin yok.')).toBeInTheDocument()
+  })
+
+  it('refreshes current order statuses on demand', async () => {
+    vi.mocked(getMyOrders)
+      .mockResolvedValueOnce([sampleOrder])
+      .mockResolvedValueOnce([{ ...sampleOrder, status: 'processing' }])
+    render(
+      <OrderHistoryPanel
+        latestOrder={null}
+        refreshVersion={0}
+        token="buyer-token"
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Siparişlerim' }))
+    await screen.findByText('Ödeme bekleniyor')
+    fireEvent.click(screen.getByRole('button', { name: 'Yenile' }))
+
+    expect(await screen.findByText('Hazırlanıyor')).toBeInTheDocument()
+    expect(getMyOrders).toHaveBeenCalledTimes(2)
   })
 
   it('starts payment and exposes the hosted checkout link', async () => {

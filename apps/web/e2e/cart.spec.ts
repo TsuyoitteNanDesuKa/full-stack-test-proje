@@ -71,7 +71,7 @@ async function createProduct(page: Page, product: ReturnType<typeof createTestPr
   return createResponse
 }
 
-test.describe('REQ-009 cart and REQ-010 checkout', () => {
+test.describe('REQ-009 cart, REQ-010 checkout, and REQ-012 order lifecycle', () => {
   test.skip(
     !keycloakE2EEnabled,
     'Set E2E_KEYCLOAK_E2E=1 and configure the local Keycloak admin credentials.',
@@ -147,6 +147,7 @@ test.describe('REQ-009 cart and REQ-010 checkout', () => {
       await expect(
         firstBuyerPage.getByText(`${product.name} · 2 adet · ₺25,00`),
       ).toBeVisible()
+      await expect(firstBuyerPage.getByText('Sipariş oluşturuldu')).toBeVisible()
       await firstBuyerPage.getByRole('button', { name: 'Ödemeye devam et' }).click()
       const checkoutLink = firstBuyerPage.getByRole('link', {
         name: 'Güvenli test ödeme sayfasına git',
@@ -163,6 +164,25 @@ test.describe('REQ-009 cart and REQ-010 checkout', () => {
       await firstBuyerPage.goto('/')
       await firstBuyerPage.getByRole('button', { name: 'Siparişlerim' }).click()
       await expect(firstBuyerPage.getByText('Ödendi', { exact: true })).toBeVisible()
+      await expect(firstBuyerPage.getByText('Ödeme alındı')).toBeVisible()
+      const adminOrders = adminPage.getByRole('region', { name: 'Sipariş yönetimi' })
+      await adminOrders.getByRole('button', { name: 'Yenile' }).click()
+      await expect(
+        adminOrders.getByRole('heading', { name: `Sipariş #${createdOrder.id}` }),
+      ).toBeVisible()
+      await adminOrders.getByRole('button', {
+        name: 'Hazırlanıyor aşamasına geçir',
+      }).click()
+      await adminOrders.getByLabel('İptal/iade nedeni').fill('E2E test iade talebi')
+      await adminOrders.getByRole('button', {
+        name: 'İptal et ve yerel iade kaydı oluştur',
+      }).click()
+      await expect(adminOrders.getByText(/yerel iade kaydı oluşturuldu/)).toBeVisible()
+      await firstBuyerPage.getByRole('button', { name: 'Siparişlerim' }).click()
+      await firstBuyerPage.getByRole('button', { name: 'Siparişlerim' }).click()
+      await expect(firstBuyerPage.getByText('İptal edildi', { exact: true })).toBeVisible()
+      await expect(firstBuyerPage.getByText('Sipariş iptal edildi ve iade kaydı oluşturuldu'))
+        .toBeVisible()
 
       await firstBuyerPage.getByRole('button', {
         name: `Sepete ekle ${product.name}`,
