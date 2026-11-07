@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from conftest import create_test_token
+from conftest import create_checkout_request, create_test_token
 from factories import product_payload
 from fastapi.testclient import TestClient
 from sqlalchemy import event, func, select
@@ -60,6 +60,7 @@ def checkout(
 ):
     return client.post(
         "/api/v1/orders",
+        json=create_checkout_request(client, headers),
         headers={**headers, "Idempotency-Key": idempotency_key},
     )
 
@@ -77,7 +78,9 @@ def test_checkout_creates_order_snapshots_decrements_stock_and_clears_cart(
     assert response.status_code == 201
     body = response.json()
     assert body["status"] == "pending_payment"
-    assert body["total_amount"] == "25.00"
+    assert body["item_subtotal"] == "25.00"
+    assert body["delivery_fee"] == "49.90"
+    assert body["total_amount"] == "74.90"
     assert body["items"] == [
         {
             "id": body["items"][0]["id"],
@@ -98,7 +101,7 @@ def test_checkout_creates_order_snapshots_decrements_stock_and_clears_cart(
         stored_order = session.get(CustomerOrder, body["id"])
         assert stored_product is not None and stored_product.stock == 3
         assert stored_order is not None
-        assert stored_order.total_amount == Decimal("25.00")
+        assert stored_order.total_amount == Decimal("74.90")
         order_items = session.scalars(
             select(OrderItem).where(OrderItem.order_id == stored_order.id)
         ).all()
@@ -126,7 +129,8 @@ def test_checkout_uses_current_catalog_price_and_keeps_snapshot_after_product_ch
     response = checkout(client, buyer_headers)
 
     assert response.status_code == 201
-    assert response.json()["total_amount"] == "31.50"
+    assert response.json()["item_subtotal"] == "31.50"
+    assert response.json()["total_amount"] == "81.40"
     assert response.json()["items"][0]["product_name"] == updated_product["name"]
     assert response.json()["items"][0]["unit_price"] == "15.75"
 
@@ -140,7 +144,7 @@ def test_checkout_uses_current_catalog_price_and_keeps_snapshot_after_product_ch
     assert history.json()[0]["items"][0]["product_id"] is None
     assert history.json()[0]["items"][0]["product_name"] == updated_product["name"]
     assert history.json()[0]["items"][0]["unit_price"] == "15.75"
-    assert history.json()[0]["total_amount"] == "31.50"
+    assert history.json()[0]["total_amount"] == "81.40"
 
 
 def test_same_idempotency_key_replays_existing_order_without_new_stock_or_order(
@@ -254,6 +258,7 @@ def test_checkout_requires_buyer_and_valid_idempotency_key(client: TestClient) -
                 **auth_headers(client, "checkout-seller", ["seller"]),
                 "Idempotency-Key": "valid-key",
             },
+            json={"address_id": 1, "delivery_method": "standard"},
         ).status_code
         == 403
     )
@@ -264,6 +269,7 @@ def test_checkout_requires_buyer_and_valid_idempotency_key(client: TestClient) -
                 **auth_headers(client, "checkout-invalid-key"),
                 "Idempotency-Key": "contains spaces",
             },
+            json=create_checkout_request(client, auth_headers(client, "checkout-invalid-key")),
         ).status_code
         == 422
     )
@@ -271,6 +277,10 @@ def test_checkout_requires_buyer_and_valid_idempotency_key(client: TestClient) -
         client.post(
             "/api/v1/orders",
             headers=auth_headers(client, "checkout-missing-key"),
+            json=create_checkout_request(
+                client,
+                auth_headers(client, "checkout-missing-key"),
+            ),
         ).status_code
         == 422
     )
@@ -283,6 +293,7 @@ def test_checkout_rolls_back_order_stock_and_cart_after_transaction_failure(
     product = create_product(client, stock=5)
     buyer_headers = auth_headers(client, "checkout-rollback-buyer")
     add_cart_item(client, buyer_headers, int(product["id"]), 2)
+    create_checkout_request(client, buyer_headers)
 
     def fail_before_commit(session) -> None:
         if session.bind is engine:

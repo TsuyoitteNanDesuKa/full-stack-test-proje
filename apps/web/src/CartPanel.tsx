@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import type { CartItem, CartResponse } from './api'
+import { deliveryPricing } from './api'
+import type { CartItem, CartResponse, CustomerAddress, DeliveryMethod } from './api'
 
 interface CartPanelProps {
   cart: CartResponse | null
@@ -9,7 +10,14 @@ interface CartPanelProps {
   isCheckingOut: boolean
   error: string
   isOpen: boolean
+  addresses: CustomerAddress[]
+  isAddressLoading: boolean
+  selectedAddressId: number | null
+  deliveryMethod: DeliveryMethod
   onToggle: () => void
+  onManageAddresses: () => void
+  onSelectAddress: (addressId: number | null) => void
+  onSelectDeliveryMethod: (method: DeliveryMethod) => void
   onRetry: () => void
   onUpdate: (itemId: number, quantity: number) => Promise<void>
   onRemove: (itemId: number) => Promise<void>
@@ -108,7 +116,14 @@ export default function CartPanel({
   isCheckingOut,
   error,
   isOpen,
+  addresses,
+  isAddressLoading,
+  selectedAddressId,
+  deliveryMethod,
   onToggle,
+  onManageAddresses,
+  onSelectAddress,
+  onSelectDeliveryMethod,
   onRetry,
   onUpdate,
   onRemove,
@@ -119,6 +134,23 @@ export default function CartPanel({
     style: 'currency',
     currency: 'TRY',
   }).format(Number(cart?.subtotal ?? '0'))
+  const itemSubtotal = Number(cart?.subtotal ?? '0')
+  const deliveryFee = deliveryMethod === 'standard' &&
+      itemSubtotal >= deliveryPricing.freeStandardThreshold
+    ? 0
+    : deliveryMethod === 'standard'
+      ? deliveryPricing.standardFee
+      : deliveryPricing.expressFee
+  const formattedDeliveryFee = deliveryFee === 0
+    ? 'Ücretsiz'
+    : new Intl.NumberFormat('tr-TR', {
+        style: 'currency',
+        currency: 'TRY',
+      }).format(deliveryFee)
+  const total = new Intl.NumberFormat('tr-TR', {
+    style: 'currency',
+    currency: 'TRY',
+  }).format(itemSubtotal + deliveryFee)
 
   return (
     <section className="cart-section">
@@ -171,8 +203,73 @@ export default function CartPanel({
                 ))}
               </ul>
               <div className="cart-subtotal">
-                <span>Ara toplam</span>
+                <span>Ürün ara toplamı</span>
                 <strong>{subtotal}</strong>
+              </div>
+              <div className="checkout-delivery-options">
+                <h3>Teslimat adresi ve seçeneği</h3>
+                <label>
+                  Kayıtlı adres
+                  <select
+                    aria-label="Teslimat adresi"
+                    disabled={isAddressLoading || addresses.length === 0}
+                    onChange={(event) =>
+                      onSelectAddress(event.target.value ? Number(event.target.value) : null)
+                    }
+                    value={selectedAddressId ?? ''}
+                  >
+                    <option value="">Adres seç</option>
+                    {addresses.map((address) => (
+                      <option key={address.id} value={address.id}>
+                        {address.label} · {address.district}, {address.city}
+                        {address.is_default ? ' · Varsayılan' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button className="retry-button" onClick={onManageAddresses} type="button">
+                  Adreslerimi yönet
+                </button>
+                {addresses.length === 0 && !isAddressLoading && (
+                  <p role="status">Sipariş için önce bir teslimat adresi ekle.</p>
+                )}
+                <fieldset className="delivery-method-options">
+                  <legend>Teslimat hızı</legend>
+                  <label>
+                    <input
+                      checked={deliveryMethod === 'standard'}
+                      name="delivery-method"
+                      onChange={() => onSelectDeliveryMethod('standard')}
+                      type="radio"
+                      value="standard"
+                    />
+                    Standart · {itemSubtotal >= deliveryPricing.freeStandardThreshold
+                      ? 'Ücretsiz'
+                      : '₺49,90'}
+                  </label>
+                  <label>
+                    <input
+                      checked={deliveryMethod === 'express'}
+                      name="delivery-method"
+                      onChange={() => onSelectDeliveryMethod('express')}
+                      type="radio"
+                      value="express"
+                    />
+                    Hızlı · ₺89,90
+                  </label>
+                </fieldset>
+                <p className="delivery-policy-note">
+                  Ürün ara toplamı ₺1.000,00 ve üzerindeyse Standart ücretsizdir. Ürün iadeleri
+                  teslimat ücretini kapsamaz.
+                </p>
+              </div>
+              <div className="cart-subtotal">
+                <span>Teslimat</span>
+                <strong>{formattedDeliveryFee}</strong>
+              </div>
+              <div className="cart-subtotal">
+                <span>Sipariş toplamı</span>
+                <strong>{total}</strong>
               </div>
               <p className="cart-price-note">
                 Fiyatlar güncel katalog fiyatlarına göre gösterilir.
@@ -182,6 +279,8 @@ export default function CartPanel({
                 disabled={
                   isMutating ||
                   isCheckingOut ||
+                  isAddressLoading ||
+                  selectedAddressId === null ||
                   cart.items.some((item) => !item.is_available)
                 }
                 onClick={() => void onCheckout()}

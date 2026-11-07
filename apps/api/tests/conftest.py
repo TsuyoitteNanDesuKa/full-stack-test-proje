@@ -75,6 +75,36 @@ def create_test_token(
     )
 
 
+def create_checkout_request(
+    client: TestClient,
+    headers: dict[str, str],
+    *,
+    delivery_method: str = "standard",
+    address_id: int | None = None,
+) -> dict[str, object]:
+    addresses = client.get("/api/v1/addresses", headers=headers)
+    if addresses.status_code == 200 and addresses.json():
+        selected_address_id = address_id or addresses.json()[0]["id"]
+    else:
+        created = client.post(
+            "/api/v1/addresses",
+            headers=headers,
+            json={
+                "label": "Ev",
+                "recipient_name": "Test Buyer",
+                "phone": "+905551234567",
+                "city": "İstanbul",
+                "district": "Kadıköy",
+                "address_line": "Test Mahallesi Deneme Sokak No 1",
+                "postal_code": "34710",
+                "is_default": True,
+            },
+        )
+        assert created.status_code == 201
+        selected_address_id = address_id or created.json()["id"]
+    return {"address_id": selected_address_id, "delivery_method": delivery_method}
+
+
 @pytest.fixture
 def customer(engine: Engine) -> User:
     session_factory = sessionmaker(bind=engine, class_=Session, expire_on_commit=False)

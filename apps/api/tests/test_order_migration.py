@@ -67,7 +67,7 @@ def test_order_and_payment_migrations_create_tables_and_downgrade(
             )
             assert (
                 connection.scalar(text("SELECT version_num FROM alembic_version"))
-                == "0010_product_returns"
+                == "0011_addresses_delivery_snapshot"
             )
             table_names = set(
                 connection.scalars(
@@ -75,6 +75,16 @@ def test_order_and_payment_migrations_create_tables_and_downgrade(
                 ).all()
             )
             assert "product_returns" in table_names
+            assert "customer_addresses" in table_names
+            order_columns = {
+                column["name"]
+                for column in connection.execute(text("PRAGMA table_info(orders)")).mappings()
+            }
+            assert "delivery_fee" in order_columns
+            assert (
+                connection.scalar(text("SELECT shipping_address_label FROM orders WHERE id = 1"))
+                is None
+            )
             assert (
                 connection.scalar(text("SELECT action FROM order_status_events WHERE order_id = 1"))
                 == "legacy_import"
@@ -83,6 +93,21 @@ def test_order_and_payment_migrations_create_tables_and_downgrade(
             connection.execute(
                 text("UPDATE payments SET status = 'partially_refunded' WHERE id = 1")
             )
+
+        command.downgrade(alembic_config, "0010_product_returns")
+        with engine.connect() as connection:
+            tables = set(
+                connection.scalars(
+                    text("SELECT name FROM sqlite_master WHERE type = 'table'")
+                ).all()
+            )
+            assert "customer_addresses" not in tables
+            assert "product_returns" in tables
+            order_columns = {
+                column["name"]
+                for column in connection.execute(text("PRAGMA table_info(orders)")).mappings()
+            }
+            assert "delivery_fee" not in order_columns
 
         command.downgrade(alembic_config, "0009_order_lifecycle")
         with engine.connect() as connection:

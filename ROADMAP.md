@@ -427,12 +427,12 @@ Canlıya çıkış, gerçek PSP/KYC/kargo entegrasyonu veya üretim altyapısı 
 
 1. **REQ-013 — Katalog arama, filtreleme ve sıralama:** Tamamlandı.
 2. **REQ-014 — Teslimat sonrası yerel ürün iadesi (tamamlandı):** Buyer shipped/delivered siparişte 30 gün içinde kalem bazında kısmi/tam miktar için otomatik onaylanan yerel iade talebi açar; ödeme/iade kaydı ve stok tek transaction'da, idempotent uygulanır. Gerçek para/kargo yok.
-3. **REQ-015 — Adres ve teslimat seçenekleri:** doğrulama, seçenek/ücret kuralları ve checkout anı snapshot'ı; gerçek taşıyıcı yok.
-4. **QA-016 — API sözleşme/regresyon otomasyonu:** OpenAPI ve frontend API sözleşmesi drift kontrolleri.
+3. **REQ-015 — Adres defteri ve yerel teslimat seçenekleri (tamamlandı):** Buyer çoklu adres CRUD/default; Standart 49,90 TL, Hızlı 89,90 TL; ürün ara toplamı 1.000 TL ve üzerindeyse yalnız Standart ücretsiz. Sipariş adres/ücret snapshot'ı değişmez; gerçek taşıyıcı yok. Ürün iadeleri teslimat ücretini kapsamaz.
+4. **QA-016 — API sözleşme/regresyon otomasyonu (sırada):** OpenAPI ve frontend API sözleşmesi drift kontrolleri.
 5. **QA-017 — Erişilebilirlik otomasyonu:** kritik akışlarda axe taraması, klavye ve odak davranışı.
 6. **QA-018 — Performans başlangıç çizgisi:** sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor; release/live ortamı gerektirmez.
 
-REQ-013 ve REQ-014'ün ayrıntılı kabul kriterleri ve test planları `docs/requirements.md` içinde tutulur.
+REQ-013, REQ-014 ve REQ-015'in ayrıntılı kabul kriterleri ve test planları `docs/requirements.md` içinde tutulur.
 
 ### Öncelik 8 — REQ-013: Katalog arama, filtreleme ve sıralama
 
@@ -481,6 +481,29 @@ REQ-013 ve REQ-014'ün ayrıntılı kabul kriterleri ve test planları `docs/req
 - [x] Buyer arayüzü ve component/API testleri.
 - [x] PostgreSQL concurrency ve gerçek Keycloak E2E.
 - [x] Tam ilgili regresyon/kalite kapıları.
+
+### Öncelik 10 — REQ-015: Adres defteri ve yerel teslimat seçenekleri
+
+- **Durum:** Tamamlandı. SQLite backend 274 test geçti, PostgreSQL için 14 test ayrı koşuda 14/14 geçti; backend coverage %95,49. Web 170 test geçti ve mevcut kapsam yapılandırmasındaki üç dosyada coverage %100; gerçek Keycloak E2E 10/10, build/lint ve Ruff başarılı.
+- **Kararlar:** Buyer birden fazla Türkiye adresi ekleyebilir/düzenleyebilir/silebilir; isteğe bağlı tek varsayılan adres bulunur. Zorunlu alanlar alıcı adı, adres başlığı, telefon, il, ilçe ve açık adrestir; posta kodu isteğe bağlıdır. Standart 49,90 TL, Hızlı 89,90 TL; ürün ara toplamı 1.000 TL ve üzerindeyse yalnız Standart ücretsizdir. Ürün iadesi teslimat ücretini kapsamaz; adres/method/ücret siparişte snapshot olur. Gerçek taşıyıcı ve adres servisi yoktur.
+- **Veri/API:** Buyer adres defteri CRUD ve sahiplik sınırı; checkout adres kimliği ve teslimat yöntemi ister. Adres alanları, ürün ara toplamı, yöntem, ücret ve toplam siparişle beraber değişmez saklanır. Önceki siparişlerde adres snapshot'ı olmayabilir.
+
+**Test planı / çıkış ölçütleri:**
+
+- **Unit/API:** Adres alanı/telefon/posta kodu doğrulaması, normalizasyon, adres sahibi/rol, CRUD ve tek varsayılan kuralı; checkout adresi/yöntemi; ücret eşiği ve ödeme toplamı.
+- **DB/transaction:** Address migration ve SQLite/PostgreSQL partial unique default; order snapshot migration ve eski sipariş uyumu; checkout stok, sipariş ve adres snapshot'ını atomik kaydeder; ayrı ödeme işlemi sipariş toplamını kullanır.
+- **Component/API client:** Adres ekle/düzenle/sil/default, boş/yükleme/hata; teslimat seçimi ve ürün ara toplamı/ücret/genel toplam.
+- **E2E:** Gerçek Keycloak alıcısı adres kaydeder, iki teslimat yöntemini ve eşik altı/üstünü doğrular; adresi değiştirip silse de sipariş geçmişi snapshot'ı korunur.
+- **Regresyon/kalite:** REQ-009–014 sipariş, sepet, ödeme, iade ve admin akışları; backend coverage, PostgreSQL, web coverage/build/lint ve Keycloak E2E.
+
+**İlerleme kontrol listesi**
+
+- [x] Adres defteri, alan/telefon doğrulaması, seçenek/ücret, ücretsiz eşik ve iade politikası kararlaştırıldı.
+- [x] Gereksinim ve test izlenebilirliği dokümante edildi.
+- [x] Address CRUD modeli/migration/API ve backend testleri.
+- [x] Checkout ücret hesabı, sipariş snapshot'ı ve PostgreSQL testleri.
+- [x] Buyer adres defteri/checkout UI ve component/API testleri.
+- [x] Keycloak E2E ve ilgili regresyon/kalite kapıları.
 
 ### Her incremental dilim için ortak Definition of Done
 

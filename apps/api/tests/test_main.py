@@ -19,4 +19,5 @@ def test_default_app_engine_lifecycle_serves_openapi_and_disposes_engine(
     assert "/api/v1/auth/me" in response.json()["paths"]
     assert "/api/v1/home" in response.json()["paths"]
     assert "/api/v1/products" in response.json()["paths"]
+    assert "/api/v1/addresses" in response.json()["paths"]
     assert "/api/v1/orders/{order_id}/returns" in response.json()["paths"]

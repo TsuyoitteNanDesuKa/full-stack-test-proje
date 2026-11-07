@@ -246,6 +246,87 @@ class CartUpdateItemRequest(BaseModel):
     quantity: int = Field(ge=1, le=999999, strict=True)
 
 
+class DeliveryMethod(StrEnum):
+    STANDARD = "standard"
+    EXPRESS = "express"
+
+
+class AddressRequest(BaseModel):
+    label: str = Field(min_length=1, max_length=40, strict=True)
+    recipient_name: str = Field(min_length=2, max_length=120, strict=True)
+    phone: str = Field(min_length=10, max_length=24, strict=True)
+    city: str = Field(min_length=2, max_length=80, strict=True)
+    district: str = Field(min_length=2, max_length=80, strict=True)
+    address_line: str = Field(min_length=5, max_length=250, strict=True)
+    postal_code: str | None = Field(default=None, max_length=5, strict=True)
+    is_default: bool = Field(default=False, strict=True)
+
+    @field_validator("label", "recipient_name", "city", "district", "address_line")
+    @classmethod
+    def normalize_address_text(cls, value: str) -> str:
+        normalized = _normalize_application_text(value)
+        if any(not character.isprintable() for character in normalized):
+            raise ValueError("Adres alanları yazdırılamayan karakter içeremez.")
+        return normalized
+
+    @field_validator("phone")
+    @classmethod
+    def normalize_turkish_phone(cls, value: str) -> str:
+        digits = re.sub(r"\D", "", value)
+        if digits.startswith("0090"):
+            digits = digits[2:]
+        elif digits.startswith("0") and len(digits) == 11:
+            digits = f"90{digits[1:]}"
+        elif len(digits) == 10:
+            digits = f"90{digits}"
+        if not re.fullmatch(r"90[2-5]\d{9}", digits):
+            raise ValueError("Telefon Türkiye telefon biçimine uygun olmalıdır.")
+        return f"+{digits}"
+
+    @field_validator("postal_code")
+    @classmethod
+    def normalize_postal_code(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            return None
+        if not re.fullmatch(r"\d{5}", normalized):
+            raise ValueError("Posta kodu 5 rakam olmalıdır.")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_normalized_lengths(self) -> "AddressRequest":
+        if (
+            len(self.label) < 1
+            or len(self.recipient_name) < 2
+            or len(self.city) < 2
+            or len(self.district) < 2
+            or len(self.address_line) < 5
+        ):
+            raise ValueError("Adres alanları boş veya çok kısa olamaz.")
+        return self
+
+
+class AddressResponse(BaseModel):
+    id: int
+    label: str
+    recipient_name: str
+    phone: str
+    city: str
+    district: str
+    address_line: str
+    postal_code: str | None
+    is_default: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class OrderCreateRequest(BaseModel):
+    address_id: int = Field(ge=1, strict=True)
+    delivery_method: DeliveryMethod
+
+
 class CartItemResponse(BaseModel):
     id: int
     product_id: int | None
@@ -296,6 +377,16 @@ class OrderItemResponse(BaseModel):
     line_total: Decimal
 
 
+class OrderAddressSnapshot(BaseModel):
+    label: str
+    recipient_name: str
+    phone: str
+    city: str
+    district: str
+    address_line: str
+    postal_code: str | None
+
+
 class ProductReturnRequest(BaseModel):
     order_item_id: int = Field(ge=1, strict=True)
     quantity: int = Field(ge=1, le=999999, strict=True)
@@ -336,7 +427,11 @@ class AdminOrderStatusEventResponse(OrderStatusEventResponse):
 class OrderResponse(BaseModel):
     id: int
     status: OrderStatus
+    item_subtotal: Decimal
     total_amount: Decimal
+    shipping_address: OrderAddressSnapshot | None
+    delivery_method: DeliveryMethod | None
+    delivery_fee: Decimal
     created_at: datetime
     items: list[OrderItemResponse]
     returns: list[ProductReturnResponse] = Field(default_factory=list)

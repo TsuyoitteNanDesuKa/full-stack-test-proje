@@ -13,7 +13,19 @@ vi.mock('./api', () => ({
 const sampleOrder: CustomerOrder = {
   id: 21,
   status: 'pending_payment',
-  total_amount: '25.00',
+  item_subtotal: '25.00',
+  total_amount: '74.90',
+  shipping_address: {
+    label: 'Ev',
+    recipient_name: 'Ada Buyer',
+    phone: '+905551234567',
+    city: 'Istanbul',
+    district: 'Kadikoy',
+    address_line: 'Example Street 1',
+    postal_code: null,
+  },
+  delivery_method: 'standard',
+  delivery_fee: '49.90',
   created_at: '2026-11-04T20:00:00Z',
   history: [
     {
@@ -41,7 +53,7 @@ const samplePayment: CustomerPayment = {
   order_id: sampleOrder.id,
   provider_reference: 'mock-reference',
   status: 'pending',
-  amount: '25.00',
+  amount: '74.90',
   currency: 'TRY',
   expires_at: '2026-11-04T20:02:00Z',
   checkout_url: '/api/v1/payments/mock-checkout/8/token',
@@ -73,6 +85,9 @@ describe('OrderHistoryPanel', () => {
     expect(screen.getByText('Ödeme bekleniyor')).toBeInTheDocument()
     expect(screen.getByText('Sipariş oluşturuldu')).toBeInTheDocument()
     expect(screen.getByText('Liva krem · 2 adet · ₺25,00')).toBeInTheDocument()
+    expect(screen.getByText('Teslimat adresi')).toBeInTheDocument()
+    expect(screen.getByText('Ada Buyer · +905551234567')).toBeInTheDocument()
+    expect(screen.getByText(/Ürün ara toplamı:/)).toBeInTheDocument()
     expect(getMyOrders).toHaveBeenCalledWith('buyer-token')
   })
 

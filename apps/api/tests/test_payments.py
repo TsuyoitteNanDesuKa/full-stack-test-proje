@@ -2,7 +2,7 @@ import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from conftest import create_test_token
+from conftest import create_checkout_request, create_test_token
 from factories import product_payload
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
@@ -45,6 +45,7 @@ def create_order(client: TestClient, buyer_headers: dict[str, str]) -> tuple[int
     assert add_response.status_code == 200
     order_response = client.post(
         "/api/v1/orders",
+        json=create_checkout_request(client, buyer_headers),
         headers={**buyer_headers, "Idempotency-Key": f"order-{product['id']}"},
     )
     assert order_response.status_code == 201
@@ -69,7 +70,7 @@ def send_webhook(
     *,
     event_id: str,
     result: str,
-    amount: str = "25.00",
+    amount: str | None = None,
     currency: str = "TRY",
 ):
     body = json.dumps(
@@ -77,7 +78,7 @@ def send_webhook(
             "event_id": event_id,
             "payment_reference": payment["provider_reference"],
             "status": result,
-            "amount": amount,
+            "amount": amount or str(payment["amount"]),
             "currency": currency,
         },
         separators=(",", ":"),
@@ -103,7 +104,7 @@ def test_buyer_starts_payment_and_same_key_replays_hosted_session(
 
     assert first.status_code == 201
     assert first.json()["status"] == "pending"
-    assert first.json()["amount"] == "25.00"
+    assert first.json()["amount"] == "74.90"
     assert first.json()["currency"] == "TRY"
     assert first.json()["checkout_url"].startswith("/api/v1/payments/mock-checkout/")
     assert replay.status_code == 200

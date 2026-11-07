@@ -204,6 +204,15 @@ class CustomerOrder(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    shipping_address_label: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    shipping_recipient_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    shipping_phone: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    shipping_city: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    shipping_district: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    shipping_address_line: Mapped[str | None] = mapped_column(String(250), nullable=True)
+    shipping_postal_code: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    delivery_method: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    delivery_fee: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
 
 
 class OrderStatusEvent(Base):
@@ -263,6 +272,57 @@ class OrderItem(Base):
     unit_price: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False)
     quantity: Mapped[int] = mapped_column(nullable=False)
     line_total: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
+
+
+class CustomerAddress(Base):
+    __tablename__ = "customer_addresses"
+    __table_args__ = (
+        CheckConstraint(
+            "length(label) BETWEEN 1 AND 40",
+            name="ck_customer_addresses_label_length",
+        ),
+        CheckConstraint(
+            "length(recipient_name) BETWEEN 2 AND 120",
+            name="ck_customer_addresses_recipient_name_length",
+        ),
+        CheckConstraint(
+            "length(phone) BETWEEN 12 AND 16",
+            name="ck_customer_addresses_phone_length",
+        ),
+        CheckConstraint("length(city) BETWEEN 2 AND 80", name="ck_customer_addresses_city_length"),
+        CheckConstraint(
+            "length(district) BETWEEN 2 AND 80",
+            name="ck_customer_addresses_district_length",
+        ),
+        CheckConstraint(
+            "length(address_line) BETWEEN 5 AND 250",
+            name="ck_customer_addresses_address_line_length",
+        ),
+        CheckConstraint(
+            "postal_code IS NULL OR length(postal_code) = 5",
+            name="ck_customer_addresses_postal_code",
+        ),
+        Index(
+            "uq_customer_addresses_owner_default",
+            "owner_subject",
+            unique=True,
+            sqlite_where=text("is_default = 1"),
+            postgresql_where=text("is_default = true"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_subject: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(40), nullable=False)
+    recipient_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    phone: Mapped[str] = mapped_column(String(16), nullable=False)
+    city: Mapped[str] = mapped_column(String(80), nullable=False)
+    district: Mapped[str] = mapped_column(String(80), nullable=False)
+    address_line: Mapped[str] = mapped_column(String(250), nullable=False)
+    postal_code: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class ProductReturn(Base):

@@ -3,12 +3,17 @@ import os
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from threading import Barrier
 
 import pytest
 from alembic import command
 from alembic.config import Config
-from conftest import TEST_PRIVATE_KEY, StaticJwksClient, create_test_token
+from conftest import (
+    TEST_PRIVATE_KEY,
+    StaticJwksClient,
+    create_test_token,
+)
 from factories import product_payload
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, text
@@ -110,14 +115,41 @@ def _auth_headers(
     return {"Authorization": f"Bearer {token}"}
 
 
-def _create_product(client: TestClient, *, stock: int) -> int:
+def _create_product(client: TestClient, *, stock: int, price: str | None = None) -> int:
+    payload = product_payload(stock=stock)
+    if price is not None:
+        payload["price"] = price
     response = client.post(
         "/api/v1/products",
-        json=product_payload(stock=stock),
+        json=payload,
         headers=_auth_headers(client, "postgres-cart-admin", ["admin"]),
     )
     assert response.status_code == 201
     return response.json()["id"]
+
+
+def _checkout_request(client: TestClient, headers: dict[str, str]) -> dict[str, object]:
+    addresses = client.get("/api/v1/addresses", headers=headers)
+    if addresses.json():
+        address_id = addresses.json()[0]["id"]
+    else:
+        address = client.post(
+            "/api/v1/addresses",
+            headers=headers,
+            json={
+                "label": "Ev",
+                "recipient_name": "Postgres Buyer",
+                "phone": "+905551234567",
+                "city": "İstanbul",
+                "district": "Kadıköy",
+                "address_line": "Test Mahallesi Deneme Sokak No 1",
+                "postal_code": "34710",
+                "is_default": True,
+            },
+        )
+        assert address.status_code == 201
+        address_id = address.json()["id"]
+    return {"address_id": address_id, "delivery_method": "standard"}
 
 
 def test_postgres_product_filters_match_search_and_price_boundaries(
@@ -207,7 +239,11 @@ def _checkout(
         headers = _auth_headers(client, subject)
         headers["Idempotency-Key"] = idempotency_key
         barrier.wait(timeout=10)
-        response = client.post("/api/v1/orders", headers=headers)
+        response = client.post(
+            "/api/v1/orders",
+            json=_checkout_request(client, headers),
+            headers=headers,
+        )
         order_id = response.json().get("id") if response.status_code in {200, 201} else None
         return response.status_code, order_id
 
@@ -475,6 +511,7 @@ def test_postgres_concurrent_checkout_replays_one_order_for_same_idempotency_key
         headers=headers,
     )
     assert cart_response.status_code == 200
+    _checkout_request(postgres_client, headers)
     workers = 8
     barrier = Barrier(workers)
 
@@ -560,6 +597,7 @@ def test_postgres_duplicate_payment_webhook_restores_stock_once(
     )
     order_response = postgres_client.post(
         "/api/v1/orders",
+        json=_checkout_request(postgres_client, headers),
         headers={**headers, "Idempotency-Key": "postgres-payment-order"},
     )
     assert order_response.status_code == 201
@@ -611,6 +649,7 @@ def test_postgres_concurrent_admin_refunds_restore_inventory_once(
     )
     order_response = postgres_client.post(
         "/api/v1/orders",
+        json=_checkout_request(postgres_client, buyer_headers),
         headers={**buyer_headers, "Idempotency-Key": "postgres-refund-order"},
     )
     assert order_response.status_code == 201
@@ -685,6 +724,7 @@ def test_postgres_concurrent_return_requests_cannot_exceed_order_item_quantity(
     )
     order_response = postgres_client.post(
         "/api/v1/orders",
+        json=_checkout_request(postgres_client, buyer_headers),
         headers={**buyer_headers, "Idempotency-Key": "postgres-return-race-order"},
     )
     assert order_response.status_code == 201
@@ -766,6 +806,7 @@ def test_postgres_concurrent_expiry_restores_inventory_once(
     )
     order = postgres_client.post(
         "/api/v1/orders",
+        json=_checkout_request(postgres_client, headers),
         headers={**headers, "Idempotency-Key": "postgres-expiry-order"},
     )
     payment = postgres_client.post(
@@ -796,3 +837,81 @@ def test_postgres_concurrent_expiry_restores_inventory_once(
         assert product is not None and product.stock == 5
         assert stored_payment is not None and stored_payment.status == "expired"
         assert len(items) == 1
+
+
+def test_postgres_address_defaults_checkout_snapshot_and_payment_total(
+    postgres_engine: Engine,
+    postgres_client: TestClient,
+) -> None:
+    headers = _auth_headers(postgres_client, "postgres-address-checkout-buyer")
+    address_body = {
+        "label": "Home",
+        "recipient_name": "Postgres Buyer",
+        "phone": "+905551234567",
+        "city": "Istanbul",
+        "district": "Kadikoy",
+        "address_line": "First Street 1",
+        "postal_code": "34710",
+        "is_default": True,
+    }
+    first_address = postgres_client.post(
+        "/api/v1/addresses",
+        json=address_body,
+        headers=headers,
+    )
+    second_address = postgres_client.post(
+        "/api/v1/addresses",
+        json={**address_body, "label": "Office", "address_line": "Second Street 2"},
+        headers=headers,
+    )
+    assert first_address.status_code == 201
+    assert second_address.status_code == 201
+    listed_addresses = postgres_client.get("/api/v1/addresses", headers=headers).json()
+    assert [address["is_default"] for address in listed_addresses] == [True, False]
+    with pytest.raises(IntegrityError), postgres_engine.begin() as connection:
+        connection.execute(
+            text("UPDATE customer_addresses SET is_default = true WHERE id = :address_id"),
+            {"address_id": first_address.json()["id"]},
+        )
+
+    product_id = _create_product(postgres_client, stock=5, price="12.50")
+    added = postgres_client.post(
+        "/api/v1/cart/items",
+        json={"product_id": product_id, "quantity": 2},
+        headers=headers,
+    )
+    assert added.status_code == 200
+    order_response = postgres_client.post(
+        "/api/v1/orders",
+        json={
+            "address_id": second_address.json()["id"],
+            "delivery_method": "standard",
+        },
+        headers={**headers, "Idempotency-Key": "postgres-address-snapshot"},
+    )
+    assert order_response.status_code == 201
+    order = order_response.json()
+    assert order["item_subtotal"] == "25.00"
+    assert order["delivery_fee"] == "49.90"
+    assert order["total_amount"] == "74.90"
+    assert order["shipping_address"]["label"] == "Office"
+    assert order["shipping_address"]["address_line"] == "Second Street 2"
+
+    payment = postgres_client.post(
+        f"/api/v1/orders/{order['id']}/payments",
+        headers={**headers, "Idempotency-Key": "postgres-address-payment"},
+    )
+    assert payment.status_code == 201
+    assert Decimal(payment.json()["amount"]) == Decimal(order["total_amount"])
+
+    delete_response = postgres_client.delete(
+        f"/api/v1/addresses/{second_address.json()['id']}",
+        headers=headers,
+    )
+    assert delete_response.status_code == 204
+    persisted_order = postgres_client.get(
+        f"/api/v1/orders/{order['id']}",
+        headers=headers,
+    ).json()
+    assert persisted_order["shipping_address"] == order["shipping_address"]
+    assert persisted_order["delivery_fee"] == "49.90"

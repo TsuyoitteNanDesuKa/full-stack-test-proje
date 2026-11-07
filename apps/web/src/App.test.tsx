@@ -6,9 +6,11 @@ import type {
   AdminSellerApplication,
   CartItem,
   CartResponse,
+  CustomerAddress,
   CustomerOrder,
   Product,
 } from './api'
+import { deliveryPricing } from './api'
 import { createTestProduct, productRequest } from './test/testData'
 import { beginLogin, beginRegistration, endSession, getCurrentSession } from './auth'
 import type { AuthSession } from './auth'
@@ -29,6 +31,26 @@ const adminSession: AuthSession = {
   email: 'admin@example.com',
 }
 const sampleProduct: Product = createTestProduct()
+const sampleAddress: CustomerAddress = {
+  id: 301,
+  label: 'Ev',
+  recipient_name: 'Ada Buyer',
+  phone: '+905551234567',
+  city: 'Istanbul',
+  district: 'Kadikoy',
+  address_line: 'Example Street 1',
+  postal_code: null,
+  is_default: true,
+  created_at: '2026-11-04T20:00:00Z',
+  updated_at: '2026-11-04T20:00:00Z',
+}
+const secondaryAddress: CustomerAddress = {
+  ...sampleAddress,
+  id: 302,
+  label: 'Ofis',
+  address_line: 'Second Street 2',
+  is_default: false,
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -58,6 +80,8 @@ function setupApi(options: {
   email?: string
   products?: Product[]
   cart?: CartResponse
+  addresses?: CustomerAddress[]
+  addressFailure?: Response | Error
   orders?: CustomerOrder[]
   sellerApplications?: AdminSellerApplication[]
   homeError?: Response
@@ -69,6 +93,8 @@ function setupApi(options: {
   let sellerApplications = options.sellerApplications ?? []
   let cart: CartResponse = options.cart ?? { items: [], subtotal: '0.00' }
   const orders = options.orders ?? []
+  let addresses = options.addresses ?? [sampleAddress]
+  let addressFailure = options.addressFailure
   const ordersByIdempotencyKey = new Map<string, CustomerOrder>()
   let orderFailure = options.orderFailure
   fetchMock.mockImplementation(async (input, init) => {
@@ -93,6 +119,57 @@ function setupApi(options: {
     }
     if (path === '/api/v1/cart' && init?.method !== 'POST') {
       return jsonResponse(cart)
+    }
+    if (path === '/api/v1/addresses' && init?.method === 'POST') {
+      const request = JSON.parse(String(init.body)) as Omit<
+        CustomerAddress,
+        'id' | 'created_at' | 'updated_at'
+      >
+      const now = new Date().toISOString()
+      const address: CustomerAddress = {
+        ...request,
+        id: Math.max(0, ...addresses.map((item) => item.id)) + 1,
+        created_at: now,
+        updated_at: now,
+      }
+      if (address.is_default) {
+        addresses = addresses.map((item) => ({ ...item, is_default: false }))
+      }
+      addresses = [...addresses, address]
+      return jsonResponse(address, 201)
+    }
+    if (path === '/api/v1/addresses' && (!init?.method || init.method === 'GET')) {
+      if (addressFailure) {
+        const failure = addressFailure
+        addressFailure = undefined
+        if (failure instanceof Error) throw failure
+        return failure
+      }
+      return jsonResponse(addresses)
+    }
+    if (/^\/api\/v1\/addresses\/\d+$/.test(path) && init?.method === 'PUT') {
+      const addressId = Number(path.split('/').at(-1))
+      const request = JSON.parse(String(init.body)) as Omit<
+        CustomerAddress,
+        'id' | 'created_at' | 'updated_at'
+      >
+      if (request.is_default) {
+        addresses = addresses.map((item) => ({ ...item, is_default: false }))
+      }
+      addresses = addresses.map((item) =>
+        item.id === addressId
+          ? { ...item, ...request, updated_at: new Date().toISOString() }
+          : item,
+      )
+      const updatedAddress = addresses.find((item) => item.id === addressId)
+      return updatedAddress
+        ? jsonResponse(updatedAddress)
+        : jsonResponse({ detail: 'not found' }, 404)
+    }
+    if (/^\/api\/v1\/addresses\/\d+$/.test(path) && init?.method === 'DELETE') {
+      const addressId = Number(path.split('/').at(-1))
+      addresses = addresses.filter((item) => item.id !== addressId)
+      return new Response(null, { status: 204 })
     }
     if (path === '/api/v1/cart/items' && init?.method === 'POST') {
       const request = JSON.parse(String(init.body)) as {
@@ -153,10 +230,41 @@ function setupApi(options: {
         quantity: item.quantity,
         line_total: item.line_total ?? '0.00',
       }))
+      const checkout = JSON.parse(String(init.body)) as {
+        address_id: number
+        delivery_method: 'standard' | 'express'
+      }
       const order: CustomerOrder = {
         id: orders.length + ordersByIdempotencyKey.size + 1,
         status: 'pending_payment',
-        total_amount: cart.subtotal,
+        item_subtotal: cart.subtotal,
+        total_amount: (
+          Number(cart.subtotal) +
+          (checkout.delivery_method === 'standard' &&
+          Number(cart.subtotal) >= deliveryPricing.freeStandardThreshold
+            ? 0
+            : checkout.delivery_method === 'standard'
+              ? deliveryPricing.standardFee
+              : deliveryPricing.expressFee)
+        ).toFixed(2),
+        shipping_address: {
+          label: sampleAddress.label,
+          recipient_name: sampleAddress.recipient_name,
+          phone: sampleAddress.phone,
+          city: sampleAddress.city,
+          district: sampleAddress.district,
+          address_line: sampleAddress.address_line,
+          postal_code: sampleAddress.postal_code,
+        },
+        delivery_method: checkout.delivery_method,
+        delivery_fee: (
+          checkout.delivery_method === 'standard' &&
+          Number(cart.subtotal) >= deliveryPricing.freeStandardThreshold
+            ? 0
+            : checkout.delivery_method === 'standard'
+              ? deliveryPricing.standardFee
+              : deliveryPricing.expressFee
+        ).toFixed(2),
         created_at: new Date().toISOString(),
         items,
         history: [],
@@ -390,6 +498,181 @@ describe('Keycloak authentication and storefront', () => {
     expect(endSession).toHaveBeenCalledOnce()
   })
 
+  it('refreshes the address book and applies address and delivery selections to checkout', async () => {
+    const product = createTestProduct({ id: 880, stock: 5, price: '12.50' })
+    setupApi({
+      products: [product],
+      addresses: [sampleAddress, secondaryAddress],
+      cart: {
+        items: [{
+          id: 881,
+          product_id: product.id,
+          product_name: product.name,
+          unit_price: product.price,
+          quantity: 2,
+          available_stock: product.stock,
+          is_available: true,
+          line_total: '25.00',
+        }],
+        subtotal: '25.00',
+      },
+    })
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'Alışverişe hoş geldiniz.' })
+    await user.click(screen.getByRole('button', { name: /^Adreslerim$/ }))
+    await user.click(screen.getByRole('button', { name: 'Yenile' }))
+    await user.click(screen.getAllByRole('button', { name: 'Düzenle' })[0]!)
+    await user.clear(screen.getByLabelText('Adres başlığı'))
+    await user.type(screen.getByLabelText('Adres başlığı'), 'Yeni Ev')
+    await user.click(screen.getByRole('button', { name: 'Değişiklikleri kaydet' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Adres güncellendi.')
+
+    await user.click(screen.getByRole('button', { name: 'Adres defterini kapat' }))
+    await user.click(screen.getByRole('button', { name: 'Sepet (2)' }))
+    await user.click(screen.getByRole('button', { name: 'Adreslerimi yönet' }))
+    expect(screen.getByRole('heading', { name: 'Adres defterim' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Adres defterini kapat' }))
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Teslimat adresi' }),
+      String(secondaryAddress.id),
+    )
+    await user.click(screen.getByRole('radio', { name: /Hızlı/ }))
+    expect(screen.getByText('Teslimat')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Siparişi oluştur' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Siparişin oluşturuldu: #1.')
+    const checkoutRequest = vi.mocked(fetch).mock.calls.find(([input]) =>
+      String(input) === '/api/v1/orders',
+    )
+    expect(JSON.parse(String(checkoutRequest?.[1]?.body))).toEqual({
+      address_id: secondaryAddress.id,
+      delivery_method: 'express',
+    })
+    expect(screen.getByRole('button', { name: /^Adreslerim$/ })).toBeInTheDocument()
+  })
+
+  it('shows address loading errors and retries the address request', async () => {
+    setupApi({ addressFailure: new TypeError('Network unavailable') })
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'Alışverişe hoş geldiniz.' })
+    await user.click(screen.getByRole('button', { name: /^Adreslerim$/ }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Adresler yüklenemedi.')
+    await user.click(screen.getByRole('button', { name: 'Tekrar dene' }))
+    await waitFor(() => {
+      expect(
+        vi.mocked(fetch).mock.calls.filter(([input]) =>
+          String(input) === '/api/v1/addresses',
+        ),
+      ).toHaveLength(2)
+    })
+    expect(await screen.findByRole('heading', { name: 'Ev · Varsayılan' }))
+      .toBeInTheDocument()
+  })
+
+  it.each([
+    { addresses: [secondaryAddress], selected: String(secondaryAddress.id) },
+    { addresses: [], selected: '' },
+  ])('selects an available address or none when there is no default', async ({
+    addresses,
+    selected,
+  }) => {
+    const product = createTestProduct({ stock: 2, price: '12.50' })
+    setupApi({
+      addresses,
+      products: [product],
+      cart: {
+        items: [{
+          id: 901,
+          product_id: product.id,
+          product_name: product.name,
+          unit_price: product.price,
+          quantity: 1,
+          available_stock: product.stock,
+          is_available: true,
+          line_total: product.price,
+        }],
+        subtotal: product.price,
+      },
+    })
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(await screen.findByRole('button', { name: 'Sepet (1)' }))
+    await waitFor(() => expect(
+      screen.getByRole('combobox', { name: 'Teslimat adresi' }),
+    ).toHaveValue(selected))
+  })
+
+  it('guards checkout if a selected address disappears before submission', async () => {
+    const product = createTestProduct({ id: 882, stock: 3, price: '12.50' })
+    setupApi({
+      products: [product],
+      cart: {
+        items: [{
+          id: 883,
+          product_id: product.id,
+          product_name: product.name,
+          unit_price: product.price,
+          quantity: 1,
+          available_stock: product.stock,
+          is_available: true,
+          line_total: product.price,
+        }],
+        subtotal: product.price,
+      },
+    })
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'Alışverişe hoş geldiniz.' })
+    await user.click(await screen.findByRole('button', { name: 'Sepet (1)' }))
+    const addressSelect = screen.getByRole('combobox', { name: 'Teslimat adresi' })
+    await waitFor(() => expect(addressSelect).toHaveValue(String(sampleAddress.id)))
+    await waitFor(() => expect(addressSelect).toBeEnabled())
+    await user.selectOptions(addressSelect, '')
+    const checkoutButton = screen.getByRole('button', { name: 'Siparişi oluştur' })
+    await waitFor(() => expect(checkoutButton).toBeDisabled())
+    await user.click(checkoutButton)
+
+    expect(vi.mocked(fetch).mock.calls.some(([input]) =>
+      String(input) === '/api/v1/orders',
+    )).toBe(false)
+  })
+
+  it.each(['resolve', 'reject'] as const)(
+    'ignores address %s results after the storefront unmounts',
+    async (result) => {
+      setupApi()
+      const pendingResponse = deferred<Response>()
+      const fetchMock = vi.mocked(fetch)
+      const originalFetch = fetchMock.getMockImplementation()
+      if (!originalFetch) throw new Error('Expected the storefront API mock to be configured.')
+      fetchMock.mockImplementation((input, init) =>
+        String(input) === '/api/v1/addresses'
+          ? pendingResponse.promise
+          : originalFetch(input, init),
+      )
+      const storefront = render(<App />)
+
+      await screen.findByRole('heading', { name: 'Alışverişe hoş geldiniz.' })
+      await waitFor(() => {
+        expect(fetchMock.mock.calls.some(([input]) =>
+          String(input) === '/api/v1/addresses',
+        )).toBe(true)
+      })
+      storefront.unmount()
+      if (result === 'resolve') {
+        pendingResponse.resolve(jsonResponse([sampleAddress]))
+      } else {
+        pendingResponse.reject(new TypeError('Network unavailable'))
+      }
+      await Promise.resolve()
+    },
+  )
+
   it('uses the email from the OIDC session when the profile has no email', async () => {
     vi.mocked(getCurrentSession).mockResolvedValue({
       accessToken: 'buyer-token',
@@ -458,6 +741,10 @@ describe('Keycloak authentication and storefront', () => {
     const checkoutHeaders = new Headers(checkoutRequest?.[1]?.headers)
     expect(checkoutHeaders.has('Authorization')).toBe(true)
     expect(checkoutHeaders.get('Idempotency-Key')).toBeTruthy()
+    expect(JSON.parse(String(checkoutRequest?.[1]?.body))).toEqual({
+      address_id: sampleAddress.id,
+      delivery_method: 'standard',
+    })
 
     await user.click(screen.getByRole('button', { name: 'Siparişlerim' }))
     expect(await screen.findByRole('heading', { name: 'Sipariş #1' })).toBeInTheDocument()
@@ -514,6 +801,11 @@ describe('Keycloak authentication and storefront', () => {
       failure: jsonResponse({ detail: 'Session expired' }, 401),
       message: 'Oturum süren dolmuş.',
       title: 'expired sessions',
+    },
+    {
+      failure: jsonResponse({ detail: 'Address missing' }, 404),
+      message: 'Teslimat adresin bulunamadı.',
+      title: 'deleted delivery addresses',
     },
     {
       failure: jsonResponse({ detail: 'Unexpected error' }, 500),

@@ -9,14 +9,23 @@ import {
   getCurrentUser,
   getHome,
   getMyCart,
+  getMyAddresses,
   getProducts,
   updateCartItem,
 } from './api'
-import type { CartResponse, CustomerOrder, Product, ProductSearchParams } from './api'
+import type {
+  CartResponse,
+  CustomerAddress,
+  CustomerOrder,
+  DeliveryMethod,
+  Product,
+  ProductSearchParams,
+} from './api'
 import { beginLogin, beginRegistration, endSession, getCurrentSession } from './auth'
 import AdminOrdersPanel from './AdminOrdersPanel'
 import AdminSellerApplicationsPanel from './AdminSellerApplicationsPanel'
 import CartPanel from './CartPanel'
+import AddressBookPanel from './AddressBookPanel'
 import OrderHistoryPanel from './OrderHistoryPanel'
 import ProductCreatePage from './ProductCreatePage'
 import SellerApplicationPanel from './SellerApplicationPanel'
@@ -158,6 +167,13 @@ function HomePage({
   const [deleteError, setDeleteError] = useState('')
   const [showSellerApplications, setShowSellerApplications] = useState(false)
   const [cart, setCart] = useState<CartResponse | null>(null)
+  const [addresses, setAddresses] = useState<CustomerAddress[]>([])
+  const [isAddressLoading, setIsAddressLoading] = useState(true)
+  const [addressLoadError, setAddressLoadError] = useState('')
+  const [addressRetryCount, setAddressRetryCount] = useState(0)
+  const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null)
+  const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('standard')
+  const [isAddressBookOpen, setIsAddressBookOpen] = useState(false)
   const [isCartLoading, setIsCartLoading] = useState(true)
   const [cartLoadError, setCartLoadError] = useState('')
   const [cartRetryCount, setCartRetryCount] = useState(0)
@@ -249,6 +265,42 @@ function HomePage({
     }
   }, [cartRetryCount, isBuyer, token])
 
+  useEffect(() => {
+    if (!isBuyer) {
+      return
+    }
+
+    let active = true
+    getMyAddresses(token)
+      .then((loadedAddresses) => {
+        if (active) {
+          setAddresses(loadedAddresses)
+          setAddressLoadError('')
+          setSelectedAddressId((current) =>
+            current !== null && loadedAddresses.some((address) => address.id === current)
+              ? current
+              : loadedAddresses.find((address) => address.is_default)?.id ??
+                loadedAddresses[0]?.id ??
+                null,
+          )
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setAddressLoadError('Adresler yüklenemedi. Lütfen bağlantını kontrol edip tekrar dene.')
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setIsAddressLoading(false)
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [addressRetryCount, isBuyer, token])
+
   const formatter = new Intl.NumberFormat('tr-TR', {
     style: 'currency',
     currency: 'TRY',
@@ -312,11 +364,18 @@ function HomePage({
   }
 
   async function handleCheckout() {
+    if (selectedAddressId === null) {
+      setCartError('Sipariş oluşturmak için önce bir teslimat adresi ekle veya seç.')
+      return
+    }
     setIsCheckingOut(true)
     setCartError('')
     checkoutIdempotencyKey.current ??= globalThis.crypto.randomUUID()
     try {
-      const order = await createOrder(token, checkoutIdempotencyKey.current)
+      const order = await createOrder(token, checkoutIdempotencyKey.current, {
+        address_id: selectedAddressId,
+        delivery_method: deliveryMethod,
+      })
       checkoutIdempotencyKey.current = null
       setLatestOrder(order)
       setCart({ items: [], subtotal: '0.00' })
@@ -335,6 +394,9 @@ function HomePage({
         }
       } else if (error instanceof Error && 'status' in error && error.status === 401) {
         setCartError('Oturum süren dolmuş. Yeniden giriş yapıp tekrar dene.')
+      } else if (error instanceof Error && 'status' in error && error.status === 404) {
+        setCartError('Teslimat adresin bulunamadı. Adreslerini yenileyip tekrar seç.')
+        setAddressRetryCount((count) => count + 1)
       } else {
         setCartError('Sipariş oluşturulamadı. Lütfen aynı isteği tekrar dene.')
       }
@@ -422,14 +484,45 @@ function HomePage({
       </header>
       {isBuyer && (
         <>
+          <div className="customer-address-toolbar">
+            <button
+              aria-expanded={isAddressBookOpen}
+              className="retry-button"
+              onClick={() => setIsAddressBookOpen((open) => !open)}
+              type="button"
+            >
+              {isAddressBookOpen ? 'Adres defterini kapat' : 'Adreslerim'}
+            </button>
+          </div>
+          {isAddressBookOpen && (
+            <AddressBookPanel
+              addresses={addresses}
+              isLoading={isAddressLoading}
+              loadError={addressLoadError}
+              onRetry={() => {
+                setIsAddressLoading(true)
+                setAddressLoadError('')
+                setAddressRetryCount((count) => count + 1)
+              }}
+              onSaved={() => {
+                setIsAddressLoading(true)
+                setAddressRetryCount((count) => count + 1)
+              }}
+              token={token}
+            />
+          )}
           <CartPanel
+            addresses={addresses}
             cart={cart}
             error={cartError || cartLoadError}
+            deliveryMethod={deliveryMethod}
             isCheckingOut={isCheckingOut}
+            isAddressLoading={isAddressLoading}
             isLoading={isCartLoading}
             isMutating={isCartMutating}
             isOpen={isCartOpen}
             onCheckout={handleCheckout}
+            onManageAddresses={() => setIsAddressBookOpen(true)}
             onRemove={handleCartRemove}
             onRetry={() => {
               setIsCartLoading(true)
@@ -438,6 +531,9 @@ function HomePage({
             }}
             onToggle={() => setIsCartOpen((open) => !open)}
             onUpdate={handleCartUpdate}
+            onSelectAddress={setSelectedAddressId}
+            onSelectDeliveryMethod={setDeliveryMethod}
+            selectedAddressId={selectedAddressId}
           />
           <OrderHistoryPanel
             latestOrder={latestOrder}

@@ -779,3 +779,40 @@ Proje canlı kullanıma alınmayacağı için dış sağlayıcı entegrasyonlar�
 - **Regresyon:** Admin'in mevcut kargoya verilmeden önce tam sipariş iptal/iade işlemi, checkout/ödeme/expiry, alıcı sipariş geçmişi ve rol sınırları korunur.
 
 **Çıkış ölçütü:** Uygun alıcı kalem bazında kısmi/tam yerel iade talebini otomatik ve idempotent oluşturur; miktar/audit/ödeme/stok tutarlılığı SQLite, PostgreSQL, component ve gerçek Keycloak E2E testleriyle kanıtlanır. Gerçek para veya taşıyıcı entegrasyonu yoktur.
+
+## REQ-015 — Adres defteri ve yerel teslimat seçenekleri
+
+- **Öncelik:** P1
+- **Durum:** Tamamlandı; SQLite, PostgreSQL, web component/API ve gerçek Keycloak E2E regresyonları doğrulandı.
+- **Kullanıcı hikâyesi:** Alıcı olarak birden fazla teslimat adresimi saklayıp siparişim için adres ve teslimat hızı seçmek, sipariş oluşturulduktan sonra kullanılan bilgilerin değişmeden kalmasını istiyorum.
+- **Adres defteri:** Buyer birden fazla adres ekleyebilir, listeleyebilir, düzenleyebilir ve silebilir; aynı anda en fazla bir varsayılan adres bulunur. Yeni kullanıcıya varsayılan adres atanmaz; kullanıcı adres eklemeden checkout yapamaz. Silinen/düzenlenen adres geçmiş sipariş snapshot'ını etkilemez.
+- **Adres alanları:** Alıcı adı, telefon, il, ilçe ve açık adres zorunlu; adres başlığı (ör. Ev/İş) zorunlu; posta kodu isteğe bağlıdır. Türkiye içi adres kullanılır. Telefon normalize edilip Türkiye E.164 biçiminde (`+90` ve 10 hane) doğrulanır. Metinler normalize edilir ve kontrol karakterleri reddedilir.
+- **Teslimat:** `standard` 49,90 TL ve `express` 89,90 TL seçenekleri vardır. Ürün ara toplamı 1.000,00 TL veya üzerindeyse yalnız `standard` ücreti sıfırlanır; `express` ücretli kalır. Gerçek taşıyıcı/üretim adres doğrulama servisi yoktur.
+- **Tutar/iade:** Sipariş toplamı ürün ara toplamı + teslimat ücretidir ve ödeme bu toplamdan başlatılır. Ürün iadeleri ürün satırı tutarıyla sınırlıdır; teslimat ücreti iade edilmez. Ürünlerin tamamı iade edilse de teslimat bedeli tahsil edilmişse ödeme `partially_refunded` kalır.
+- **Snapshot:** Sipariş, seçilen adresin alanlarını, teslimat yöntemini, teslimat ücretini ve sipariş anındaki toplamı saklar. Adres sonradan güncellense/silinse de sipariş geçmişi değişmez. Önceki siparişlerde adres/yöntem yoksa alanlar `null`, teslimat ücreti `0.00` olarak sunulur.
+
+### Kabul kriterleri
+
+1. Buyer yalnız kendi adreslerini listeleyebilir, oluşturabilir, güncelleyebilir ve silebilir; başka kullanıcı adresi erişimi `404`, buyer olmayan/anonim istek `403`/`401` olur.
+2. Adres alanları normalize/doğrulanır; bozuk telefon, boş/uygunsuz alan, posta kodu biçimi `422` ile reddedilir.
+3. Bir kullanıcı birden fazla adres saklayabilir; varsayılan adres işaretleme başka varsayılanı kaldırır. Varsayılan adres silinince otomatik başka adres varsayılan yapılmaz.
+4. Checkout için kullanıcıya ait geçerli adres ve desteklenen teslimat yöntemi zorunludur. Eksik/sahip olunmayan adres ve geçersiz yöntem için sipariş, stok veya ödeme oluşturulmaz.
+5. Standart teslimat ürün ara toplamı 1.000,00 TL altındaysa 49,90 TL, eşik ve üzerinde ücretsizdir. Hızlı teslimat her durumda 89,90 TL'dir. Eşik kuruş duyarlılığında inclusive hesaplanır.
+6. Sipariş `total_amount` değeri ürün ara toplamı + teslimat ücretidir; ödeme miktarı aynı toplamdır.
+7. Sipariş yanıtı buyer ve admin için snapshot adresini, yöntemi, ücretini ve ürün ara toplamını gösterir. Adres kaydı düzenlenip/silinince snapshot değişmez.
+8. Aynı idempotency anahtarı ile checkout tekrarı ikinci sipariş veya stok/ödeme etkisi üretmez; yanıt önceki snapshot'ı verir.
+9. Ürün iadeleri ürün kalem tutarını geri öder, teslimat ücretini ödemez; tüm ürün miktarları iade edilse bile kalan teslimat bedeli nedeniyle ödeme durumu `partially_refunded` olur.
+
+### API sözleşmesi ve test planı
+
+- `GET/POST /api/v1/addresses`, `PUT/DELETE /api/v1/addresses/{address_id}` buyer adres defteri; varsayılan durumu create/update gövdesinde belirtilir.
+- `POST /api/v1/orders` checkout gövdesi `address_id` ve `delivery_method` alır. Sipariş yanıtında `item_subtotal`, adres snapshot'ı, `delivery_method` ve `delivery_fee` bulunur.
+- **Unit/API:** Adres sahibi/rol, CRUD, default uniqueness, normalizasyon, telefon/posta kodu/uzunluk sınırları; checkout adres/method sahipliği; ücret eşik sınırı, ödeme toplamı, idempotency ve snapshot.
+- **DB/transaction/migration:** Address CRUD ve partial unique default index SQLite/PostgreSQL; sipariş snapshot kolonları, eski siparişlerin null/0 uyumluluğu; checkout stok, sepet ve sipariş snapshot'ını tek transaction'da değiştirir. Ödeme ayrı işlemde sipariş toplamından oluşturulur.
+- **Component/API client:** Adres ekle/düzenle/sil/default, boş/yükleme/hata durumları; sepetten teslimat adresi/yöntemi seçimi, eşik ve ara toplam/teslimat/genel toplam gösterimi.
+- **E2E:** Gerçek Keycloak alıcısı adres kaydeder, ürün ara toplamını eşik altı/eşik üstü farklı teslimat seçenekleriyle sipariş eder; ödeme/toplam/snapshot doğrular; adresi değiştirip silerek geçmiş snapshot'ın sabit kaldığını görür.
+- **Regresyon:** REQ-009/010/011/012/014 sepet, ödeme, iade ve admin akışları; mevcut siparişlerin migration/API uyumluluğu.
+
+**Çıkış ölçütü:** Yetki ve doğrulaması test edilmiş adres defteri ile sabit ücretli yerel teslimat seçenekleri checkout, ödeme ve tarihsel sipariş snapshot'ında tutarlı çalışır; SQLite, PostgreSQL, UI, E2E ve regresyon testleri geçer.
+
+**Test katmanı izlenebilirliği:** `apps/api/tests/test_addresses.py` adres doğrulama/sahiplik, kuruş hassasiyetinde ücret sınırları, checkout ve snapshot davranışını; `apps/api/tests/test_order_migration.py` migration upgrade/downgrade'ını; `apps/api/tests/test_cart_postgres.py` PostgreSQL kısıtı ve snapshot/ödeme toplamını; `apps/api/tests/test_product_returns.py` teslimat bedeli hariç ürün iadesini doğrular. `apps/web/src/AddressBookPanel.test.tsx`, `apps/web/src/CartPanel.test.tsx`, `apps/web/src/App.test.tsx` ve `apps/web/src/api.test.ts` adres, checkout ve istemci davranışlarını kapsar. `apps/web/e2e/cart.spec.ts` gerçek Keycloak ile eşik altı Standart, eşikte Hızlı teslimat, ödeme ve adres değişikliği/silme sonrası snapshot'ı doğrular.

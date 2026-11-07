@@ -51,6 +51,8 @@ uv run uvicorn shop_api.main:create_app --factory --reload
 - Protected home: `GET /api/v1/home`
 - Product listing: `GET /api/v1/products?limit=20&offset=0` (authenticated)
 - Buyer cart: `GET /api/v1/cart`, `POST /api/v1/cart/items`, `PUT /api/v1/cart/items/{item_id}`, and `DELETE /api/v1/cart/items/{item_id}`. Cart ownership comes from the validated Keycloak subject; item mutations check current product stock and return current catalog prices.
+- Buyer address book: `GET/POST /api/v1/addresses` and `PUT/DELETE /api/v1/addresses/{address_id}`. Addresses are owned by the authenticated buyer; at most one can be marked as default.
+- Checkout: `POST /api/v1/orders` requires an `Idempotency-Key` header and a JSON body such as `{"address_id": 1, "delivery_method": "standard"}`. This replaces the previous bodyless checkout. Standard delivery costs 49.90 TRY, or is free at an item subtotal of at least 1,000 TRY; express costs 89.90 TRY. The order retains an immutable address and delivery snapshot. Item returns exclude the delivery fee.
 - Seller applications: buyer self-service routes under `/api/v1/seller-applications`; review routes require admin
 - Product create/update/delete: admin can manage all products; an approved seller can manage only their own products
 
@@ -77,7 +79,7 @@ uv run ruff check .
 uv run ruff format --check .
 ```
 
-The PostgreSQL cart suite is independent of the SQLite regression suite. It runs migrations against a dedicated database whose name ends in `_test`, truncates only that database's application tables between tests, and is skipped by the default pytest run unless `SHOP_TEST_DATABASE_URL` is set:
+The PostgreSQL integration suite is independent of the SQLite regression suite. It runs migrations against a dedicated database whose name ends in `_test`, truncates only that database's application tables between tests, and is skipped by the default pytest run unless `SHOP_TEST_DATABASE_URL` is set. In addition to cart constraints and concurrency, it verifies address default selection, immutable checkout snapshots, delivery fees, and payment totals against real PostgreSQL:
 
 ```powershell
 docker compose exec -T postgres createdb -U shop shop_test

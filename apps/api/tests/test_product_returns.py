@@ -2,7 +2,7 @@ import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from conftest import create_test_token
+from conftest import create_checkout_request, create_test_token
 from factories import product_payload
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
@@ -58,6 +58,7 @@ def create_shipped_order(
     assert cart_response.status_code == 200
     order_response = client.post(
         "/api/v1/orders",
+        json=create_checkout_request(client, buyer_headers),
         headers={**buyer_headers, "Idempotency-Key": f"return-order-{subject}"},
     )
     assert order_response.status_code == 201
@@ -172,13 +173,13 @@ def test_partial_and_full_returns_are_idempotent_and_update_payment_and_stock(
         f"/api/v1/admin/orders/{order_id}",
         headers=auth_headers(client, "return-buyer-admin", ["admin"]),
     ).json()
-    assert admin_order["payment_status"] == "refunded"
+    assert admin_order["payment_status"] == "partially_refunded"
     assert len(admin_order["returns"]) == 2
     with Session(engine) as session:
         product = session.get(Product, product_id)
         assert product is not None and product.stock == 5
         payment = session.scalar(select(Payment).where(Payment.order_id == order_id))
-        assert payment is not None and payment.status == "refunded"
+        assert payment is not None and payment.status == "partially_refunded"
 
 
 def test_return_rejects_wrong_roles_owners_items_and_excess_quantity(

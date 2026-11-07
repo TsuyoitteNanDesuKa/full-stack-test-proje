@@ -69,6 +69,44 @@ export interface CartUpdateItemRequest {
   quantity: number
 }
 
+export type DeliveryMethod = 'standard' | 'express'
+
+export interface CustomerAddress {
+  id: number
+  label: string
+  recipient_name: string
+  phone: string
+  city: string
+  district: string
+  address_line: string
+  postal_code: string | null
+  is_default: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface AddressRequest {
+  label: string
+  recipient_name: string
+  phone: string
+  city: string
+  district: string
+  address_line: string
+  postal_code: string | null
+  is_default: boolean
+}
+
+export interface OrderCreateRequest {
+  address_id: number
+  delivery_method: DeliveryMethod
+}
+
+export const deliveryPricing = {
+  standardFee: 49.9,
+  expressFee: 89.9,
+  freeStandardThreshold: 1000,
+} as const
+
 export type OrderStatus =
   | 'pending_payment'
   | 'paid'
@@ -120,7 +158,11 @@ export interface ProductReturnRequest {
 export interface CustomerOrder {
   id: number
   status: OrderStatus
+  item_subtotal: string
   total_amount: string
+  shipping_address: Omit<CustomerAddress, 'id' | 'is_default' | 'created_at' | 'updated_at'> | null
+  delivery_method: DeliveryMethod | null
+  delivery_fee: string
   created_at: string
   items: OrderItem[]
   returns?: ProductReturn[]
@@ -139,6 +181,7 @@ export type PaymentStatus =
   | 'failed'
   | 'cancelled'
   | 'expired'
+  | 'partially_refunded'
   | 'refunded'
 
 export interface CustomerPayment {
@@ -340,6 +383,7 @@ export function deleteCartItem(token: string, itemId: number): Promise<void> {
 export function createOrder(
   token: string,
   idempotencyKey: string,
+  checkout: OrderCreateRequest,
 ): Promise<CustomerOrder> {
   return request<CustomerOrder>('/api/v1/orders', {
     method: 'POST',
@@ -347,6 +391,43 @@ export function createOrder(
       Authorization: `Bearer ${token}`,
       'Idempotency-Key': idempotencyKey,
     },
+    body: JSON.stringify(checkout),
+  })
+}
+
+export function getMyAddresses(token: string): Promise<CustomerAddress[]> {
+  return request<CustomerAddress[]>('/api/v1/addresses', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function createAddress(
+  token: string,
+  address: AddressRequest,
+): Promise<CustomerAddress> {
+  return request<CustomerAddress>('/api/v1/addresses', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(address),
+  })
+}
+
+export function updateAddress(
+  token: string,
+  addressId: number,
+  address: AddressRequest,
+): Promise<CustomerAddress> {
+  return request<CustomerAddress>(`/api/v1/addresses/${addressId}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(address),
+  })
+}
+
+export function deleteAddress(token: string, addressId: number): Promise<void> {
+  return request<void>(`/api/v1/addresses/${addressId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
   })
 }
 

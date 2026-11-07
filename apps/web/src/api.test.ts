@@ -4,6 +4,7 @@ import {
   ApiError,
   createProduct,
   createOrder,
+  createAddress,
   createPayment,
   createProductReturn,
   createSellerApplication,
@@ -13,6 +14,7 @@ import {
   getAdminOrders,
   getHome,
   getMyCart,
+  getMyAddresses,
   getMyOrder,
   getMyOrders,
   getMySellerApplication,
@@ -22,6 +24,8 @@ import {
   refundAdminOrder,
   submitMySellerApplication,
   updateCartItem,
+  updateAddress,
+  deleteAddress,
   updateAdminOrderStatus,
   updateProduct,
   updateMySellerApplication,
@@ -258,18 +262,25 @@ describe('storefront API client', () => {
     expect(vi.mocked(fetch).mock.calls[0]?.[1]?.headers).toHaveProperty('Authorization')
   })
 
-  it('creates an order with the idempotency key and no client-supplied prices', async () => {
+  it('creates an order with address and delivery selection but no client-supplied prices', async () => {
     const order = {
       id: 44,
       status: 'pending_payment' as const,
-      total_amount: '25.00',
+      item_subtotal: '25.00',
+      total_amount: '74.90',
+      shipping_address: null,
+      delivery_method: 'standard' as const,
+      delivery_fee: '49.90',
       created_at: '2026-11-04T20:00:00Z',
       items: [],
       history: [],
     }
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(order, 201))
 
-    await expect(createOrder('buyer-token', 'retry-safe-key')).resolves.toEqual(order)
+    await expect(createOrder('buyer-token', 'retry-safe-key', {
+      address_id: 8,
+      delivery_method: 'standard',
+    })).resolves.toEqual(order)
     expect(fetch).toHaveBeenCalledWith(
       '/api/v1/orders',
       expect.objectContaining({
@@ -281,7 +292,62 @@ describe('storefront API client', () => {
         },
       }),
     )
-    expect(vi.mocked(fetch).mock.calls[0]?.[1]).not.toHaveProperty('body')
+    expect(vi.mocked(fetch).mock.calls[0]?.[1]?.body).toBe(JSON.stringify({
+      address_id: 8,
+      delivery_method: 'standard',
+    }))
+  })
+
+  it('loads and manages buyer addresses with the bearer token', async () => {
+    const address = {
+      id: 8,
+      label: 'Ev',
+      recipient_name: 'Ada Buyer',
+      phone: '+905551234567',
+      city: 'Istanbul',
+      district: 'Kadikoy',
+      address_line: 'Example Street 1',
+      postal_code: null,
+      is_default: true,
+      created_at: '2026-11-04T20:00:00Z',
+      updated_at: '2026-11-04T20:00:00Z',
+    }
+    const requestBody = {
+      label: 'Ev',
+      recipient_name: 'Ada Buyer',
+      phone: '+905551234567',
+      city: 'Istanbul',
+      district: 'Kadikoy',
+      address_line: 'Example Street 1',
+      postal_code: null,
+      is_default: true,
+    }
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse([address]))
+      .mockResolvedValueOnce(jsonResponse(address, 201))
+      .mockResolvedValueOnce(jsonResponse(address))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+
+    await expect(getMyAddresses('buyer-token')).resolves.toEqual([address])
+    await expect(createAddress('buyer-token', requestBody)).resolves.toEqual(address)
+    await expect(updateAddress('buyer-token', address.id, requestBody)).resolves.toEqual(address)
+    await expect(deleteAddress('buyer-token', address.id)).resolves.toBeUndefined()
+    expect(fetch).toHaveBeenNthCalledWith(1, '/api/v1/addresses', expect.any(Object))
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/addresses',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify(requestBody) }),
+    )
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      '/api/v1/addresses/8',
+      expect.objectContaining({ method: 'PUT', body: JSON.stringify(requestBody) }),
+    )
+    expect(fetch).toHaveBeenNthCalledWith(
+      4,
+      '/api/v1/addresses/8',
+      expect.objectContaining({ method: 'DELETE' }),
+    )
   })
 
   it('loads the buyer order history and a single order', async () => {

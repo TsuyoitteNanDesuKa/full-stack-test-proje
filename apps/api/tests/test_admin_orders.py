@@ -1,6 +1,6 @@
 import json
 
-from conftest import create_test_token
+from conftest import create_checkout_request, create_test_token
 from factories import product_payload
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
@@ -52,6 +52,7 @@ def create_order(
     assert cart_response.status_code == 200
     order_response = client.post(
         "/api/v1/orders",
+        json=create_checkout_request(client, buyer_headers),
         headers={**buyer_headers, "Idempotency-Key": f"ops-order-{product_id}"},
     )
     assert order_response.status_code == 201
@@ -70,7 +71,7 @@ def create_order(
             "event_id": f"ops-payment-success-{product_id}",
             "payment_reference": payment["provider_reference"],
             "status": "succeeded",
-            "amount": "25.00",
+            "amount": payment["amount"],
             "currency": "TRY",
         },
         separators=(",", ":"),

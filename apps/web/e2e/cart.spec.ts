@@ -55,6 +55,35 @@ async function login(page: Page, email: string, password: string): Promise<Respo
   return identityResponse
 }
 
+async function addDefaultAddress(page: Page): Promise<number> {
+  await page.getByRole('button', { name: 'Adreslerim', exact: true }).click()
+  await page.getByLabel('Adres başlığı').fill('E2E Home')
+  await page.getByLabel('Alıcı adı').fill('Test Buyer')
+  await page.getByLabel('Telefon').fill('+905551234567')
+  await page.getByLabel('İl', { exact: true }).fill('Istanbul')
+  await page.getByLabel('İlçe', { exact: true }).fill('Kadikoy')
+  await page.getByLabel('Açık adres').fill('Checkout Street 10')
+  await page.getByLabel('Posta kodu (isteğe bağlı)').fill('34710')
+  await page.getByLabel('Varsayılan teslimat adresim yap').check()
+  const addressResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/v1/addresses') &&
+      response.request().method() === 'POST',
+  )
+  await page.getByRole('button', { name: 'Adresi kaydet' }).click()
+  const createdAddressResponse = await addressResponse
+  expect(createdAddressResponse.status()).toBe(201)
+  const createdAddress = (await createdAddressResponse.json()) as { id: number }
+  const cartToggle = page.getByRole('button', { name: /^Sepet \(\d+\)$/ })
+  const cartWasOpen = (await cartToggle.getAttribute('aria-expanded')) === 'true'
+  if (!cartWasOpen) await cartToggle.click()
+  await expect(page.getByRole('combobox', { name: 'Teslimat adresi' }))
+    .toHaveValue(String(createdAddress.id))
+  if (!cartWasOpen) await cartToggle.click()
+  await page.getByRole('button', { name: 'Adres defterini kapat' }).click()
+  return createdAddress.id
+}
+
 async function createProduct(page: Page, product: ReturnType<typeof createTestProduct>) {
   await page.getByRole('button', { name: '+ Ürün ekle' }).click()
   await page.getByLabel('Ürün adı').fill(product.name)
@@ -148,6 +177,7 @@ test.describe('REQ-009 cart, REQ-010 checkout, and REQ-012 order lifecycle', () 
       await expect(
         firstBuyerPage.getByRole('spinbutton', { name: `Miktar: ${product.name}` }),
       ).toHaveValue('2')
+      const createdAddressId = await addDefaultAddress(firstBuyerPage)
 
       const checkoutResponse = firstBuyerPage.waitForResponse(
         (response) =>
@@ -160,8 +190,12 @@ test.describe('REQ-009 cart, REQ-010 checkout, and REQ-012 order lifecycle', () 
       const createdOrder = (await createdOrderResponse.json()) as {
         id: number
         total_amount: string
+        delivery_fee: string
+        shipping_address: { address_line: string }
       }
-      expect(createdOrder.total_amount).toBe('25.00')
+      expect(createdOrder.total_amount).toBe('74.90')
+      expect(createdOrder.delivery_fee).toBe('49.90')
+      expect(createdOrder.shipping_address.address_line).toBe('Checkout Street 10')
       await expect(firstBuyerPage.getByText('Ödeme adımı bekleniyor.')).toBeVisible()
       await expect(firstBuyerPage.getByRole('button', { name: 'Sepet (0)' })).toBeVisible()
 
@@ -173,6 +207,37 @@ test.describe('REQ-009 cart, REQ-010 checkout, and REQ-012 order lifecycle', () 
         firstBuyerPage.getByText(`${product.name} · 2 adet · ₺25,00`),
       ).toBeVisible()
       await expect(firstBuyerPage.getByText('Sipariş oluşturuldu')).toBeVisible()
+      await expect(firstBuyerPage.getByText(/Checkout Street 10, Kadikoy, Istanbul/))
+        .toBeVisible()
+      await expect(firstBuyerPage.getByText('Standart teslimat · ₺49,90')).toBeVisible()
+
+      await firstBuyerPage.getByRole('button', { name: 'Adreslerim', exact: true }).click()
+      await firstBuyerPage.getByRole('button', { name: 'Düzenle', exact: true }).click()
+      await firstBuyerPage.getByLabel('Açık adres').fill('Updated Street 20')
+      const updateAddressResponse = firstBuyerPage.waitForResponse(
+        (response) =>
+          response.url().endsWith(`/api/v1/addresses/${createdAddressId}`) &&
+          response.request().method() === 'PUT',
+      )
+      await firstBuyerPage.getByRole('button', { name: 'Değişiklikleri kaydet' }).click()
+      expect((await updateAddressResponse).status()).toBe(200)
+      await expect(firstBuyerPage.getByText(/Updated Street 20, Kadikoy, Istanbul/)).toBeVisible()
+      await firstBuyerPage.getByRole('button', { name: 'Siparişlerim' }).click()
+      await firstBuyerPage.getByRole('button', { name: 'Siparişlerim' }).click()
+      await expect(firstBuyerPage.getByText(/Checkout Street 10, Kadikoy, Istanbul/))
+        .toBeVisible()
+      const deleteAddressResponse = firstBuyerPage.waitForResponse(
+        (response) =>
+          response.url().endsWith(`/api/v1/addresses/${createdAddressId}`) &&
+          response.request().method() === 'DELETE',
+      )
+      await firstBuyerPage.getByRole('button', { name: 'Sil' }).click()
+      expect((await deleteAddressResponse).status()).toBe(204)
+      await firstBuyerPage.getByRole('button', { name: 'Siparişlerim' }).click()
+      await firstBuyerPage.getByRole('button', { name: 'Siparişlerim' }).click()
+      await expect(firstBuyerPage.getByText(/Checkout Street 10, Kadikoy, Istanbul/))
+        .toBeVisible()
+
       await firstBuyerPage.getByRole('button', { name: 'Ödemeye devam et' }).click()
       const checkoutLink = firstBuyerPage.getByRole('link', {
         name: 'Güvenli test ödeme sayfasına git',
@@ -260,6 +325,72 @@ test.describe('REQ-009 cart, REQ-010 checkout, and REQ-012 order lifecycle', () 
     }
   })
 
+  test('express delivery stays paid at the free-standard threshold', async ({
+    browser,
+    page: adminPage,
+    request,
+  }) => {
+    test.setTimeout(90_000)
+    const admin = await createKeycloakTestAdmin(request)
+    const buyerContext = await browser.newContext()
+    const buyerPage = await buyerContext.newPage()
+    const buyer = createBuyerCredentials()
+    const product = createTestProduct({ stock: 5, price: '1000.00' })
+
+    try {
+      expect((await login(adminPage, admin.email, admin.password)).status()).toBe(200)
+      expect((await createProduct(adminPage, product)).status()).toBe(201)
+      expect((await registerBuyer(buyerPage, buyer.email, buyer.password)).status()).toBe(200)
+      await buyerPage.getByRole('button', { name: `Sepete ekle ${product.name}` }).click()
+      await addDefaultAddress(buyerPage)
+      await expect(buyerPage.getByRole('radio', { name: /Standart · Ücretsiz/ })).toBeChecked()
+      await buyerPage.getByRole('radio', { name: /Hızlı · ₺89,90/ }).check()
+      const orderResponse = buyerPage.waitForResponse(
+        (response) =>
+          response.url().endsWith('/api/v1/orders') &&
+          response.request().method() === 'POST',
+      )
+      await buyerPage.getByRole('button', { name: 'Siparişi oluştur' }).click()
+      const response = await orderResponse
+      expect(response.status()).toBe(201)
+      const order = (await response.json()) as {
+        id: number
+        item_subtotal: string
+        delivery_fee: string
+        delivery_method: string
+        total_amount: string
+      }
+      expect(order).toMatchObject({
+        item_subtotal: '1000.00',
+        delivery_method: 'express',
+        delivery_fee: '89.90',
+        total_amount: '1089.90',
+      })
+      await buyerPage.getByRole('button', { name: 'Siparişlerim' }).click()
+      const paymentResponse = buyerPage.waitForResponse(
+        (payment) =>
+          payment.url().endsWith(`/api/v1/orders/${order.id}/payments`) &&
+          payment.request().method() === 'POST',
+      )
+      await buyerPage.getByRole('button', { name: 'Ödemeye devam et' }).click()
+      const payment = await paymentResponse
+      expect(payment.status()).toBe(201)
+      expect((await payment.json()).amount).toBe('1089.90')
+      await expect(buyerPage.getByText('Hızlı teslimat · ₺89,90')).toBeVisible()
+    } finally {
+      try {
+        const keycloakAdmin = await createKeycloakAdminClient(request)
+        await keycloakAdmin.deleteUserByEmail(buyer.email)
+      } finally {
+        try {
+          await admin.cleanup()
+        } finally {
+          await buyerContext.close()
+        }
+      }
+    }
+  })
+
   test('buyer can partially and fully return a shipped order within the return window', async ({
     browser,
     page: adminPage,
@@ -288,6 +419,7 @@ test.describe('REQ-009 cart, REQ-010 checkout, and REQ-012 order lifecycle', () 
       )
       await buyerPage.getByRole('spinbutton', { name: `Miktar: ${product.name}` }).fill('2')
       await buyerPage.getByRole('button', { name: 'Miktarı güncelle' }).click()
+      await addDefaultAddress(buyerPage)
       const checkoutResponse = buyerPage.waitForResponse(
         (response) =>
           response.url().endsWith('/api/v1/orders') &&
@@ -345,7 +477,7 @@ test.describe('REQ-009 cart, REQ-010 checkout, and REQ-012 order lifecycle', () 
           returns: unknown[]
         }) =>
           order.owner_subject === buyerSubject &&
-          order.payment_status === 'refunded' &&
+          order.payment_status === 'partially_refunded' &&
           order.returns.length === 2,
       )
       expect(returnedOrder).toBeDefined()

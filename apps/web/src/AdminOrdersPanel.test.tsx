@@ -20,7 +20,19 @@ const sampleOrder: AdminOrder = {
   owner_subject: 'buyer-subject',
   status: 'paid',
   payment_status: 'succeeded',
-  total_amount: '25.00',
+  item_subtotal: '25.00',
+  total_amount: '74.90',
+  shipping_address: {
+    label: 'Ev',
+    recipient_name: 'Ada Buyer',
+    phone: '+905551234567',
+    city: 'Istanbul',
+    district: 'Kadikoy',
+    address_line: 'Example Street 1',
+    postal_code: null,
+  },
+  delivery_method: 'standard',
+  delivery_fee: '49.90',
   created_at: '2026-11-04T20:00:00Z',
   items: [
     {
@@ -67,6 +79,8 @@ describe('AdminOrdersPanel', () => {
     render(<AdminOrdersPanel token="admin-token" />)
 
     await screen.findByText(/Sample product · 2 adet/)
+    expect(screen.getByText('Teslimat adresi')).toBeInTheDocument()
+    expect(screen.getByText(/Standart teslimat:/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Hazırlanıyor aşamasına geçir' }))
     await waitFor(() => {
       expect(updateAdminOrderStatus).toHaveBeenCalledWith(

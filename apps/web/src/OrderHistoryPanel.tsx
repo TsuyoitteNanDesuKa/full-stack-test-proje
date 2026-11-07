@@ -367,6 +367,32 @@ export default function OrderHistoryPanel({
                   {returnNotice && returnNoticeOrderId === order.id && (
                     <p className="order-return-notice" role="status">{returnNotice}</p>
                   )}
+                  {order.shipping_address && (
+                    <section className="order-delivery-snapshot" aria-label="Sipariş teslimat bilgileri">
+                      <h4>Teslimat adresi</h4>
+                      <p>
+                        {order.shipping_address.recipient_name} · {order.shipping_address.phone}
+                      </p>
+                      <p>
+                        {order.shipping_address.address_line}, {order.shipping_address.district},{' '}
+                        {order.shipping_address.city}
+                        {order.shipping_address.postal_code
+                          ? ` · ${order.shipping_address.postal_code}`
+                          : ''}
+                      </p>
+                      {order.delivery_method && (
+                        <p>
+                          {order.delivery_method === 'express' ? 'Hızlı' : 'Standart'} teslimat ·{' '}
+                          {formatCurrency(order.delivery_fee)}
+                        </p>
+                      )}
+                    </section>
+                  )}
+                  {order.delivery_method && (
+                    <p>
+                      Ürün ara toplamı: <strong>{formatCurrency(order.item_subtotal)}</strong>
+                    </p>
+                  )}
                   <p>
                     Toplam: <strong>{formatCurrency(order.total_amount)}</strong>
                   </p>

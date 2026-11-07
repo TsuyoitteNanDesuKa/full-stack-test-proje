@@ -162,6 +162,29 @@ export default function AdminOrdersPanel({ token }: { token: string }) {
                   </div>
                   <span className="application-status">{orderStatusLabels[order.status]}</span>
                 </div>
+                {order.shipping_address && (
+                  <section className="order-delivery-snapshot" aria-label="Sipariş teslimat bilgileri">
+                    <h4>Teslimat adresi</h4>
+                    <p>
+                      {order.shipping_address.recipient_name} · {order.shipping_address.phone}
+                    </p>
+                    <p>
+                      {order.shipping_address.address_line}, {order.shipping_address.district},{' '}
+                      {order.shipping_address.city}
+                      {order.shipping_address.postal_code
+                        ? ` · ${order.shipping_address.postal_code}`
+                        : ''}
+                    </p>
+                  </section>
+                )}
+                {order.delivery_method && (
+                  <p>
+                    Ürün ara toplamı: <strong>{formatCurrency(order.item_subtotal)}</strong>
+                    {' · '}
+                    {order.delivery_method === 'express' ? 'Hızlı' : 'Standart'} teslimat:{' '}
+                    <strong>{formatCurrency(order.delivery_fee)}</strong>
+                  </p>
+                )}
                 <p>Toplam: <strong>{formatCurrency(order.total_amount)}</strong></p>
                 <ul className="admin-order-items">
                   {order.items.map((item) => (

@@ -13,6 +13,7 @@ from shop_api.dependencies import get_admin_user, get_current_user
 from shop_api.models import (
     Cart,
     CartItem,
+    CustomerAddress,
     CustomerOrder,
     OrderItem,
     OrderStatusEvent,
@@ -26,6 +27,9 @@ from shop_api.schemas import (
     AdminOrderRefundRequest,
     AdminOrderResponse,
     AdminOrderStatusRequest,
+    DeliveryMethod,
+    OrderAddressSnapshot,
+    OrderCreateRequest,
     OrderItemResponse,
     OrderResponse,
     OrderStatus,
@@ -38,6 +42,9 @@ from shop_api.security import AuthenticatedUser
 router = APIRouter(prefix="/api/v1/orders", tags=["orders"])
 admin_router = APIRouter(prefix="/api/v1/admin/orders", tags=["admin orders"])
 IDEMPOTENCY_KEY_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+STANDARD_DELIVERY_FEE = Decimal("49.90")
+EXPRESS_DELIVERY_FEE = Decimal("89.90")
+FREE_STANDARD_DELIVERY_THRESHOLD = Decimal("1000.00")
 
 
 def _require_buyer(user: AuthenticatedUser) -> None:
@@ -64,7 +71,28 @@ def _order_response(
     response_data = {
         "id": order.id,
         "status": order.status,
+        "item_subtotal": sum((item.line_total for item in items), Decimal("0.00")),
         "total_amount": order.total_amount,
+        "shipping_address": (
+            OrderAddressSnapshot(
+                label=order.shipping_address_label,
+                recipient_name=order.shipping_recipient_name,
+                phone=order.shipping_phone,
+                city=order.shipping_city,
+                district=order.shipping_district,
+                address_line=order.shipping_address_line,
+                postal_code=order.shipping_postal_code,
+            )
+            if order.shipping_recipient_name is not None
+            and order.shipping_address_label is not None
+            and order.shipping_phone is not None
+            and order.shipping_city is not None
+            and order.shipping_district is not None
+            and order.shipping_address_line is not None
+            else None
+        ),
+        "delivery_method": order.delivery_method,
+        "delivery_fee": order.delivery_fee or Decimal("0.00"),
         "created_at": order.created_at,
         "items": [
             OrderItemResponse(
@@ -162,6 +190,7 @@ def _get_owned_order(db: Session, owner_subject: str, order_id: int) -> Customer
 
 @router.post("", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
 def create_order(
+    payload: OrderCreateRequest,
     response: Response,
     current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
@@ -183,6 +212,20 @@ def create_order(
     if existing_order is not None:
         response.status_code = status.HTTP_200_OK
         return _order_response(db, existing_order)
+
+    address = db.scalar(
+        select(CustomerAddress)
+        .where(
+            CustomerAddress.id == payload.address_id,
+            CustomerAddress.owner_subject == current_user.subject,
+        )
+        .with_for_update()
+    )
+    if address is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Teslimat adresi bulunamadı.",
+        )
 
     cart = db.scalar(
         select(Cart).where(Cart.owner_subject == current_user.subject).with_for_update()
@@ -233,11 +276,11 @@ def create_order(
 
     now = datetime.now(UTC)
     order_items: list[OrderItem] = []
-    total_amount = Decimal("0.00")
+    item_subtotal = Decimal("0.00")
     for item in cart_items:
         product = products_by_id[item.product_id]
         line_total = product.price * item.quantity
-        total_amount += line_total
+        item_subtotal += line_total
         order_items.append(
             OrderItem(
                 product_id=product.id,
@@ -249,12 +292,31 @@ def create_order(
         )
         product.stock -= item.quantity
 
+    delivery_fee = (
+        Decimal("0.00")
+        if payload.delivery_method == DeliveryMethod.STANDARD
+        and item_subtotal >= FREE_STANDARD_DELIVERY_THRESHOLD
+        else (
+            STANDARD_DELIVERY_FEE
+            if payload.delivery_method == DeliveryMethod.STANDARD
+            else EXPRESS_DELIVERY_FEE
+        )
+    )
     order = CustomerOrder(
         owner_subject=current_user.subject,
         idempotency_key=idempotency_key,
         status="pending_payment",
-        total_amount=total_amount,
+        total_amount=item_subtotal + delivery_fee,
         created_at=now,
+        shipping_address_label=address.label,
+        shipping_recipient_name=address.recipient_name,
+        shipping_phone=address.phone,
+        shipping_city=address.city,
+        shipping_district=address.district,
+        shipping_address_line=address.address_line,
+        shipping_postal_code=address.postal_code,
+        delivery_method=payload.delivery_method,
+        delivery_fee=delivery_fee,
     )
     db.add(order)
     db.flush()
