@@ -265,11 +265,54 @@ class OrderItem(Base):
     line_total: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
 
 
+class ProductReturn(Base):
+    __tablename__ = "product_returns"
+    __table_args__ = (
+        CheckConstraint(
+            "quantity BETWEEN 1 AND 999999",
+            name="ck_product_returns_quantity_range",
+        ),
+        CheckConstraint(
+            "status = 'approved'",
+            name="ck_product_returns_status",
+        ),
+        CheckConstraint(
+            "refund_amount > 0",
+            name="ck_product_returns_refund_amount_positive",
+        ),
+        UniqueConstraint(
+            "owner_subject",
+            "idempotency_key",
+            name="uq_product_returns_owner_idempotency_key",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(
+        ForeignKey("orders.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    order_item_id: Mapped[int] = mapped_column(
+        ForeignKey("order_items.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    owner_subject: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    quantity: Mapped[int] = mapped_column(nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    refund_amount: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class Payment(Base):
     __tablename__ = "payments"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending', 'succeeded', 'failed', 'cancelled', 'expired', 'refunded')",
+            "status IN ('pending', 'succeeded', 'failed', 'cancelled', 'expired', "
+            "'partially_refunded', 'refunded')",
             name="ck_payments_status",
         ),
         CheckConstraint("amount > 0", name="ck_payments_amount_positive"),

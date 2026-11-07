@@ -100,12 +100,30 @@ export interface OrderItem {
   line_total: string
 }
 
+export interface ProductReturn {
+  id: number
+  order_item_id: number
+  product_name: string
+  quantity: number
+  reason: string
+  status: 'approved'
+  refund_amount: string
+  created_at: string
+}
+
+export interface ProductReturnRequest {
+  order_item_id: number
+  quantity: number
+  reason: string
+}
+
 export interface CustomerOrder {
   id: number
   status: OrderStatus
   total_amount: string
   created_at: string
   items: OrderItem[]
+  returns?: ProductReturn[]
   history: OrderStatusEvent[]
 }
 
@@ -329,6 +347,22 @@ export function createOrder(
       Authorization: `Bearer ${token}`,
       'Idempotency-Key': idempotencyKey,
     },
+  })
+}
+
+export function createProductReturn(
+  token: string,
+  orderId: number,
+  requestBody: ProductReturnRequest,
+  idempotencyKey: string,
+): Promise<ProductReturn> {
+  return request<ProductReturn>(`/api/v1/orders/${orderId}/returns`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Idempotency-Key': idempotencyKey,
+    },
+    body: JSON.stringify(requestBody),
   })
 }
 

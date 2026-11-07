@@ -5,6 +5,7 @@ import {
   createProduct,
   createOrder,
   createPayment,
+  createProductReturn,
   createSellerApplication,
   deleteCartItem,
   deleteProduct,
@@ -393,6 +394,49 @@ describe('storefront API client', () => {
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ reason: 'Alıcı talebi' }),
+      }),
+    )
+  })
+
+  it('submits a product return with an idempotency key', async () => {
+    const productReturn = {
+      id: 5,
+      order_item_id: 31,
+      product_name: 'Liva krem',
+      quantity: 1,
+      reason: 'Ürün beklentimi karşılamadı',
+      status: 'approved' as const,
+      refund_amount: '12.50',
+      created_at: '2026-11-06T12:00:00Z',
+    }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(productReturn, 201))
+
+    await expect(
+      createProductReturn(
+        'buyer-token',
+        21,
+        {
+          order_item_id: 31,
+          quantity: 1,
+          reason: 'Ürün beklentimi karşılamadı',
+        },
+        'return-21-item-31',
+      ),
+    ).resolves.toEqual(productReturn)
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/orders/21/returns',
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer buyer-token',
+          'Idempotency-Key': 'return-21-item-31',
+        },
+        body: JSON.stringify({
+          order_item_id: 31,
+          quantity: 1,
+          reason: 'Ürün beklentimi karşılamadı',
+        }),
       }),
     )
   })

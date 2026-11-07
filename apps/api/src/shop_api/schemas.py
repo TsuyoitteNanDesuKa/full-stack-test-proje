@@ -283,6 +283,7 @@ class PaymentStatus(StrEnum):
     FAILED = "failed"
     CANCELLED = "cancelled"
     EXPIRED = "expired"
+    PARTIALLY_REFUNDED = "partially_refunded"
     REFUNDED = "refunded"
 
 
@@ -293,6 +294,31 @@ class OrderItemResponse(BaseModel):
     unit_price: Decimal
     quantity: int
     line_total: Decimal
+
+
+class ProductReturnRequest(BaseModel):
+    order_item_id: int = Field(ge=1, strict=True)
+    quantity: int = Field(ge=1, le=999999, strict=True)
+    reason: str = Field(min_length=5, max_length=500, strict=True)
+
+    @field_validator("reason")
+    @classmethod
+    def strip_and_validate_reason(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 5:
+            raise ValueError("İade nedeni en az 5 karakter olmalıdır.")
+        return normalized
+
+
+class ProductReturnResponse(BaseModel):
+    id: int
+    order_item_id: int
+    product_name: str
+    quantity: int
+    reason: str
+    status: str
+    refund_amount: Decimal
+    created_at: datetime
 
 
 class OrderStatusEventResponse(BaseModel):
@@ -313,6 +339,7 @@ class OrderResponse(BaseModel):
     total_amount: Decimal
     created_at: datetime
     items: list[OrderItemResponse]
+    returns: list[ProductReturnResponse] = Field(default_factory=list)
     history: list[OrderStatusEventResponse]
 
 

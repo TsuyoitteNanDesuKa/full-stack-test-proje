@@ -60,20 +60,42 @@ def test_order_and_payment_migrations_create_tables_and_downgrade(
             )
 
         command.upgrade(alembic_config, "head")
-        with engine.connect() as connection:
+        with engine.begin() as connection:
             assert (
                 connection.scalar(text("SELECT product_name FROM order_items WHERE id = 1"))
                 == "Snapshot product"
             )
             assert (
                 connection.scalar(text("SELECT version_num FROM alembic_version"))
-                == "0009_order_lifecycle"
+                == "0010_product_returns"
             )
+            table_names = set(
+                connection.scalars(
+                    text("SELECT name FROM sqlite_master WHERE type = 'table'")
+                ).all()
+            )
+            assert "product_returns" in table_names
             assert (
                 connection.scalar(text("SELECT action FROM order_status_events WHERE order_id = 1"))
                 == "legacy_import"
             )
             connection.execute(text("UPDATE orders SET status = 'processing' WHERE id = 1"))
+            connection.execute(
+                text("UPDATE payments SET status = 'partially_refunded' WHERE id = 1")
+            )
+
+        command.downgrade(alembic_config, "0009_order_lifecycle")
+        with engine.connect() as connection:
+            tables = set(
+                connection.scalars(
+                    text("SELECT name FROM sqlite_master WHERE type = 'table'")
+                ).all()
+            )
+            assert "product_returns" not in tables
+            assert "order_status_events" in tables
+            assert (
+                connection.scalar(text("SELECT status FROM payments WHERE id = 1")) == "succeeded"
+            )
 
         command.downgrade(alembic_config, "0008_payments")
         with engine.connect() as connection:

@@ -746,3 +746,36 @@ Proje canlı kullanıma alınmayacağı için dış sağlayıcı entegrasyonlar�
 **Test katmanı izlenebilirliği:** API ve PostgreSQL sorgu davranışı `apps/api/tests/test_products.py` ve `apps/api/tests/test_cart_postgres.py`; API istemcisi/component/form/boş durum `apps/web/src/api.test.ts` ve `apps/web/src/App.test.tsx`; gerçek Keycloak arama ve boş sonuç `apps/web/e2e/cart.spec.ts` ile doğrulanır.
 
 **Çıkış ölçütü:** Filtre ve sıralama backend'de doğru uygulanır, sayfalama/total tutarlıdır, geçersiz girdiler güvenli reddedilir ve otomatik API/component/E2E testleri geçer.
+
+## REQ-014 — Teslimat sonrası yerel ürün iadesi
+
+- **Öncelik:** P1 (QA odaklı sonraki dilim)
+- **Durum:** Tamamlandı. Backend 259 geçti, 13 atlandı (%95,85 coverage); PostgreSQL 13/13, web 154 test (%100 coverage), Keycloak E2E 9/9; build/lint başarılı.
+- **Kullanıcı hikâyesi:** Alıcı olarak kargoya verilmiş veya teslim edilmiş siparişimdeki bir ürünün bir kısmını ya da tamamını iade kaydına alıp kalan iade hakkımı görebilmek istiyorum.
+- **Kararlar:** `shipped` ve `delivered` siparişler uygun. Başvuru penceresi son geçerli durum geçişinden itibaren 30 gündür: `delivered` için teslim olayı, halen `shipped` için kargo olayı başlangıçtır. Alıcı kalem başına kısmi miktar verebilir. Uygun talep otomatik onaylanır; admin inceleme aşaması yoktur. Bu bir yerel test kaydıdır, gerçek kargo/para transferi yapılmaz.
+- **İade/ödeme/stok:** Her talep gerekçe, miktar, kalem snapshot fiyatı ve yerel iade tutarıyla saklanır. Aynı kalemin toplam iade miktarı satın alınan adedi aşamaz. Ödeme toplam iade tutarı 0'dan büyük ve sipariş tutarından küçükken `partially_refunded`, tamamına eşit olduğunda `refunded` olur. Onay ve ürün mevcutsa stok artışı tek transaction'da gerçekleşir; ürün silinmişse sipariş snapshot'ı/iade kaydı kalır fakat stok eklenmez.
+- **Idempotency:** Buyer her istekte `Idempotency-Key` gönderir. Aynı kullanıcı/anahtar ve aynı payload önceki sonucu döndürür; anahtar farklı payload ile tekrar kullanılırsa `409` olur.
+
+### Kabul kriterleri
+
+1. Yalnızca buyer, sahibi olduğu sipariş için iade talebi açabilir; başka sahibin siparişi `404`, buyer olmayan/anonim istek sırasıyla `403`/`401` alır.
+2. Sipariş `shipped` veya `delivered`, ödemesi `succeeded` ya da `partially_refunded` ve geçerli son durum olayı en fazla 30 gün önce olmalıdır. Sınır anı dahil; daha eski talep `409` ile reddedilir.
+3. Talep kalem kimliği, pozitif miktar ve en az 5 karakterlik gerekçe alır. Kalem ilgili siparişe ait olmalı, silinmiş/başka sipariş kalemi olmamalı ve istenen miktar daha önce iade edilmeyen miktarı aşmamalıdır.
+4. Geçerli talep otomatik `approved` durumuyla kaydedilir; iade tutarı sipariş kaleminin snapshot birim fiyatı × miktardır. Siparişin toplam durumu değişmez.
+5. Yerel iade tutarları birikimli olarak ödeme kaydını `partially_refunded`/`refunded` durumuna geçirir; tam iade tutarı sipariş toplamını aşamaz.
+6. İade kaydı, ödeme durumu/tutarı ve mevcut ürünün stok artışı tek transaction'da kalıcılaşır. Stok üst sınırı veya DB hatasında rollback olur, kısmi iade bırakılmaz.
+7. Eşzamanlı talepler kalemin kalan miktarını aşamaz. Aynı idempotency isteği replay edildiğinde ikinci iade/stok/audit etkisi oluşmaz.
+8. Buyer sipariş yanıtında iade taleplerini ve kalem bazında iade edilmiş/kalan miktarı görebilir; gerekçe, durum, tutar ve zaman gösterilir. Admin actor subject'i buyer yanıtında yer almaz.
+9. Sipariş geçmişi/arayüzü uygun kalemlerde iade formunu, loading/error/başarı durumlarını ve bunun yerel mock işlem olduğuna dair açıklamayı sunar. Uygun olmayan kalem için eylem sunulmaz; API kuralı yine backend'de uygulanır.
+
+### API sözleşmesi ve test planı
+
+- `POST /api/v1/orders/{order_id}/returns` — `Idempotency-Key` başlığı ve `{ "order_item_id": 1, "quantity": 1, "reason": "..." }`.
+- Buyer sipariş yanıtına `returns` listesi eklenir; her iade kaydında kalem, miktar, gerekçe, durum, tutar ve zaman; kalem response'unda `returned_quantity` ve `returnable_quantity` bulunur.
+- **Unit/API:** Rol/sahiplik, shipped/delivered ve payment statüleri, 30 günlük exact boundary/expired/future-event, item ownership, invalid quantity/reason, repeated/over-quantity, idempotency aynı/farklı payload.
+- **DB/transaction:** Bir veya birden fazla kalemde partial/full refund birikimi; stock, return, payment rollback; ürün silinmesi; concurrent same-item requests; migration upgrade/downgrade.
+- **Component/API client:** Uygun kalemde form, miktar üst sınırı, gerekçe, başarıyla güncellenen kalan hak, tekrar yüklemede görünür geçmiş ve API/network hatası.
+- **E2E:** Gerçek Keycloak buyer ve admin ile sipariş oluştur/öde; admin siparişi `shipped`/`delivered` yapar; buyer kısmi ve kalan iade talebi gönderir; payment ve stock etkileri API/DB ile doğrulanır.
+- **Regresyon:** Admin'in mevcut kargoya verilmeden önce tam sipariş iptal/iade işlemi, checkout/ödeme/expiry, alıcı sipariş geçmişi ve rol sınırları korunur.
+
+**Çıkış ölçütü:** Uygun alıcı kalem bazında kısmi/tam yerel iade talebini otomatik ve idempotent oluşturur; miktar/audit/ödeme/stok tutarlılığı SQLite, PostgreSQL, component ve gerçek Keycloak E2E testleriyle kanıtlanır. Gerçek para veya taşıyıcı entegrasyonu yoktur.

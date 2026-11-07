@@ -192,14 +192,15 @@ test.describe('REQ-009 cart, REQ-010 checkout, and REQ-012 order lifecycle', () 
       await expect(firstBuyerPage.getByText('Ödeme alındı')).toBeVisible()
       const adminOrders = adminPage.getByRole('region', { name: 'Sipariş yönetimi' })
       await adminOrders.getByRole('button', { name: 'Yenile' }).click()
+      const adminOrder = adminOrders
+        .locator('article')
+        .filter({ hasText: `Sipariş #${createdOrder.id}` })
       await expect(
         adminOrders.getByRole('heading', { name: `Sipariş #${createdOrder.id}` }),
       ).toBeVisible()
-      await adminOrders.getByRole('button', {
-        name: 'Hazırlanıyor aşamasına geçir',
-      }).click()
-      await adminOrders.getByLabel('İptal/iade nedeni').fill('E2E test iade talebi')
-      await adminOrders.getByRole('button', {
+      await adminOrder.getByRole('button', { name: 'Hazırlanıyor aşamasına geçir' }).click()
+      await adminOrder.getByLabel('İptal/iade nedeni').fill('E2E test iade talebi')
+      await adminOrder.getByRole('button', {
         name: 'İptal et ve yerel iade kaydı oluştur',
       }).click()
       await expect(adminOrders.getByText(/yerel iade kaydı oluşturuldu/)).toBeVisible()
@@ -254,6 +255,109 @@ test.describe('REQ-009 cart, REQ-010 checkout, and REQ-012 order lifecycle', () 
           await admin.cleanup()
         } finally {
           await Promise.all([firstBuyerContext.close(), secondBuyerContext.close()])
+        }
+      }
+    }
+  })
+
+  test('buyer can partially and fully return a shipped order within the return window', async ({
+    browser,
+    page: adminPage,
+    request,
+  }) => {
+    test.setTimeout(90_000)
+    const admin = await createKeycloakTestAdmin(request)
+    const buyerContext = await browser.newContext()
+    const buyerPage = await buyerContext.newPage()
+    const buyer = createBuyerCredentials()
+    const product = createTestProduct({ stock: 5, price: '12.50' })
+
+    try {
+      const adminLogin = await login(adminPage, admin.email, admin.password)
+      expect(adminLogin.status()).toBe(200)
+      const createResponse = await createProduct(adminPage, product)
+      expect(createResponse.status()).toBe(201)
+
+      const registration = await registerBuyer(buyerPage, buyer.email, buyer.password)
+      expect(registration.status()).toBe(200)
+      const buyerSubject = (await registration.json()).subject as string
+      await buyerPage.getByRole('button', { name: `Sepete ekle ${product.name}` }).click()
+      await expect(buyerPage.getByRole('button', { name: 'Sepet (1)' })).toHaveAttribute(
+        'aria-expanded',
+        'true',
+      )
+      await buyerPage.getByRole('spinbutton', { name: `Miktar: ${product.name}` }).fill('2')
+      await buyerPage.getByRole('button', { name: 'Miktarı güncelle' }).click()
+      const checkoutResponse = buyerPage.waitForResponse(
+        (response) =>
+          response.url().endsWith('/api/v1/orders') &&
+          response.request().method() === 'POST',
+      )
+      await buyerPage.getByRole('button', { name: 'Siparişi oluştur' }).click()
+      const createdOrderResponse = await checkoutResponse
+      expect(createdOrderResponse.status()).toBe(201)
+      const createdOrder = (await createdOrderResponse.json()) as { id: number }
+      await expect(buyerPage.getByText('Ödeme adımı bekleniyor.')).toBeVisible()
+
+      await buyerPage.getByRole('button', { name: 'Siparişlerim' }).click()
+      await buyerPage.getByRole('button', { name: 'Ödemeye devam et' }).click()
+      await buyerPage.getByRole('link', { name: 'Güvenli test ödeme sayfasına git' }).click()
+      await buyerPage.getByRole('button', { name: 'Test ödemesini başarılı yap' }).click()
+      await buyerPage.goto('/')
+
+      const adminOrders = adminPage.getByRole('region', { name: 'Sipariş yönetimi' })
+      await adminOrders.getByRole('button', { name: 'Yenile' }).click()
+      const adminOrder = adminOrders
+        .locator('article')
+        .filter({ hasText: `Sipariş #${createdOrder.id}` })
+      await expect(adminOrder).toBeVisible()
+      await adminOrder.getByRole('button', { name: 'Hazırlanıyor aşamasına geçir' }).click()
+      await adminOrder.getByRole('button', { name: 'Kargoya verildi aşamasına geçir' }).click()
+      await adminOrder.getByRole('button', { name: 'Teslim edildi aşamasına geçir' }).click()
+
+      await buyerPage.getByRole('button', { name: 'Siparişlerim' }).click()
+      await expect(buyerPage.getByText('Teslim edildi', { exact: true })).toBeVisible()
+      await buyerPage.getByRole('button', { name: `İade et ${product.name}` }).click()
+      await buyerPage.getByLabel('İade nedeni').fill('Ürünün yarısını iade ediyorum')
+      await buyerPage.getByRole('button', { name: 'İade talebini gönder' }).click()
+      await expect(buyerPage.getByText(/İade talebin otomatik onaylandı/)).toBeVisible()
+      await expect(buyerPage.getByText(/1 adet · ₺12,50 · Otomatik onaylandı/)).toBeVisible()
+
+      await buyerPage.getByRole('button', { name: `İade et ${product.name}` }).click()
+      await buyerPage.getByLabel('İade nedeni').fill('Kalan ürünü de iade ediyorum')
+      await buyerPage.getByRole('button', { name: 'İade talebini gönder' }).click()
+      await expect(buyerPage.getByText('Kalan ürünü de iade ediyorum')).toBeVisible()
+      await expect(
+        buyerPage.getByRole('button', { name: `İade et ${product.name}` }),
+      ).toHaveCount(0)
+
+      const adminRefresh = adminPage.waitForResponse(
+        (response) =>
+          response.url().endsWith('/api/v1/admin/orders') &&
+          response.request().method() === 'GET',
+      )
+      await adminOrders.getByRole('button', { name: 'Yenile' }).click()
+      const orders = await (await adminRefresh).json()
+      const returnedOrder = orders.find(
+        (order: {
+          owner_subject: string
+          payment_status: string
+          returns: unknown[]
+        }) =>
+          order.owner_subject === buyerSubject &&
+          order.payment_status === 'refunded' &&
+          order.returns.length === 2,
+      )
+      expect(returnedOrder).toBeDefined()
+    } finally {
+      try {
+        const keycloakAdmin = await createKeycloakAdminClient(request)
+        await keycloakAdmin.deleteUserByEmail(buyer.email)
+      } finally {
+        try {
+          await admin.cleanup()
+        } finally {
+          await buyerContext.close()
         }
       }
     }

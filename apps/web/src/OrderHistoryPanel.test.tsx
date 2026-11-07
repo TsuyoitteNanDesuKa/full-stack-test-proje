@@ -1,11 +1,12 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import OrderHistoryPanel from './OrderHistoryPanel'
-import { createPayment, getMyOrders } from './api'
-import type { CustomerOrder, CustomerPayment } from './api'
+import { createPayment, createProductReturn, getMyOrders } from './api'
+import type { CustomerOrder, CustomerPayment, ProductReturn } from './api'
 
 vi.mock('./api', () => ({
   createPayment: vi.fn(),
+  createProductReturn: vi.fn(),
   getMyOrders: vi.fn(),
 }))
 
@@ -53,6 +54,7 @@ describe('OrderHistoryPanel', () => {
     vi.clearAllMocks()
     vi.mocked(getMyOrders).mockResolvedValue([])
     vi.mocked(createPayment).mockResolvedValue(samplePayment)
+    vi.mocked(createProductReturn).mockReset()
   })
 
   it('loads and displays order snapshots when opened', async () => {
@@ -149,6 +151,84 @@ describe('OrderHistoryPanel', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Ödeme başlatılamadı.')
     expect(screen.getByRole('heading', { name: 'Sipariş #21' })).toBeInTheDocument()
+  })
+
+  it('submits partial and remaining item returns and updates the visible history', async () => {
+    const deliveredOrder: CustomerOrder = {
+      ...sampleOrder,
+      status: 'delivered',
+      history: [
+        ...sampleOrder.history,
+        {
+          action: 'admin_status_changed',
+          from_status: 'shipped',
+          to_status: 'delivered',
+          reason: null,
+          created_at: new Date().toISOString(),
+        },
+      ],
+    }
+    const firstReturn: ProductReturn = {
+      id: 51,
+      order_item_id: 31,
+      product_name: 'Liva krem',
+      quantity: 1,
+      reason: 'Ambalajı hasarlı geldi',
+      status: 'approved',
+      refund_amount: '12.50',
+      created_at: new Date().toISOString(),
+    }
+    const secondReturn: ProductReturn = {
+      ...firstReturn,
+      id: 52,
+      reason: 'Kalan ürünü de iade ediyorum',
+    }
+    vi.mocked(getMyOrders).mockResolvedValue([deliveredOrder])
+    vi.mocked(createProductReturn)
+      .mockResolvedValueOnce(firstReturn)
+      .mockResolvedValueOnce(secondReturn)
+    render(
+      <OrderHistoryPanel
+        latestOrder={null}
+        refreshVersion={0}
+        token="buyer-token"
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Siparişlerim' }))
+    await screen.findByRole('heading', { name: 'Sipariş #21' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'İade et Liva krem' }))
+    fireEvent.change(screen.getByLabelText('İade nedeni'), {
+      target: { value: firstReturn.reason },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'İade talebini gönder' }))
+
+    expect(await screen.findByText(/İade talebin otomatik onaylandı/)).toBeInTheDocument()
+    expect(screen.getByText(/Liva krem · 1 adet · ₺12,50 · Otomatik onaylandı/))
+      .toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'İade et Liva krem' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'İade et Liva krem' }))
+    fireEvent.change(screen.getByLabelText('İade nedeni'), {
+      target: { value: secondReturn.reason },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'İade talebini gönder' }))
+
+    await waitFor(() => expect(createProductReturn).toHaveBeenCalledTimes(2))
+    expect(await screen.findByText('Kalan ürünü de iade ediyorum')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'İade et Liva krem' })).not.toBeInTheDocument()
+    expect(createProductReturn).toHaveBeenCalledTimes(2)
+    expect(createProductReturn).toHaveBeenNthCalledWith(
+      1,
+      'buyer-token',
+      deliveredOrder.id,
+      {
+        order_item_id: 31,
+        quantity: 1,
+        reason: firstReturn.reason,
+      },
+      expect.any(String),
+    )
   })
 
   it('allows retrying a failed order-history request', async () => {

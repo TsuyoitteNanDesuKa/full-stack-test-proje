@@ -425,14 +425,14 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 
 Canlıya çıkış, gerçek PSP/KYC/kargo entegrasyonu veya üretim altyapısı bu projenin hedefi değildir. Yeni dilimler; otomasyonla doğrulanabilir iş kurallarını ve test katmanlarını artıracak şekilde, dış servislere bağımlı olmadan ele alınır.
 
-1. **REQ-013 — Katalog arama, filtreleme ve sıralama (şimdi):** arama, kategori/fiyat filtreleri, kararlı sıralama, filtreli pagination; unit/API/component/Keycloak E2E ve SQLite/PostgreSQL sorgu uyumu.
-2. **REQ-014 — Teslimat sonrası yerel ürün iadesi:** kalem/sipariş durumları, rol sınırları, audit, kısmi/tam iade kararı, stok ve idempotency/transaction testleri; gerçek para iadesi yok.
+1. **REQ-013 — Katalog arama, filtreleme ve sıralama:** Tamamlandı.
+2. **REQ-014 — Teslimat sonrası yerel ürün iadesi (tamamlandı):** Buyer shipped/delivered siparişte 30 gün içinde kalem bazında kısmi/tam miktar için otomatik onaylanan yerel iade talebi açar; ödeme/iade kaydı ve stok tek transaction'da, idempotent uygulanır. Gerçek para/kargo yok.
 3. **REQ-015 — Adres ve teslimat seçenekleri:** doğrulama, seçenek/ücret kuralları ve checkout anı snapshot'ı; gerçek taşıyıcı yok.
 4. **QA-016 — API sözleşme/regresyon otomasyonu:** OpenAPI ve frontend API sözleşmesi drift kontrolleri.
 5. **QA-017 — Erişilebilirlik otomasyonu:** kritik akışlarda axe taraması, klavye ve odak davranışı.
 6. **QA-018 — Performans başlangıç çizgisi:** sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor; release/live ortamı gerektirmez.
 
-REQ-013'ün ayrıntılı kabul kriterleri ve test planı `docs/requirements.md` içinde tutulur.
+REQ-013 ve REQ-014'ün ayrıntılı kabul kriterleri ve test planları `docs/requirements.md` içinde tutulur.
 
 ### Öncelik 8 — REQ-013: Katalog arama, filtreleme ve sıralama
 
@@ -456,6 +456,31 @@ REQ-013'ün ayrıntılı kabul kriterleri ve test planı `docs/requirements.md` 
 - [x] Web/API client filtreleme arayüzü ve component testleri; web coverage %100.
 - [x] PostgreSQL sorgu uyumu 12/12 ve Keycloak E2E 8/8.
 - [x] Backend regresyon/coverage, web coverage/build/lint, Ruff/format ve `git diff --check`.
+
+### Öncelik 9 — REQ-014: Teslimat sonrası yerel ürün iadesi
+
+- **Durum:** Tamamlandı. Backend 259 geçti, 13 atlandı ve coverage %95,85; PostgreSQL testleri 13/13, web 154 test ve %100 coverage, Keycloak E2E 9/9 geçti. Web build/lint başarılı.
+- **Amaç:** Buyer, `shipped` veya `delivered` siparişindeki belirli bir kalemin bir kısmı ya da kalan tamamı için iade kaydı oluşturabilsin. Kurallar sağlanınca talep otomatik onaylanır; gerçek para/kargo işlemi yapılmaz.
+- **Kararlar:** İade penceresi son `shipped`/`delivered` geçişinden itibaren 30 gündür; shipped durumunda son sevk olayı, delivered olduğunda teslim olayı başlangıç kabul edilir. Her kalemin iade edilmiş toplam miktarı satın alınan miktarı aşamaz. Onayda yerel iade tutarı kaydedilir; ödeme `partially_refunded` veya tüm sipariş tutarı iade edildiğinde `refunded` olur. Mevcut ürün stokuna iade miktarı eklenir; silinmiş ürünün ürün snapshot'ı korunur fakat stok geri eklenemez.
+- **Veri/API:** İade kaydı, kalem, miktar, gerekçe, tutar, sahibi, idempotency anahtarı ve zaman; buyer endpoint'i ile istek ve order history yanıtında görünür. Yeni migration, SQLite/PostgreSQL uyumu.
+
+**Test planı / çıkış ölçütleri:**
+
+- **Unit/API:** delivered/shipped uygunluğu; 30 günlük pencere ve sınır anı; buyer sahipliği/rol; kalem ve miktar doğrulaması; kalan miktar; duplicate ve payload uyuşmazlığı; tam/kısmi ödeme iadesi hesaplama.
+- **DB/transaction:** Sipariş/kalem/ödeme/stok aynı transaction'da; eşzamanlı tekrarlar toplam iade miktarını aşamaz; stok sınırında rollback; silinmiş ürün.
+- **Migration:** upgrade/downgrade, ödeme status constraint ve iade tabloları.
+- **Component:** iade formu, yalnızca uygun sipariş/kalemlerde eylem, miktar/gerekçe, loading/error/başarı ve yerel iadenin gerçek para transferi olmadığı metni.
+- **E2E:** gerçek Keycloak buyer checkout/ödeme sonrası sipariş shipped/delivered olur, kısmi/son kalan iade yapar; miktar ve ödeme özeti yenilemede korunur.
+- **Regresyon/kalite:** önceki admin full-order cancellation/refund, checkout/expiry, SQLite/PostgreSQL, coverage, web ve E2E kapıları.
+
+**İlerleme kontrol listesi**
+
+- [x] İade uygunluğu (shipped/delivered), kısmi miktar, otomatik karar, atomik yerel iade/stok ve 30 günlük süre kararlaştırıldı.
+- [x] Gereksinim ve test izlenebilirliği dokümante edildi.
+- [x] Model/migration ve backend endpoint/testleri.
+- [x] Buyer arayüzü ve component/API testleri.
+- [x] PostgreSQL concurrency ve gerçek Keycloak E2E.
+- [x] Tam ilgili regresyon/kalite kapıları.
 
 ### Her incremental dilim için ortak Definition of Done
 
