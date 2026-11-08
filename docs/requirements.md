@@ -816,3 +816,22 @@ Proje canlı kullanıma alınmayacağı için dış sağlayıcı entegrasyonlar�
 **Çıkış ölçütü:** Yetki ve doğrulaması test edilmiş adres defteri ile sabit ücretli yerel teslimat seçenekleri checkout, ödeme ve tarihsel sipariş snapshot'ında tutarlı çalışır; SQLite, PostgreSQL, UI, E2E ve regresyon testleri geçer.
 
 **Test katmanı izlenebilirliği:** `apps/api/tests/test_addresses.py` adres doğrulama/sahiplik, kuruş hassasiyetinde ücret sınırları, checkout ve snapshot davranışını; `apps/api/tests/test_order_migration.py` migration upgrade/downgrade'ını; `apps/api/tests/test_cart_postgres.py` PostgreSQL kısıtı ve snapshot/ödeme toplamını; `apps/api/tests/test_product_returns.py` teslimat bedeli hariç ürün iadesini doğrular. `apps/web/src/AddressBookPanel.test.tsx`, `apps/web/src/CartPanel.test.tsx`, `apps/web/src/App.test.tsx` ve `apps/web/src/api.test.ts` adres, checkout ve istemci davranışlarını kapsar. `apps/web/e2e/cart.spec.ts` gerçek Keycloak ile eşik altı Standart, eşikte Hızlı teslimat, ödeme ve adres değişikliği/silme sonrası snapshot'ı doğrular.
+
+## QA-016 — API sözleşme ve regresyon otomasyonu
+
+- **Durum:** Tamamlandı.
+- **Amaç:** Backend OpenAPI değişikliklerinin ve tanımlanmış frontend API istemcisi uyumsuzluklarının servis başlatmadan yerelde ve CI'da fark edilmesi.
+
+### Kabul kriterleri
+
+1. FastAPI'den deterministik üretilen OpenAPI belgesi sürümlenir; eksik veya güncel olmayan snapshot kontrolü başarısız olur ve güncelleme komutunu gösterir.
+2. Sürümlü belgeden üretilen TypeScript modellerinin güncelliği kontrol edilir. Frontend istek tipleri şemaya; şema yanıt tipleri istemcinin beklediği tiplere strict null kontrolüyle atanabilir olmalıdır.
+3. Mevcut frontend istemci çağrıları için yol, HTTP yöntemi, zorunlu gövde/başlık, bearer kimlik doğrulaması ve kullanılan sorgu parametreleri OpenAPI ile karşılaştırılır. Bilinmeyen yol/yöntem ve eksik idempotency başlığı reddedilir.
+4. Snapshot ve istemci kontrolleri CI backend/frontend işlerinde zorunludur. Kasıtlı değişikliklerde güncelleme adımları dokümante edilir.
+
+### Test izlenebilirliği ve sınırlar
+
+- `apps/api/tests/test_openapi_contract.py`: deterministik çıktı, güncel/eksik snapshot, yol/başlık/yanıt değişikliği.
+- `apps/web/src/api.contract.ts`: istek ve yanıt model eşlemeleri ile negatif tip kontrolleri; `apps/web/src/api.openapi.test.ts`: mevcut 29 istemci çağrısı ve negatif yol/yöntem/başlık kontrolleri.
+- `apps/web/scripts/openapi-contract.mjs`: üretilen model dosyalarını yeniden üretip karşılaştırır; CI komutları `.github/workflows/ci.yml` içindedir.
+- Model eşlemeleri ve çağrı listesi elle güncellenir; yeni fonksiyonları otomatik keşfetmez. Bu kontroller, gövde değerlerini veya canlı API yanıtlarını JSON Schema'ya karşı doğrulamaz, tüm backend endpoint'lerini tüketmez ve var olan API/E2E testlerinin yerine geçmez.

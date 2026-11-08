@@ -11,6 +11,24 @@ Bu proje, çevrimiçi alışveriş uygulamasını Agile yaklaşımla gereksiniml
 - Testleri CI hattında çalıştırmak; rapor, log ve kalite kapılarını değerlendirmek.
 - Teknik ayrıntıları projenin ihtiyacı kadar öğrenmek; gereksiz altyapı karmaşıklığından kaçınmak.
 
+## API sözleşme kontrolü
+
+OpenAPI snapshot'ı ve istemci modelleri sürümlenir; kontroller sunucu, PostgreSQL veya Keycloak gerektirmez:
+
+```powershell
+Set-Location apps/api
+uv run python scripts/openapi_contract.py --check
+uv run pytest tests/test_openapi_contract.py --no-cov
+Set-Location ../web
+npm ci
+npm run contract:check
+npm run test -- src/api.openapi.test.ts
+```
+
+Kasıtlı API değişikliğinde önce `apps/api` içinde `uv run python scripts/openapi_contract.py`, sonra `apps/web` içinde `npm run contract:generate` çalıştırın; üretilen farkları inceleyin ve kontrolleri yeniden çalıştırın. İstemcinin sözleşmeden yararlandığı yeni çağrılar için `api.openapi.test.ts` ve `api.contract.ts` eşlemelerini de güncelleyin.
+
+Bu kontroller şema drift'i, tanımlanmış istemci modellerinin tip uyumu ve test edilen çağrıların yol/yöntem/başlıklarını kontrol eder. Gerçek yanıtların şemaya karşı çalışma zamanı doğrulaması, tüm doğrulama sınırları ve yeni istemci fonksiyonlarının otomatik keşfi kapsamda değildir; API ve E2E testlerinin yerini almaz.
+
 ## Ürün fikri: çevrimiçi alışveriş sitesi
 
 Öğrenme projesi olarak müşterilerin hesaplarıyla giriş yapabildiği, ürünleri inceleyebildiği ve alışveriş yapabildiği bir **çevrimiçi mağaza** geliştirilecektir. Kimlik sağlayıcı Keycloak'tır. İlk kullanıcı yönetimi dilimi alıcıların kendi hesaplarını oluşturarak OIDC ile giriş yapmasıdır.

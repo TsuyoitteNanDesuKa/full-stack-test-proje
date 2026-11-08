@@ -428,11 +428,11 @@ Canlıya çıkış, gerçek PSP/KYC/kargo entegrasyonu veya üretim altyapısı 
 1. **REQ-013 — Katalog arama, filtreleme ve sıralama:** Tamamlandı.
 2. **REQ-014 — Teslimat sonrası yerel ürün iadesi (tamamlandı):** Buyer shipped/delivered siparişte 30 gün içinde kalem bazında kısmi/tam miktar için otomatik onaylanan yerel iade talebi açar; ödeme/iade kaydı ve stok tek transaction'da, idempotent uygulanır. Gerçek para/kargo yok.
 3. **REQ-015 — Adres defteri ve yerel teslimat seçenekleri (tamamlandı):** Buyer çoklu adres CRUD/default; Standart 49,90 TL, Hızlı 89,90 TL; ürün ara toplamı 1.000 TL ve üzerindeyse yalnız Standart ücretsiz. Sipariş adres/ücret snapshot'ı değişmez; gerçek taşıyıcı yok. Ürün iadeleri teslimat ücretini kapsamaz.
-4. **QA-016 — API sözleşme/regresyon otomasyonu (sırada):** OpenAPI ve frontend API sözleşmesi drift kontrolleri.
+4. **QA-016 — API sözleşme/regresyon otomasyonu (tamamlandı):** Sürümlü OpenAPI snapshot, üretilen modeller, istemci tip/yol/yöntem/başlık kontrolleri ve CI.
 5. **QA-017 — Erişilebilirlik otomasyonu:** kritik akışlarda axe taraması, klavye ve odak davranışı.
 6. **QA-018 — Performans başlangıç çizgisi:** sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor; release/live ortamı gerektirmez.
 
-REQ-013, REQ-014 ve REQ-015'in ayrıntılı kabul kriterleri ve test planları `docs/requirements.md` içinde tutulur.
+REQ-013, REQ-014, REQ-015 ve QA-016'nın ayrıntılı kabul kriterleri ve test planları `docs/requirements.md` içinde tutulur.
 
 ### Öncelik 8 — REQ-013: Katalog arama, filtreleme ve sıralama
 

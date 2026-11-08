@@ -18,7 +18,7 @@ export interface Product {
   price: string
   stock: number
   updated_at: string | null
-  can_manage: boolean
+  can_manage?: boolean
 }
 
 export interface ProductListResponse {
@@ -144,7 +144,7 @@ export interface ProductReturn {
   product_name: string
   quantity: number
   reason: string
-  status: 'approved'
+  status: string
   refund_amount: string
   created_at: string
 }
