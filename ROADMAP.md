@@ -429,10 +429,10 @@ Canlıya çıkış, gerçek PSP/KYC/kargo entegrasyonu veya üretim altyapısı 
 2. **REQ-014 — Teslimat sonrası yerel ürün iadesi (tamamlandı):** Buyer shipped/delivered siparişte 30 gün içinde kalem bazında kısmi/tam miktar için otomatik onaylanan yerel iade talebi açar; ödeme/iade kaydı ve stok tek transaction'da, idempotent uygulanır. Gerçek para/kargo yok.
 3. **REQ-015 — Adres defteri ve yerel teslimat seçenekleri (tamamlandı):** Buyer çoklu adres CRUD/default; Standart 49,90 TL, Hızlı 89,90 TL; ürün ara toplamı 1.000 TL ve üzerindeyse yalnız Standart ücretsiz. Sipariş adres/ücret snapshot'ı değişmez; gerçek taşıyıcı yok. Ürün iadeleri teslimat ücretini kapsamaz.
 4. **QA-016 — API sözleşme/regresyon otomasyonu (tamamlandı):** Sürümlü OpenAPI snapshot, üretilen modeller, istemci tip/yol/yöntem/başlık kontrolleri ve CI.
-5. **QA-017 — Erişilebilirlik otomasyonu:** kritik akışlarda axe taraması, klavye ve odak davranışı.
+5. **QA-017 — Erişilebilirlik otomasyonu (tamamlandı):** WCAG 2.1 A/AA axe taramaları, kritik akışlarda klavye sırası ve görünür odak kontrolleri.
 6. **QA-018 — Performans başlangıç çizgisi:** sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor; release/live ortamı gerektirmez.
 
-REQ-013, REQ-014, REQ-015 ve QA-016'nın ayrıntılı kabul kriterleri ve test planları `docs/requirements.md` içinde tutulur.
+REQ-013, REQ-014, REQ-015, QA-016 ve QA-017'nin ayrıntılı kabul kriterleri ve test planları `docs/requirements.md` içinde tutulur.
 
 ### Öncelik 8 — REQ-013: Katalog arama, filtreleme ve sıralama
 
@@ -504,6 +504,14 @@ REQ-013, REQ-014, REQ-015 ve QA-016'nın ayrıntılı kabul kriterleri ve test p
 - [x] Checkout ücret hesabı, sipariş snapshot'ı ve PostgreSQL testleri.
 - [x] Buyer adres defteri/checkout UI ve component/API testleri.
 - [x] Keycloak E2E ve ilgili regresyon/kalite kapıları.
+
+### Öncelik 11 — QA-017: Erişilebilirlik otomasyonu
+
+- **Durum:** Tamamlandı. Kritik buyer/admin bileşenlerinde axe WCAG 2.1 A/AA taramaları, Chromium giriş ekranı kontrast taraması ve klavye/odak testleri geçiyor.
+- **Kapsam:** Ürün formu, adres defteri, sepet/checkout, buyer sipariş geçmişi ve admin sipariş yönetimi. Otomatik taramalar mevcut web test ve Playwright CI işlerinde çalışır.
+- **Çözülen bulgu:** Chromium taraması giriş ekranında WCAG AA metin kontrastını karşılamayan 13 metin öğesi tespit etti; metin renkleri eşiklere göre koyulaştırıldı/açıklaştırıldı ve tarama temiz geçti.
+- **İzlenebilirlik:** `apps/web/src/accessibility.test.tsx` bileşen taramalarını ve klavye sırasını; `apps/web/e2e/accessibility.spec.ts` gerçek tarayıcı kontrastını, giriş eylemlerine klavye erişimini ve görünür focus ring'i doğrular.
+- **Sınırlar:** JSDOM bileşen taramaları renk kontrastı ve gerçek görsel düzeni ölçmez. Tarayıcı taraması giriş ekranıyla sınırlıdır; ekran okuyucu, büyütme/reflow ve manuel erişilebilirlik değerlendirmesi kapsam dışıdır.
 
 ### Her incremental dilim için ortak Definition of Done
 

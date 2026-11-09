@@ -29,6 +29,19 @@ Kasıtlı API değişikliğinde önce `apps/api` içinde `uv run python scripts/
 
 Bu kontroller şema drift'i, tanımlanmış istemci modellerinin tip uyumu ve test edilen çağrıların yol/yöntem/başlıklarını kontrol eder. Gerçek yanıtların şemaya karşı çalışma zamanı doğrulaması, tüm doğrulama sınırları ve yeni istemci fonksiyonlarının otomatik keşfi kapsamda değildir; API ve E2E testlerinin yerini almaz.
 
+## Erişilebilirlik kontrolleri
+
+Kritik buyer/admin arayüzlerinde axe WCAG 2.1 A/AA taraması ve klavye/odak kontrolleri web regresyon paketine dahildir. Tarayıcı gerektiren gerçek giriş ekranı denetimi için:
+
+```powershell
+Set-Location apps/web
+npm ci
+npx playwright install chromium
+npx playwright test e2e/accessibility.spec.ts
+```
+
+Komponent axe taramaları JSDOM'da renk kontrastı ve responsive düzeni değerlendiremez; gerçek Chromium renk kontrastı taraması şu anda giriş ekranını kapsar. Ekran okuyucu ve manuel erişilebilirlik denetimi bu otomasyonun kapsamı dışındadır.
+
 ## Ürün fikri: çevrimiçi alışveriş sitesi
 
 Öğrenme projesi olarak müşterilerin hesaplarıyla giriş yapabildiği, ürünleri inceleyebildiği ve alışveriş yapabildiği bir **çevrimiçi mağaza** geliştirilecektir. Kimlik sağlayıcı Keycloak'tır. İlk kullanıcı yönetimi dilimi alıcıların kendi hesaplarını oluşturarak OIDC ile giriş yapmasıdır.

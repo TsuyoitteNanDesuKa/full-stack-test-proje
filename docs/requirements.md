@@ -712,7 +712,7 @@ Proje canlı kullanıma alınmayacağı için dış sağlayıcı entegrasyonlar�
 2. **REQ-014 — Teslimat sonrası yerel ürün iadesi:** Sipariş/kalem durum makinesi, gerekçeli karar, audit, stok ve idempotency kuralları için ayrı kabul kriterleri oluşturulacak; gerçek para iadesi yapılmayacak.
 3. **REQ-015 — Adres ve teslimat seçeneği snapshot'ı:** Adres doğrulama, seçenek/ücret kuralları ve sipariş anı verisinin korunması test edilecek; gerçek kargo sağlayıcısı bağlanmayacak.
 4. **QA-016 — API sözleşme/regresyon kapısı:** OpenAPI ve istemci beklentilerini CI'da karşılaştıran otomatik kontroller.
-5. **QA-017 — Erişilebilirlik:** Kritik akışlarda otomatik tarama ve klavye odaklı testler.
+5. **QA-017 — Erişilebilirlik:** Tamamlandı; kritik buyer/admin akışlarında otomatik tarama, klavye sırası ve görünür odak testleri.
 6. **QA-018 — Performans başlangıç çizgisi:** Gerçekçi, sınırlı yük profili; ölçülebilir eşikler ve CI dışında tekrarlanabilir rapor.
 
 Önceliği olmayan/şimdilik ertelenenler: gerçek PSP/para transferi, otomatik KYC/KYB ve gerçek kargo sağlayıcısı; e-posta/parola yaşam döngüsü özellikleri ise harici e-posta servisi yerine test edilebilir yerel fake ile ele alınmalıdır.
@@ -835,3 +835,22 @@ Proje canlı kullanıma alınmayacağı için dış sağlayıcı entegrasyonlar�
 - `apps/web/src/api.contract.ts`: istek ve yanıt model eşlemeleri ile negatif tip kontrolleri; `apps/web/src/api.openapi.test.ts`: mevcut 29 istemci çağrısı ve negatif yol/yöntem/başlık kontrolleri.
 - `apps/web/scripts/openapi-contract.mjs`: üretilen model dosyalarını yeniden üretip karşılaştırır; CI komutları `.github/workflows/ci.yml` içindedir.
 - Model eşlemeleri ve çağrı listesi elle güncellenir; yeni fonksiyonları otomatik keşfetmez. Bu kontroller, gövde değerlerini veya canlı API yanıtlarını JSON Schema'ya karşı doğrulamaz, tüm backend endpoint'lerini tüketmez ve var olan API/E2E testlerinin yerine geçmez.
+
+## QA-017 — Erişilebilirlik otomasyonu
+
+- **Durum:** Tamamlandı.
+- **Amaç:** Kritik alışveriş ve yönetim akışlarında otomatik erişilebilirlik bulgularını, klavye ile erişilebilirliği ve odak davranışını regresyon testlerine bağlamak.
+
+### Kabul kriterleri
+
+1. Kritik buyer/admin arayüz durumları axe-core ile WCAG 2.1 A/AA kurallarına göre taranır; ihlaller testleri başarısız kılar.
+2. Gerçek Chromium taramasında giriş ekranındaki WCAG 2.1 A/AA erişilebilirlik ihlalleri sıfırdır.
+3. Giriş ekranı ve kritik form/checkout kontrolleri klavyeyle DOM sırasına uygun gezilebilir; erişilebilir etkileşim açılışında odak tetikleyicide kalır ve tarayıcıda görünür odak göstergesi doğrulanır.
+4. Erişilebilirlik testleri mevcut Vitest/Playwright CI aşamalarında çalışır; kapsam ve otomatik testlerin sınırları belgelenir.
+
+### Test izlenebilirliği ve sınırlar
+
+- `apps/web/src/accessibility.test.tsx`: ürün formu, adres defteri, sepet/checkout, buyer sipariş geçmişi ve admin sipariş yönetimi için axe taramaları; ürün/adres/checkout klavye sırası ve sipariş geçmişi tetikleyici odağı.
+- `apps/web/e2e/accessibility.spec.ts`: Chromium'da giriş ekranı axe WCAG 2.1 A/AA taraması; Tab gezinmesi ve görünür odak halkası.
+- Tarama, giriş ekranında **13 düşük kontrastlı metin öğesi** buldu; `apps/web/src/App.css` renkleri WCAG AA eşiğini sağlayacak şekilde düzeltildi ve tarama sıfır ihlalle geçti.
+- JSDOM taramaları renk kontrastı, responsive reflow ve görsel düzeni değerlendiremez. Tarayıcı axe taraması şimdilik giriş ekranıyla sınırlıdır; ekran okuyucu ve manuel erişilebilirlik denetimi otomatikleştirilmiş değildir.

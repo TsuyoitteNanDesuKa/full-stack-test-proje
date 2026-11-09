@@ -85,7 +85,7 @@
   display: inline-flex;
   align-items: center;
   gap: 9px;
-  color: #d3ddce;
+  color: #e7eee2;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 1.65px;
@@ -123,7 +123,7 @@
 .welcome-copy > p {
   max-width: 330px;
   margin: 0;
-  color: rgb(247 246 239 / 69%);
+  color: #e1e9dd;
   font-size: 13px;
   line-height: 1.8;
 }
@@ -321,7 +321,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: rgb(247 246 239 / 59%);
+  color: #e1e9dd;
   font-size: 10px;
   letter-spacing: 0.25px;
 }
@@ -344,7 +344,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: #858a81;
+  color: #686f65;
   font-size: 10px;
 }
 
@@ -352,7 +352,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #73806d;
+  color: #687360;
   font-size: 8px;
   font-weight: 700;
   letter-spacing: 1px;
@@ -374,7 +374,7 @@
 }
 
 .heading-kicker {
-  color: #86937e;
+  color: #59664f;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 1.55px;
@@ -396,7 +396,7 @@
 
 .form-heading p {
   margin: 0;
-  color: #82877f;
+  color: #646960;
   font-size: 12px;
   line-height: 1.7;
 }
@@ -567,7 +567,7 @@
   align-items: center;
   gap: 12px;
   margin: 29px 0 22px;
-  color: #a1a49c;
+  color: #666a64;
   font-size: 8px;
   font-weight: 600;
   letter-spacing: 1.25px;
@@ -595,20 +595,20 @@
 .privacy-note {
   max-width: 300px;
   margin: 28px auto 0;
-  color: #a5a79f;
+  color: #666a62;
   font-size: 9px;
   line-height: 1.8;
   text-align: center;
 }
 
 .privacy-note a {
-  color: #737d70;
+  color: #687266;
   text-decoration-color: #c9cfc2;
   text-underline-offset: 2px;
 }
 
 .form-footer {
-  color: #a1a49c;
+  color: #666a64;
   font-size: 9px;
 }
 
