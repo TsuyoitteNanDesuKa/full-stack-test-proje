@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 
 const wcag21AA = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
 
-test.describe('QA-017 accessibility', () => {
+test.describe('QA-017 accessibility @smoke', () => {
   test('unauthenticated entry has no WCAG 2.1 A/AA axe violations', async ({ page }) => {
     await page.goto('/')
     await expect(page.getByRole('button', { name: 'Giriş yap' })).toBeVisible()

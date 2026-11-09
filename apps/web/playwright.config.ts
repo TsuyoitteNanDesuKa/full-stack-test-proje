@@ -9,12 +9,29 @@ const databasePath = resolve(
 const databaseUrl = `sqlite:///${databasePath.replaceAll('\\', '/')}`
 const apiPort = 8001
 const webPort = 5174
-const oidcIssuer = process.env.E2E_KEYCLOAK_ISSUER ?? 'http://localhost:8080/realms/shop'
+const oidcPort = 8082
+const keycloakE2EEnabled = process.env.E2E_KEYCLOAK_E2E === '1'
+const oidcIssuer = keycloakE2EEnabled
+  ? process.env.E2E_KEYCLOAK_ISSUER ?? 'http://localhost:8080/realms/shop'
+  : `http://127.0.0.1:${oidcPort}/realms/e2e`
+const oidcJwksUrl =
+  (keycloakE2EEnabled && process.env.E2E_KEYCLOAK_JWKS_URL
+    ? process.env.E2E_KEYCLOAK_JWKS_URL
+    : undefined) ??
+  `${oidcIssuer}/protocol/openid-connect/certs`
+
+if (
+  !keycloakE2EEnabled &&
+  (!process.env.E2E_TEST_PRIVATE_KEY_PATH || !process.env.E2E_TEST_PUBLIC_JWK)
+) {
+  throw new Error('Run E2E through npm run test:e2e to create the isolated test identity key.')
+}
 
 const sharedEnvironment = {
   SHOP_DATABASE_URL: databaseUrl,
   SHOP_OIDC_ISSUER: oidcIssuer,
   SHOP_OIDC_AUDIENCE: 'shop-api',
+  SHOP_OIDC_JWKS_URL: oidcJwksUrl,
   E2E_DATABASE_PATH: databasePath,
 }
 
@@ -43,6 +60,20 @@ export default defineConfig({
     },
   ],
   webServer: [
+    ...(!keycloakE2EEnabled
+      ? [
+          {
+            command: 'node e2e/start-test-identity.mjs',
+            url: oidcJwksUrl,
+            reuseExistingServer: false,
+            timeout: 30_000,
+            env: {
+              E2E_TEST_PUBLIC_JWK: process.env.E2E_TEST_PUBLIC_JWK,
+              E2E_OIDC_PORT: String(oidcPort),
+            },
+          },
+        ]
+      : []),
     {
       command: 'node e2e/start-api.mjs',
       url: `http://127.0.0.1:${apiPort}/openapi.json`,

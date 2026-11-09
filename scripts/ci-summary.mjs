@@ -76,6 +76,7 @@ const [
   postgresTests,
   frontendTests,
   e2eTests,
+  keycloakE2eTests,
   backendCoverage,
   frontendCoverage,
 ] =
@@ -84,10 +85,12 @@ const [
     readTestCounts('artifacts/postgres/postgres-junit.xml'),
     readTestCounts('artifacts/frontend/test-results/frontend-junit.xml'),
     readTestCounts('artifacts/e2e/e2e-junit.xml'),
+    readTestCounts('artifacts/keycloak-e2e/e2e-junit.xml'),
     readJson('artifacts/backend/backend-coverage.json'),
     readJson('artifacts/frontend/coverage/coverage-summary.json'),
   ])
 
+const keycloakE2eRequired = process.env.KEYCLOAK_E2E_REQUIRED === 'true'
 const stages = [
   {
     name: 'Backend',
@@ -115,11 +118,19 @@ const stages = [
     scope: '`Vitest`: API client, login/catalog, and admin product creation; coverage measured for `src/App.tsx`, `src/api.ts`, and `src/ProductCreatePage.tsx`',
   },
   {
-    name: 'Browser E2E',
+    name: 'Browser smoke E2E',
     result: process.env.E2E_RESULT,
     tests: e2eTests,
     coverage: 'Behavioral scenarios; source coverage is not measured by E2E',
-    scope: '`Playwright` Chromium: customer login/catalog, admin login/product creation, authorization, and invalid credentials; REQ-001/REQ-002/REQ-003',
+    scope: '`Playwright --grep @smoke`: deterministic checkout and browser accessibility; every pull request',
+  },
+  {
+    name: 'Keycloak E2E',
+    result: process.env.KEYCLOAK_E2E_RESULT,
+    tests: keycloakE2eTests,
+    optional: !keycloakE2eRequired,
+    coverage: 'Behavioral scenarios; source coverage is not measured by E2E',
+    scope: '`Playwright --grep @keycloak`: real Keycloak login/registration, roles, cart/checkout, and seller provisioning; nightly and manual runs',
   },
 ]
 
@@ -128,12 +139,13 @@ const totalTests = reportedStages.reduce((total, stage) => total + stage.tests.t
 const totalPassed = reportedStages.reduce((total, stage) => total + stage.tests.passed, 0)
 const totalFailed = reportedStages.reduce((total, stage) => total + stage.tests.failed, 0)
 const totalSkipped = reportedStages.reduce((total, stage) => total + stage.tests.skipped, 0)
+const requiredStages = stages.filter((stage) => !stage.optional)
 const reportsComplete =
-  stages.every((stage) => stage.tests !== null) &&
+  requiredStages.every((stage) => stage.tests !== null) &&
   backendCoverage !== null &&
   frontendCoverage !== null
 const allStagesPassed =
-  stages.every((stage) => stage.result === 'success') && reportsComplete
+  requiredStages.every((stage) => stage.result === 'success') && reportsComplete
 
 const summary = [
   '# CI test report',
@@ -164,7 +176,7 @@ const summary = [
   '- Backend job includes Ruff lint and format checks.',
   '- PostgreSQL job runs separately against a disposable, dedicated test database.',
   '- Frontend job includes Oxlint, TypeScript validation, and a production build.',
-  '- Browser E2E runs against the isolated API/database and records Playwright traces on failure.',
+  '- Browser smoke E2E runs against the isolated API/database on every pull request; comprehensive Keycloak E2E runs nightly and by manual dispatch.',
   '- Download the run artifacts for detailed HTML coverage reports, JUnit XML results, and browser diagnostics.',
   '',
 ].join('\n')

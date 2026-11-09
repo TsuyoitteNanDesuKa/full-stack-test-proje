@@ -68,7 +68,7 @@ async function loginAsBuyer(page: Page, email: string, password: string): Promis
   return identityResponsePromise
 }
 
-test.describe('REQ-001 authentication and REQ-006 buyer registration', () => {
+test.describe('REQ-001 authentication and REQ-006 buyer registration @keycloak', () => {
   test.skip(
     !keycloakE2EEnabled,
     'Set E2E_KEYCLOAK_E2E=1 and start the local Keycloak realm to run these tests.',

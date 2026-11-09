@@ -7,6 +7,8 @@ from conftest import create_test_token
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 
+pytestmark = [pytest.mark.smoke, pytest.mark.security]
+
 
 def test_current_user_returns_keycloak_identity_and_buyer_role(client: TestClient) -> None:
     token = create_test_token(client, subject="keycloak-buyer-123")

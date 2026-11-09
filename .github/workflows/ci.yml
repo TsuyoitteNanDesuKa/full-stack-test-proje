@@ -3,6 +3,8 @@ name: CI
 on:
   push:
   pull_request:
+  schedule:
+    - cron: "0 2 * * *"
   workflow_dispatch:
 
 permissions:
@@ -208,13 +210,98 @@ jobs:
       - name: Run browser tests
         if: ${{ !cancelled() && steps.browser.outcome == 'success' }}
         working-directory: apps/web
-        run: npm run test:e2e
+        run: npm run test:e2e:smoke
 
       - name: Upload Playwright report and traces
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: e2e-reports
+          path: apps/web/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  keycloak-e2e:
+    name: Comprehensive Keycloak E2E
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install frontend dependencies
+        id: frontend-dependencies
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Install backend dependencies
+        id: backend-dependencies
+        if: ${{ !cancelled() && steps.frontend-dependencies.outcome == 'success' }}
+        working-directory: apps/api
+        run: uv sync --locked
+
+      - name: Install Chromium and system dependencies
+        id: browser
+        if: ${{ !cancelled() && steps.backend-dependencies.outcome == 'success' }}
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Start isolated Keycloak test realm
+        id: keycloak-service
+        if: ${{ !cancelled() && steps.browser.outcome == 'success' }}
+        env:
+          KEYCLOAK_ADMIN_USERNAME: admin
+          KEYCLOAK_ADMIN_PASSWORD: qa-020-ephemeral-ci-only
+        run: |
+          docker compose up -d keycloak
+          for attempt in {1..60}; do
+            if curl --fail --silent \
+              http://localhost:8080/realms/shop/.well-known/openid-configuration \
+              > /dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose logs keycloak
+          echo "Keycloak test realm did not become ready."
+          exit 1
+
+      - name: Configure ephemeral seller-role provisioner
+        id: configure-keycloak
+        if: ${{ !cancelled() && steps.keycloak-service.outcome == 'success' }}
+        working-directory: apps/web
+        env:
+          E2E_KEYCLOAK_ADMIN_USERNAME: admin
+          E2E_KEYCLOAK_ADMIN_PASSWORD: qa-020-ephemeral-ci-only
+        run: node e2e/configure-ci-keycloak.mjs
+
+      - name: Run Keycloak browser tests
+        if: ${{ !cancelled() && steps.configure-keycloak.outcome == 'success' }}
+        working-directory: apps/web
+        env:
+          CI: "true"
+          E2E_KEYCLOAK_E2E: "1"
+          E2E_KEYCLOAK_ADMIN_USERNAME: admin
+          E2E_KEYCLOAK_ADMIN_PASSWORD: qa-020-ephemeral-ci-only
+        run: npm run test:e2e:keycloak
+
+      - name: Upload Keycloak E2E report and traces
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: keycloak-e2e-reports
           path: apps/web/test-results/
           if-no-files-found: ignore
           retention-days: 14
@@ -227,6 +314,7 @@ jobs:
       - postgres
       - frontend
       - e2e
+      - keycloak-e2e
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -269,6 +357,14 @@ jobs:
           name: e2e-reports
           path: artifacts/e2e
 
+      - name: Download Keycloak browser test reports
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: keycloak-e2e-reports
+          path: artifacts/keycloak-e2e
+
       - name: Write unified workflow summary
         if: ${{ always() }}
         env:
@@ -276,6 +372,8 @@ jobs:
           POSTGRES_RESULT: ${{ needs.postgres.result }}
           FRONTEND_RESULT: ${{ needs.frontend.result }}
           E2E_RESULT: ${{ needs.e2e.result }}
+          KEYCLOAK_E2E_RESULT: ${{ needs.keycloak-e2e.result }}
+          KEYCLOAK_E2E_REQUIRED: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
         run: node scripts/ci-summary.mjs
 
       - name: Fail the workflow if any quality stage failed
@@ -285,11 +383,18 @@ jobs:
           POSTGRES_RESULT: ${{ needs.postgres.result }}
           FRONTEND_RESULT: ${{ needs.frontend.result }}
           E2E_RESULT: ${{ needs.e2e.result }}
+          KEYCLOAK_E2E_RESULT: ${{ needs.keycloak-e2e.result }}
+          KEYCLOAK_E2E_REQUIRED: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
         run: |
           if [[ "$BACKEND_RESULT" != "success" || \
                 "$POSTGRES_RESULT" != "success" || \
                 "$FRONTEND_RESULT" != "success" || \
                 "$E2E_RESULT" != "success" ]]; then
             echo "At least one quality stage did not pass."
+            exit 1
+          fi
+          if [[ "$KEYCLOAK_E2E_REQUIRED" == "true" && \
+                "$KEYCLOAK_E2E_RESULT" != "success" ]]; then
+            echo "The required comprehensive Keycloak E2E stage did not pass."
             exit 1
           fi

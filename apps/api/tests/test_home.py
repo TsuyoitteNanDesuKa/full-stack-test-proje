@@ -2,6 +2,8 @@ import pytest
 from conftest import create_test_token
 from fastapi.testclient import TestClient
 
+pytestmark = pytest.mark.smoke
+
 
 def test_home_returns_storefront_for_registered_keycloak_buyer(client: TestClient) -> None:
     token = create_test_token(client, subject="registered-keycloak-user")

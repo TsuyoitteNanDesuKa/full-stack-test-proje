@@ -33,7 +33,16 @@ packages = ["src/shop_api"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-markers = ["postgres: integration tests requiring a dedicated PostgreSQL test database"]
+addopts = "--strict-markers"
+markers = [
+    "smoke: fast checks for critical behavior, suitable for every pull request",
+    "regression: application regression tests, run on every pull request",
+    "integration: tests crossing application and infrastructure boundaries",
+    "security: authentication, authorization, and security behavior",
+    "postgres: integration tests requiring a dedicated PostgreSQL test database",
+    "keycloak: tests requiring a live Keycloak realm",
+    "performance: load or performance checks, not part of the pull-request gate",
+]
 
 [tool.coverage.run]
 branch = true

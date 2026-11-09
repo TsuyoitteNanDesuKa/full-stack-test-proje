@@ -116,18 +116,27 @@ npm run dev
 
 `http://localhost:5173` adresinde **Giriş yap** veya **Alıcı hesabı oluştur** seçilebilir. Uygulama parolayı almaz; Keycloak oturumundan dönen token'ı API'ye gönderir. Keycloak admin konsolu `http://localhost:8080/admin` adresindedir. İlk admin ve sonraki admin rol atama/geri alma işlemleri yalnızca güvenilir operatör tarafından bu konsoldan yapılır; uygulama içinde admin yönetim ekranı/API'si yoktur. Admin rolünü kaldırmadan veya hesabı kapatmadan önce başka etkin admin bulunduğunu doğrulayın; Keycloak bunu otomatik engellemez, break-glass operatör erişimini koruyun. API dokümantasyonu `http://127.0.0.1:8000/docs` adresindedir. Ayrıntılar [backend README](./apps/api/README.md) ve [web README](./apps/web/README.md) içindedir.
 
-### Keycloak kayıt ve ürün CRUD E2E testleri
+### Playwright E2E testleri
 
-Keycloak realm'ini başlatıp yerel bootstrap admin parolasını test sürecine verin. Değeri kaynak koda veya bu belgeye yazmayın:
+Her PR'da `smoke` Playwright grubu Chromium, gerçek API ve geçici SQLite kullanır; ephemeral test OIDC anahtarı/JWKS sağlayıcısı sayesinde Keycloak veya parola gerektirmez:
 
 ```powershell
-$env:E2E_KEYCLOAK_E2E = "1"
-$env:E2E_KEYCLOAK_ADMIN_PASSWORD = Read-Host -Prompt "Local Keycloak bootstrap password"
 Set-Location apps/web
-npm run test:e2e
+npm run test:e2e:smoke
 ```
 
-Playwright testleri gerçek Keycloak kayıt/giriş ekranını kullanır; admin CRUD ve satıcı başvuru E2E'leri geçici test hesapları oluşturup temizler. Satıcı akışı için API service-account secret'ı ve yerel Keycloak realm rol eşlemeleri de yapılandırılmış olmalıdır. E2E ürün veritabanı izole geçici SQLite dosyasıdır; uygulama geliştirme veritabanı PostgreSQL'dir. Keycloak E2E testleri varsayılan olarak atlanır; yalnızca yerel test realm'i çalışırken açıkça etkinleştirilmelidir.
+Gerçek Keycloak kapsamlı senaryoları CI'da her gece 02:00 UTC'de ve `workflow_dispatch` ile ephemeral realm üzerinde çalışır. Yerelde çalıştırmak için Keycloak realm'ini başlatıp bootstrap admin parolasını test sürecine verin. Değeri kaynak koda veya bu belgeye yazmayın:
+
+```powershell
+Set-Location apps/web
+$env:E2E_KEYCLOAK_E2E = "1"
+$env:E2E_KEYCLOAK_ADMIN_PASSWORD = Read-Host -Prompt "Local Keycloak bootstrap password"
+npm run test:e2e:keycloak
+```
+
+Vitest smoke testi `npm run test:smoke`, tüm frontend regresyon testleri `npm test` veya `npm run test:coverage`; backend smoke `uv run pytest -m smoke`, tüm SQLite regresyonları `uv run pytest`, PostgreSQL entegrasyonları `uv run pytest -m postgres tests/test_cart_postgres.py` ile seçilir. Yeni testler için marker/tag ve çalışma politikası [gereksinim dokümanında](./docs/requirements.md#qa-020-test-sınıflandırması-ve-çalışma-sıklığı) açıklanmıştır.
+
+Deterministik QA-019 senaryosu buyer ürün görüntüleme, sepet, adres, checkout ve mock ödeme akışını doğrular; buyer'ın ürün oluşturma girişimi reddedilir. Keycloak E2E'leri kayıt/giriş ve realm rol yönetimi testlerini içerir; admin CRUD/satıcı başvurusu geçici test hesapları kullanır. Satıcı akışı için API service-account secret'ı ve yerel realm rol eşlemeleri gerekir. Her iki kip de E2E'ye özel geçici SQLite veritabanını kullanır.
 
 ## Önerilen teknoloji seti
 

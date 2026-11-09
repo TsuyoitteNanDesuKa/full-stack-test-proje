@@ -715,13 +715,14 @@ Proje canlı kullanıma alınmayacağı için dış sağlayıcı entegrasyonlar�
 5. **QA-017 — Erişilebilirlik:** Tamamlandı; kritik buyer/admin akışlarında otomatik tarama, klavye sırası ve görünür odak testleri.
 6. **QA-018 — PostgreSQL testlerinin CI'a eklenmesi:** Tamamlandı; PostgreSQL 17 migration ve entegrasyon testleri SQLite regresyonundan bağımsız çalışır.
 7. **QA-019 — CI'da deterministik E2E:** PR'larda harici/koşullu Keycloak gerektirmeyen kritik kullanıcı akışları.
-8. **QA-020 — Coverage kapsamının netleştirilmesi:** Frontend coverage ölçümünü ve rapor kapsamını kritik UI akışlarıyla hizalama.
-9. **QA-021 — API yanıt sözleşmesi doğrulaması:** Temsilî API yanıtlarını OpenAPI/JSON Schema'ya karşı doğrulama.
-10. **QA-022 — Tarayıcıda erişilebilirlik kapsamı:** Giriş ekranı dışındaki kritik akışlarda gerçek tarayıcı axe taramaları.
-11. **QA-023 — Bağımlılık güvenlik kapıları:** Frontend/backend bağımlılık taraması ve CI başarısızlık politikası.
-12. **QA-024 — Performans başlangıç çizgisi (en son):** Sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor.
+8. **QA-020 — Test sınıflandırması ve çalışma sıklığı (tamamlandı):** Pytest/Playwright etiketleri, PR smoke ve nightly/elle tetiklenen Keycloak E2E ayrımı, unified raporlama.
+9. **QA-021 — Coverage kapsamının netleştirilmesi:** Frontend coverage ölçümünü ve rapor kapsamını kritik UI akışlarıyla hizalama.
+10. **QA-022 — API yanıt sözleşmesi doğrulaması:** Temsilî API yanıtlarını OpenAPI/JSON Schema'ya karşı doğrulama.
+11. **QA-023 — Tarayıcıda erişilebilirlik kapsamı:** Giriş ekranı dışındaki kritik akışlarda gerçek tarayıcı axe taramaları.
+12. **QA-024 — Bağımlılık güvenlik kapıları:** Frontend/backend bağımlılık taraması ve CI başarısızlık politikası.
+13. **QA-025 — Performans başlangıç çizgisi (en son):** Sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor.
 
-REQ-013–015 ve QA-016–018 kabul kriterleri bu belgede tanımlanmıştır. QA-019–024 ayrıntılı kabul kriterleri geliştirmeye başlanırken oluşturulacaktır. Performans aşaması özellikle en sona bırakılmıştır.
+REQ-013–015 ve QA-016–020 kabul kriterleri bu belgede tanımlanmıştır. QA-021–025 ayrıntılı kabul kriterleri geliştirmeye başlanırken oluşturulacaktır. Performans aşaması özellikle en sona bırakılmıştır.
 
 Önceliği olmayan/şimdilik ertelenenler: gerçek PSP/para transferi, otomatik KYC/KYB ve gerçek kargo sağlayıcısı; e-posta/parola yaşam döngüsü özellikleri ise harici e-posta servisi yerine test edilebilir yerel fake ile ele alınmalıdır.
 
@@ -881,3 +882,63 @@ REQ-013–015 ve QA-016–018 kabul kriterleri bu belgede tanımlanmıştır. QA
 - `apps/api/tests/test_cart_postgres.py`: PostgreSQL ürün filtreleme, cart constraint/stock/concurrency, checkout yarışları ve idempotency, webhook/refund/return/expiry, adres-default ve sipariş snapshot/ödeme toplamı.
 - `apps/api/tests/test_cart_postgres.py::postgres_engine`: URL'in PostgreSQL backend'i ve `_test` suffix'i için koruma; test başına yalnız uygulama tabloları truncate edilir.
 - `scripts/ci-summary.mjs`: PostgreSQL raporunu diğer SQLite/backend, frontend ve browser aşamalarından ayrı gösterir; `report` işi PostgreSQL başarısızlığı ya da rapor eksikliğinde workflow'u başarısız yapar.
+
+## QA-019 — CI'da deterministik E2E
+
+- **Durum:** Tamamlandı.
+- **Amaç:** Kritik browser akışlarının PR CI'da yerel Keycloak, dış servis, geliştirici hesabı veya koşullu ortam hazırlığı gerektirmeden gerçek API ve izole veritabanı üzerinde tekrarlanabilir biçimde çalışması.
+
+### Kabul kriterleri
+
+1. Varsayılan Playwright/CI koşusu yerel, yalnız test amaçlı OIDC JWKS sağlayıcısı ve her koşuda üretilen geçici RSA anahtarı kullanır; Keycloak'a veya test parolasına ihtiyaç duymaz.
+2. E2E API'si yalnız yeni oluşturulan geçici SQLite veritabanına bağlanır. Üretim veya geliştirici veritabanı, kalıcı Keycloak realm'i ve harici servis kullanılmaz.
+3. En az bir kritik buyer senaryosu gerçek Chromium, web istemcisi ve API üzerinden ürün görüntüleme, sepet, adres/checkout ve mock ödeme tamamlanmasını doğrular. Buyer'ın admin ürün oluşturma girişimi `403` alır.
+4. Gerçek Keycloak kayıt/giriş/rol E2E'leri korunur ve yalnızca açıkça `E2E_KEYCLOAK_E2E=1` ile çalıştırılır; deterministik test sağlayıcısıyla karıştırılmaz.
+5. Playwright raporları/başarısızlık izleri CI'da yayımlanır; E2E başarısızlığı unified raporu ve workflow'u başarısız kılar.
+
+### Test izlenebilirliği ve sınırlar
+
+- `apps/web/e2e/qa-019-deterministic.spec.ts`: Chromium'da admin tarafından test ürünü kurulumu, buyer katalog/sepet/adres/checkout/mock ödeme akışı ve buyer admin-yetkili ürün oluşturma reddi.
+- `apps/web/e2e/deterministicAuth.ts`: OIDC session'ı test tarayıcısına kurar ve ephemeral anahtarla issuer/audience/rol claim'leri doğrulanabilir erişim token'ı imzalar.
+- `apps/web/e2e/start-test-identity.mjs`: yalnız public test anahtarını JWKS olarak sunar; `apps/web/playwright.config.ts` varsayılan E2E'de bunu API'ye ve Vite istemcisine bağlar.
+- Gerçek Keycloak testleri ayrıca kayıt/giriş sayfalarını ve realm rol işlemlerini doğrular; deterministik test sağlayıcısı Keycloak'ın protokol/arayüz uygunluk testi değildir ve gerçek kullanıcı parolası işlemez.
+
+## QA-020 — Test sınıflandırması ve çalışma sıklığı
+
+- **Durum:** Tamamlandı.
+- **Amaç:** Hızlı PR geri bildirimi ve kapsamlı, daha yavaş servis/browser testlerini ayrı tetikleyip görünür raporlamak.
+
+### Kategori sözlüğü ve politika
+
+| Etiket | Kapsam | Çalışma sıklığı |
+|---|---|---|
+| `smoke` | Hızlı, kritik davranış/alışveriş yolu | Her PR; yerelde seçilebilir |
+| `regression` | Olağan backend/frontend regresyonu | Her PR; Pytest kategorisi belirtilmeyen testlere varsayılan |
+| `integration` | Uygulama ile DB/altyapı sınırları | Her PR; PostgreSQL ayrı job |
+| `e2e` | Browser üzerinden tam kullanıcı yolu | Smoke E2E her PR; kapsamlı paket ayrıca |
+| `security` | Kimlik doğrulama, yetkilendirme ve güvenlik kuralları | Her PR'da ilgili regression; ileride kapsamlı taramalar ayrıca |
+| `keycloak` | Gerçek Keycloak realm/OIDC/rol entegrasyonu | Nightly (02:00 UTC) ve elle `workflow_dispatch`; PR'da çalışmaz |
+| `performance` | Yük/performans ölçümleri | QA-025'te tanımlanacak; PR kapısı değildir |
+
+Kategoriler örtüşebilir. PostgreSQL testleri `integration` ve `postgres`; Playwright smoke senaryosu hem `e2e` hem `@smoke`'tır. Pytest'te strict marker kontrolü açıktır; `smoke`, `integration`, `security`, `keycloak` veya `performance` almamış yeni testler otomatik `regression` sınıfına girer.
+
+### Kabul kriterleri
+
+1. Pytest marker sözlüğü strict-marker denetimiyle tanımlıdır; `pytest -m smoke` seçimi smoke testlerini, varsayılan tam koşu regresyonları içerir.
+2. Vitest smoke testi `@smoke` ad etiketiyle `npm run test:smoke` üzerinden seçilebilir; tam `npm test`/coverage koşusu PR regression kapısıdır.
+3. Playwright `@smoke` ve `@keycloak` etiketleri ayrı npm komutlarıyla seçilir; runner komut argümanlarını Playwright'a geçirir.
+4. Her push/PR'da backend, PostgreSQL, frontend regression ve browser smoke testleri zorunludur. `@keycloak` testleri ephemeral realm'de yalnız nightly/elle çalışır.
+5. Nightly/manual Keycloak job'ı realm import/readiness, geçici admin ve seller role-provisioner ayarını yapar; gerçek hesap veya kalıcı secret kullanmaz.
+6. Unified rapor kategorileri ayrı gösterir. PR'da Keycloak job'ı optional/skipped; nightly/manual koşusunda required'dır. Required job/report hatası workflow'u başarısız kılar.
+7. Test kategorileri, yerel komutlar ve yeni test ekleme kuralları bu dokümanda ve README'lerde açıklanır.
+
+### Test izlenebilirliği ve sınırlar
+
+- `apps/api/pyproject.toml`, `apps/api/tests/conftest.py`: Pytest strict marker sözlüğü, varsayılan regression etiketi ve PostgreSQL → integration eşlemesi.
+- `apps/api/tests/test_auth.py`, `apps/api/tests/test_home.py`, `apps/api/tests/test_security.py`: smoke ve security test örnekleri.
+- `apps/web/package.json`, `apps/web/src/App.test.tsx`: Vitest `@smoke` seçimi; diğer component/API testleri tam PR regresyon paketinde.
+- `apps/web/e2e/*.spec.ts`, `apps/web/playwright.config.ts`, `apps/web/e2e/run-playwright.mjs`: Playwright `@smoke`/`@keycloak` seçimi ve izole çalıştırma.
+- `.github/workflows/ci.yml`: PR smoke/regression kapıları, 02:00 UTC schedule, manuel tam koşu ve ephemeral Keycloak servisi.
+- `apps/web/e2e/configure-ci-keycloak.mjs`: yalnız geçici realm için service-account yetkisi/credential hazırlığı; secret loglanmaz, CI maskesine alınır.
+- `scripts/ci-summary.mjs`: PR'da opsiyonel, nightly/manual'da zorunlu Keycloak durumunu ve ayrı JUnit sayımını raporlar.
+- Gerçek GitHub Actions runner'ındaki Keycloak image/realm import davranışı ilk nightly/manual çalışmada doğrulanmalıdır. Zamanlanmış GitHub Actions koşusu varsayılan branch üzerinde çalışır.

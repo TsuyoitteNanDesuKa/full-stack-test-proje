@@ -431,14 +431,15 @@ Canlıya çıkış, gerçek PSP/KYC/kargo entegrasyonu veya üretim altyapısı 
 4. **QA-016 — API sözleşme/regresyon otomasyonu (tamamlandı):** Sürümlü OpenAPI snapshot, üretilen modeller, istemci tip/yol/yöntem/başlık kontrolleri ve CI.
 5. **QA-017 — Erişilebilirlik otomasyonu (tamamlandı):** WCAG 2.1 A/AA axe taramaları, kritik akışlarda klavye sırası ve görünür odak kontrolleri.
 6. **QA-018 — PostgreSQL testlerinin CI'a eklenmesi (tamamlandı):** CI'da izole PostgreSQL 17 servisi, yalnızca `shop_test` veritabanı ve migration/entegrasyon testleri; SQLite testlerinden bağımsız kalite kapısı.
-7. **QA-019 — CI'da deterministik E2E:** PR'larda harici/koşullu Keycloak gerektirmeyen, izole test kimlik sağlayıcısı veya test doubles kullanan tekrarlanabilir kritik kullanıcı akışları; gerçek Keycloak E2E ayrıca korunur.
-8. **QA-020 — Coverage kapsamının netleştirilmesi:** frontend coverage ölçümünü kritik UI ve akış modüllerine genişletmek veya raporlamayı seçili dosyalar olarak açıkça sınırlamak; eşikler ve rapor doğru kapsamı göstermeli.
-9. **QA-021 — API yanıt sözleşmesi doğrulaması:** temsilî API yanıtlarını sürümlü OpenAPI/JSON Schema'ya karşı doğrulamak; istemci tip/yol kontrollerini tamamlamak.
-10. **QA-022 — Tarayıcıda erişilebilirlik kapsamı:** giriş ekranı dışındaki kritik buyer/admin akışlarını Chromium axe ile taramak; kontrast ve görsel davranışı tarayıcıda doğrulamak.
-11. **QA-023 — Bağımlılık güvenlik kapıları:** frontend/backend bağımlılık taramasını CI'da tekrarlanabilir biçimde çalıştırmak, bulgular için anlaşılır rapor ve başarısızlık politikası belirlemek.
-12. **QA-024 — Performans başlangıç çizgisi (en son):** sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor; release/live ortamı gerektirmez.
+7. **QA-019 — CI'da deterministik E2E (tamamlandı):** PR'larda yerel test JWKS sağlayıcısı ve ephemeral RSA anahtarıyla Keycloak/harici servis gerektirmeyen gerçek API+SQLite buyer checkout/mock ödeme akışı; gerçek Keycloak E2E ayrıca korunur.
+8. **QA-020 — Test sınıflandırması ve çalışma sıklığı (tamamlandı):** Pytest marker'ları ve Playwright tag'leri; PR'da regresyon + smoke, nightly/elle tetiklenen kapsamlı Keycloak E2E ve raporlama.
+9. **QA-021 — Coverage kapsamının netleştirilmesi:** frontend coverage ölçümünü kritik UI ve akış modüllerine genişletmek veya raporlamayı seçili dosyalar olarak açıkça sınırlamak; eşikler ve rapor doğru kapsamı göstermeli.
+10. **QA-022 — API yanıt sözleşmesi doğrulaması:** temsilî API yanıtlarını sürümlü OpenAPI/JSON Schema'ya karşı doğrulamak; istemci tip/yol kontrollerini tamamlamak.
+11. **QA-023 — Tarayıcıda erişilebilirlik kapsamı:** giriş ekranı dışındaki kritik buyer/admin akışlarını Chromium axe ile taramak; kontrast ve görsel davranışı tarayıcıda doğrulamak.
+12. **QA-024 — Bağımlılık güvenlik kapıları:** frontend/backend bağımlılık taramasını CI'da tekrarlanabilir biçimde çalıştırmak, bulgular için anlaşılır rapor ve başarısızlık politikası belirlemek.
+13. **QA-025 — Performans başlangıç çizgisi (en son):** sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor; release/live ortamı gerektirmez.
 
-REQ-013, REQ-014, REQ-015, QA-016, QA-017 ve QA-018'in kabul kriterleri `docs/requirements.md` içinde tutulur. QA-019–QA-024 sıradaki çalışma dilimleridir; her madde geliştirmeye başlamadan önce test edilebilir kabul kriterleri ve test izlenebilirliğiyle ayrıntılandırılacaktır.
+REQ-013, REQ-014, REQ-015 ve QA-016–QA-020'nin kabul kriterleri `docs/requirements.md` içinde tutulur. Sıradaki maddeler QA-021–QA-025'tir; performans QA-025 olarak en sonda kalır.
 
 ### Öncelik 8 — REQ-013: Katalog arama, filtreleme ve sıralama
 
@@ -525,6 +526,28 @@ REQ-013, REQ-014, REQ-015, QA-016, QA-017 ve QA-018'in kabul kriterleri `docs/re
 - **Kapsam:** PostgreSQL servisi her workflow koşusunda ephemeral'dır. `SHOP_TEST_DATABASE_URL` yalnız `shop_test` veritabanını hedefler ve uygulama migration'ları ile PostgreSQL işaretli testler bu veritabanında çalışır. Mevcut SQLite backend testi bağımsız kalır.
 - **Test izlenebilirliği:** `apps/api/tests/test_cart_postgres.py` ürün filtreleri, cart constraints/concurrency, checkout/stock yarışı, ödeme webhook/idempotency, admin refund, return, expiry ve address/checkout snapshot davranışını kapsar.
 - **Raporlama:** PostgreSQL JUnit XML artefaktı 14 gün saklanır; `scripts/ci-summary.mjs` ayrı PostgreSQL kalite aşamasını ve test sayısını raporlar.
+
+### Öncelik 13 — QA-019: CI'da deterministik E2E
+
+- **Durum:** Tamamlandı. Varsayılan Playwright koşusu test-only JWKS sağlayıcısı ve her koşuda üretilen RSA anahtarıyla Keycloak/credential gerektirmeden gerçek Chromium → web → API → geçici SQLite buyer checkout/mock ödeme akışını doğrular. Buyer ürün yönetimi denemesi `403` ile reddedilir.
+- **Kapsam:** CI ve yerel varsayılan E2E koşusu Keycloak'a bağlanmaz. Gerçek Keycloak kayıt/giriş/rol senaryoları mevcut biçimde kalır; yalnız `E2E_KEYCLOAK_E2E=1` açıkça ayarlandığında çalışır.
+- **Test izlenebilirliği:** `apps/web/e2e/qa-019-deterministic.spec.ts` kritik buyer senaryosunu; `apps/web/e2e/deterministicAuth.ts` geçici OIDC test token'ını; `apps/web/e2e/start-test-identity.mjs` sadece public JWKS sunumunu doğrular. `apps/web/playwright.config.ts` izole veritabanını, test sağlayıcısını ve Chromium sunucularını düzenler.
+- **Sınırlar:** Deterministik sağlayıcı Keycloak kayıt/giriş UI'sını, realm konfigürasyonunu veya rol provisioning entegrasyonunu doğrulamaz; bunlar opt-in Keycloak E2E kapsamındadır.
+- [x] Her koşuda ephemeral imza anahtarı ve test JWKS sağlayıcısı.
+- [x] Buyer checkout/mock ödeme ve buyer-admin erişim sınırını doğrulayan Chromium senaryosu.
+- [x] Keycloak E2E'lerin ayrı, açık opt-in akışı korunarak README ve gereksinim izlenebilirliğinin güncellenmesi.
+- [x] CI kipinde Playwright E2E, web build/lint ve `git diff --check` doğrulamaları.
+
+### Öncelik 14 — QA-020: Test sınıflandırması ve çalışma sıklığı
+
+- **Durum:** Tamamlandı. Testler etiketlenebilir; her PR hızlı/deterministik smoke ile tam mevcut regresyon katmanlarını çalıştırır. Keycloak browser paketi gece ve elle tetiklenebilir; CI özetinde ayrı durum/test sayısı bulunur.
+- **Kategoriler:** `smoke` kritik hızlı yol; `regression` olağan regresyon (Pytest'te açık başka bir kategori almayan her test otomatik varsayılandır); `integration` uygulama/altyapı sınırı; `e2e` tarayıcı kullanıcı yolu; `security` auth/authorization/güvenlik; `keycloak` gerçek Keycloak servis entegrasyonu; `performance` ileride performans diliminde. Kategoriler örtüşebilir.
+- **Çalışma sıklığı:** Her push/PR'da backend pytest regresyonu + PostgreSQL entegrasyonu + frontend Vitest coverage regresyonu + Playwright `@smoke`. Her gün 02:00 UTC'de ve `workflow_dispatch` ile aynı zorunlu kapılara ek olarak geçici Keycloak realm'inde `@keycloak` browser suite'i çalışır.
+- **CI raporu/başarısızlık:** PR özetinde Keycloak adımı `skipped/optional` görünür; nightly/manual koşuda zorunludur. Test raporu ya da zorunlu job başarısızlığı workflow'u başarısız kılar; browser raporları/izleri 14 gün saklanır.
+- **Gerçek Keycloak izolasyonu:** CI yalnız geçici runner ve import edilmiş test realm'i kullanır. Bootstrap admin parolası test ortamına özgü ephemeral değerdir; seller service-account secret'ı Keycloak Admin API'den koşu sırasında alınır, maskelenip yalnız job environment'a yazılır. Üretim hesabı/secret kullanılmaz.
+- **Test izlenebilirliği:** `.github/workflows/ci.yml`, `apps/api/pyproject.toml`, `apps/api/tests/conftest.py`, `apps/web/package.json`, `apps/web/playwright.config.ts`, `apps/web/e2e/configure-ci-keycloak.mjs` ve `scripts/ci-summary.mjs`.
+- **Yeni test standardı:** Pytest'te `smoke`/`integration`/`security`/`keycloak` gibi uygun marker ekle; kategori almayan testler `regression` sayılır. Playwright `describe` başlığına uygun `@smoke` veya `@keycloak` tag'i ekle. Vitest'te `@smoke` başlığı `npm run test:smoke` seçicisine dahildir; geri kalan Vitest paketi PR'da regresyon olarak çalışır.
+- **Doğrulama:** Marker/tag selector'ları, PR smoke komutu, kapsamlı test komutu, CI raporlaması ve lint/build/regresyon kapıları doğrulanır. GitHub-hosted nightly/manual çalıştırması yerel geliştirme ortamında simüle edilemez; ilk Actions koşusunda servis entegrasyonu ayrıca gözlemlenir.
 
 ### Her incremental dilim için ortak Definition of Done
 

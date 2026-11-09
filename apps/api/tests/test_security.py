@@ -1,4 +1,8 @@
+import pytest
+
 from shop_api.security import AuthenticatedUser
+
+pytestmark = pytest.mark.security
 
 
 def test_admin_role_is_derived_from_verified_identity_roles() -> None:

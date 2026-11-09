@@ -20,7 +20,7 @@ async function login(page: Page, email: string, password: string): Promise<Respo
   return identityResponse
 }
 
-test.describe('REQ-008 trusted admin role operations', () => {
+test.describe('REQ-008 trusted admin role operations @keycloak', () => {
   test.skip(
     !keycloakE2EEnabled,
     'Set E2E_KEYCLOAK_E2E=1 and start the local Keycloak realm to run these tests.',

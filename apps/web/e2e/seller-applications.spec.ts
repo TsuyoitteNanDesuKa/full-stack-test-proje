@@ -74,7 +74,7 @@ async function createSellerProduct(
   return createResponse
 }
 
-test.describe('REQ-007 seller application workflow', () => {
+test.describe('REQ-007 seller application workflow @keycloak', () => {
   test.skip(
     !keycloakE2EEnabled,
     'Set E2E_KEYCLOAK_E2E=1 and configure local seller role provisioning to run this test.',

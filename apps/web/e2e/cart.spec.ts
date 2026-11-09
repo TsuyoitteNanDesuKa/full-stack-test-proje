@@ -100,7 +100,7 @@ async function createProduct(page: Page, product: ReturnType<typeof createTestPr
   return createResponse
 }
 
-test.describe('REQ-009 cart, REQ-010 checkout, and REQ-012 order lifecycle', () => {
+test.describe('REQ-009 cart, REQ-010 checkout, and REQ-012 order lifecycle @keycloak', () => {
   test.skip(
     !keycloakE2EEnabled,
     'Set E2E_KEYCLOAK_E2E=1 and configure the local Keycloak admin credentials.',

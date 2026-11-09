@@ -1100,7 +1100,7 @@ describe('Keycloak authentication and storefront', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Oturum başlatılamadı.')
   })
 
-  it('shows the signed-out screen when no active session exists', async () => {
+  it('shows the signed-out screen when no active session exists @smoke', async () => {
     vi.mocked(getCurrentSession).mockResolvedValue(null)
     render(<App />)
 

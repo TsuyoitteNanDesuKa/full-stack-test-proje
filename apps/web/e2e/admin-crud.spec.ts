@@ -58,7 +58,7 @@ async function expectProductRow(
   }
 }
 
-test.describe('REQ-003/004/005/006 admin product CRUD regression', () => {
+test.describe('REQ-003/004/005/006 admin product CRUD regression @keycloak', () => {
   test.skip(
     !keycloakE2EEnabled,
     'Set E2E_KEYCLOAK_E2E=1 and start the local Keycloak realm to run these tests.',
