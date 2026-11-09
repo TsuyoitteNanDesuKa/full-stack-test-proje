@@ -91,6 +91,16 @@ const [
   ])
 
 const keycloakE2eRequired = process.env.KEYCLOAK_E2E_REQUIRED === 'true'
+const frontendCoverageFiles = frontendCoverage
+  ? Object.keys(frontendCoverage)
+      .filter((name) => name !== 'total')
+      .map((name) => {
+        const normalized = name.replaceAll('\\', '/')
+        const sourceIndex = normalized.lastIndexOf('/src/')
+        return sourceIndex >= 0 ? normalized.slice(sourceIndex + 1) : normalized
+      })
+      .sort()
+  : []
 const stages = [
   {
     name: 'Backend',
@@ -115,7 +125,9 @@ const stages = [
     coverage: frontendCoverage?.total
       ? `Statements ${percentage(frontendCoverage.total.statements?.pct)}; branches ${percentage(frontendCoverage.total.branches?.pct)}; functions ${percentage(frontendCoverage.total.functions?.pct)}; lines ${percentage(frontendCoverage.total.lines?.pct)}`
       : 'Coverage report unavailable',
-    scope: '`Vitest`: API client, login/catalog, and admin product creation; coverage measured for `src/App.tsx`, `src/api.ts`, and `src/ProductCreatePage.tsx`',
+    scope: frontendCoverageFiles.length
+      ? `\`Vitest\` unit/component/integration tests; measured files: ${frontendCoverageFiles.map((file) => `\`${file}\``).join(', ')}`
+      : '`Vitest` unit/component/integration tests; measured-file scope unavailable',
   },
   {
     name: 'Browser smoke E2E',
@@ -143,7 +155,8 @@ const requiredStages = stages.filter((stage) => !stage.optional)
 const reportsComplete =
   requiredStages.every((stage) => stage.tests !== null) &&
   backendCoverage !== null &&
-  frontendCoverage !== null
+  Boolean(frontendCoverage?.total) &&
+  frontendCoverageFiles.length > 0
 const allStagesPassed =
   requiredStages.every((stage) => stage.result === 'success') && reportsComplete
 

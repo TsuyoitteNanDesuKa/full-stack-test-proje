@@ -136,6 +136,8 @@ npm run test:e2e:keycloak
 
 Vitest smoke testi `npm run test:smoke`, tüm frontend regresyon testleri `npm test` veya `npm run test:coverage`; backend smoke `uv run pytest -m smoke`, tüm SQLite regresyonları `uv run pytest`, PostgreSQL entegrasyonları `uv run pytest -m postgres tests/test_cart_postgres.py` ile seçilir. Yeni testler için marker/tag ve çalışma politikası [gereksinim dokümanında](./docs/requirements.md#qa-020-test-sınıflandırması-ve-çalışma-sıklığı) açıklanmıştır.
 
+Frontend coverage, tüm projeyi değil kritik uygulama, API/auth ve `*Panel.tsx` dosyalarını ölçer; eşikler ve kapsam dışı dosyalar [web test katmanları](./apps/web/README.md#test-layers) bölümündedir. Coverage, davranış doğrulamasının veya E2E testlerinin yerine geçmez.
+
 Deterministik QA-019 senaryosu buyer ürün görüntüleme, sepet, adres, checkout ve mock ödeme akışını doğrular; buyer'ın ürün oluşturma girişimi reddedilir. Keycloak E2E'leri kayıt/giriş ve realm rol yönetimi testlerini içerir; admin CRUD/satıcı başvurusu geçici test hesapları kullanır. Satıcı akışı için API service-account secret'ı ve yerel realm rol eşlemeleri gerekir. Her iki kip de E2E'ye özel geçici SQLite veritabanını kullanır.
 
 ## Önerilen teknoloji seti
@@ -212,7 +214,7 @@ Testlerin deterministik, bağımsız ve anlaşılır hata mesajlarına sahip olm
 
 GitHub Actions iş akışı her push ve pull request'te backend, frontend ve tarayıcı E2E aşamalarını ayrı işler olarak çalıştırır. İş akışı sayfasındaki **Summary** sekmesi bu aşamaların durumunu, testlerde geçen/toplam senaryo sayısını ve kapsam yüzdelerini tek tabloda birleştirir. Coverage yüzdeleri kendi ölçüm kapsamları içinde gösterilir; farklı kod tabanlarının yüzdeleri tek bir yanıltıcı sayıya dönüştürülmez.
 
-Bir iş akışı koşusu içinden **Unified test report** işinin özetine ulaşın. Ayrıntılı HTML coverage raporları, JUnit test sonuçları ve başarısız E2E koşularının Playwright izleri koşu artefaktları olarak 14 gün saklanır. CI yerelde çalışan geliştirme sunucularını veya veritabanını kullanmaz.
+Bir iş akışı koşusu içinden **Unified test report** işinin özetine ulaşın. Frontend için gerçekten ölçülen dosyalar coverage raporundan okunarak listelenir; dosya kapsamı veya zorunlu rapor yoksa kalite kapısı başarısız olur. Ayrıntılı HTML coverage raporları, JUnit test sonuçları ve başarısız E2E koşularının Playwright izleri koşu artefaktları olarak 14 gün saklanır. CI yerelde çalışan geliştirme sunucularını veya veritabanını kullanmaz.
 
 ## Yol planı
 

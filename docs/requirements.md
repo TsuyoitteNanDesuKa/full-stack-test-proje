@@ -716,13 +716,13 @@ Proje canlı kullanıma alınmayacağı için dış sağlayıcı entegrasyonlar�
 6. **QA-018 — PostgreSQL testlerinin CI'a eklenmesi:** Tamamlandı; PostgreSQL 17 migration ve entegrasyon testleri SQLite regresyonundan bağımsız çalışır.
 7. **QA-019 — CI'da deterministik E2E:** PR'larda harici/koşullu Keycloak gerektirmeyen kritik kullanıcı akışları.
 8. **QA-020 — Test sınıflandırması ve çalışma sıklığı (tamamlandı):** Pytest/Playwright etiketleri, PR smoke ve nightly/elle tetiklenen Keycloak E2E ayrımı, unified raporlama.
-9. **QA-021 — Coverage kapsamının netleştirilmesi:** Frontend coverage ölçümünü ve rapor kapsamını kritik UI akışlarıyla hizalama.
+9. **QA-021 — Coverage kapsamının netleştirilmesi (tamamlandı):** Frontend coverage ölçümünü kritik UI akışlarıyla hizalama ve gerçek ölçülen dosyaları CI özetinde gösterme.
 10. **QA-022 — API yanıt sözleşmesi doğrulaması:** Temsilî API yanıtlarını OpenAPI/JSON Schema'ya karşı doğrulama.
 11. **QA-023 — Tarayıcıda erişilebilirlik kapsamı:** Giriş ekranı dışındaki kritik akışlarda gerçek tarayıcı axe taramaları.
 12. **QA-024 — Bağımlılık güvenlik kapıları:** Frontend/backend bağımlılık taraması ve CI başarısızlık politikası.
 13. **QA-025 — Performans başlangıç çizgisi (en son):** Sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor.
 
-REQ-013–015 ve QA-016–020 kabul kriterleri bu belgede tanımlanmıştır. QA-021–025 ayrıntılı kabul kriterleri geliştirmeye başlanırken oluşturulacaktır. Performans aşaması özellikle en sona bırakılmıştır.
+REQ-013–015 ve QA-016–021 kabul kriterleri bu belgede tanımlanmıştır. QA-022–025 ayrıntılı kabul kriterleri geliştirmeye başlanırken oluşturulacaktır. Performans aşaması özellikle en sona bırakılmıştır.
 
 Önceliği olmayan/şimdilik ertelenenler: gerçek PSP/para transferi, otomatik KYC/KYB ve gerçek kargo sağlayıcısı; e-posta/parola yaşam döngüsü özellikleri ise harici e-posta servisi yerine test edilebilir yerel fake ile ele alınmalıdır.
 
@@ -942,3 +942,24 @@ Kategoriler örtüşebilir. PostgreSQL testleri `integration` ve `postgres`; Pla
 - `apps/web/e2e/configure-ci-keycloak.mjs`: yalnız geçici realm için service-account yetkisi/credential hazırlığı; secret loglanmaz, CI maskesine alınır.
 - `scripts/ci-summary.mjs`: PR'da opsiyonel, nightly/manual'da zorunlu Keycloak durumunu ve ayrı JUnit sayımını raporlar.
 - Gerçek GitHub Actions runner'ındaki Keycloak image/realm import davranışı ilk nightly/manual çalışmada doğrulanmalıdır. Zamanlanmış GitHub Actions koşusu varsayılan branch üzerinde çalışır.
+
+## QA-021 — Coverage kapsamının netleştirilmesi
+
+- **Durum:** Tamamlandı.
+- **Amaç:** Frontend coverage yüzdesinin kritik akış bileşenlerini kapsaması ve ölçüm sınırının CI ve yerel raporlarda açık olması.
+
+### Kabul kriterleri
+
+1. Vitest coverage `src/App.tsx`, `src/api.ts`, `src/auth.ts`, `src/ProductCreatePage.tsx` ve `src/*Panel.tsx` dosyalarını ölçer; yeni eşleşen paneller de dahil edilir. Giriş noktası, test/contract dosyaları, üretilen kod ve CSS ölçüm kapsamı dışında kalır.
+2. Toplam coverage için statement %93, branch %88, function %95 ve line %93 alt sınırları zorunludur. Ölçülen her dosya için aynı sırayla %81, %70, %88 ve %83 alt sınırları uygulanır. Eski üç dosyanın (`App.tsx`, `api.ts`, `ProductCreatePage.tsx`) toplu %100 sınırı dört ölçümde de korunur.
+3. Birleşik CI özeti ölçülen dosyaları coverage JSON raporundan listeler; rapor, toplam veya dosya listesi eksikse zorunlu kalite kapısı başarısız olur. HTML raporu dosya ve satır ayrıntılarını sağlar.
+4. Satıcı başvuru yönetimi için yükleme hatası/yeniden deneme, zorunlu notla düzenleme isteği ve başarısız onayın yeniden denenmesi component testlerinde doğrulanır. Vitest regresyonları PR'da çalışmaya devam eder.
+5. Kapsam ve eşikler README'lerde açıklanır. Coverage yüzdesi yalnız ölçülen dosyalarda çalıştırılan kodu ifade eder; doğruluk, tüm frontend kapsamı veya E2E kapsamı olarak sunulmaz.
+
+### Test izlenebilirliği ve doğrulama
+
+- `apps/web/vite.config.ts`: ölçüm kapsamı, toplam/dosya ve önceki üç dosya eşikleri.
+- `apps/web/src/AdminSellerApplicationsPanel.test.tsx`: hata, yeniden deneme ve karar akışı; API çağrıları mock'lanır.
+- `scripts/ci-summary.mjs`, `scripts/ci-summary.test.mjs`: JSON'dan gerçek dosya listesi, eksik kapsam hatası ve Keycloak raporlama regresyonu.
+- `npm run test:coverage`: 212 test geçti; toplam statement %93,14, branch %88,50, function %95,60 ve line %93,75. Eksik kapsamlı bir test çalışmasında eski %100 ve yeni eşiklerin başarısız olduğu ayrıca doğrulandı.
+- `npm run build`, `npm run lint` ve `node --test scripts/ci-summary.test.mjs` başarılı. Gerçek GitHub Actions koşusunun rapor artefaktı sunucu ortamında ayrıca gözlemlenmelidir.

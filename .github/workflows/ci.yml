@@ -325,6 +325,9 @@ jobs:
         with:
           node-version: 24
 
+      - name: Test unified reporting
+        run: node --test scripts/ci-summary.test.mjs
+
       - name: Download backend reports
         if: ${{ always() }}
         continue-on-error: true
