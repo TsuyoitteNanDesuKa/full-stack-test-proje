@@ -71,9 +71,17 @@ function testCount(counts) {
   return `${counts.passed}/${counts.total} passed (${completion}); ${counts.failed} failed; ${counts.skipped} skipped`
 }
 
-const [backendTests, frontendTests, e2eTests, backendCoverage, frontendCoverage] =
+const [
+  backendTests,
+  postgresTests,
+  frontendTests,
+  e2eTests,
+  backendCoverage,
+  frontendCoverage,
+] =
   await Promise.all([
     readTestCounts('artifacts/backend/backend-junit.xml'),
+    readTestCounts('artifacts/postgres/postgres-junit.xml'),
     readTestCounts('artifacts/frontend/test-results/frontend-junit.xml'),
     readTestCounts('artifacts/e2e/e2e-junit.xml'),
     readJson('artifacts/backend/backend-coverage.json'),
@@ -89,6 +97,13 @@ const stages = [
       ? `Statements ${percentage(backendCoverage.totals?.percent_covered)}; branches ${percentage(backendCoverage.totals?.percent_branches_covered)}`
       : 'Coverage report unavailable',
     scope: '`pytest`: unit/API/integration; `shop_api` package (operator `create_user.py` excluded)',
+  },
+  {
+    name: 'PostgreSQL',
+    result: process.env.POSTGRES_RESULT,
+    tests: postgresTests,
+    coverage: 'Database integration; source coverage is reported by the backend stage',
+    scope: '`pytest -m postgres`: PostgreSQL migrations, constraints, transactions, and concurrency against isolated `shop_test`',
   },
   {
     name: 'Frontend',
@@ -147,6 +162,7 @@ const summary = [
   '## Additional quality gates',
   '',
   '- Backend job includes Ruff lint and format checks.',
+  '- PostgreSQL job runs separately against a disposable, dedicated test database.',
   '- Frontend job includes Oxlint, TypeScript validation, and a production build.',
   '- Browser E2E runs against the isolated API/database and records Playwright traces on failure.',
   '- Download the run artifacts for detailed HTML coverage reports, JUnit XML results, and browser diagnostics.',

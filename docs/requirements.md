@@ -713,7 +713,15 @@ Proje canlı kullanıma alınmayacağı için dış sağlayıcı entegrasyonlar�
 3. **REQ-015 — Adres ve teslimat seçeneği snapshot'ı:** Adres doğrulama, seçenek/ücret kuralları ve sipariş anı verisinin korunması test edilecek; gerçek kargo sağlayıcısı bağlanmayacak.
 4. **QA-016 — API sözleşme/regresyon kapısı:** OpenAPI ve istemci beklentilerini CI'da karşılaştıran otomatik kontroller.
 5. **QA-017 — Erişilebilirlik:** Tamamlandı; kritik buyer/admin akışlarında otomatik tarama, klavye sırası ve görünür odak testleri.
-6. **QA-018 — Performans başlangıç çizgisi:** Gerçekçi, sınırlı yük profili; ölçülebilir eşikler ve CI dışında tekrarlanabilir rapor.
+6. **QA-018 — PostgreSQL testlerinin CI'a eklenmesi:** Tamamlandı; PostgreSQL 17 migration ve entegrasyon testleri SQLite regresyonundan bağımsız çalışır.
+7. **QA-019 — CI'da deterministik E2E:** PR'larda harici/koşullu Keycloak gerektirmeyen kritik kullanıcı akışları.
+8. **QA-020 — Coverage kapsamının netleştirilmesi:** Frontend coverage ölçümünü ve rapor kapsamını kritik UI akışlarıyla hizalama.
+9. **QA-021 — API yanıt sözleşmesi doğrulaması:** Temsilî API yanıtlarını OpenAPI/JSON Schema'ya karşı doğrulama.
+10. **QA-022 — Tarayıcıda erişilebilirlik kapsamı:** Giriş ekranı dışındaki kritik akışlarda gerçek tarayıcı axe taramaları.
+11. **QA-023 — Bağımlılık güvenlik kapıları:** Frontend/backend bağımlılık taraması ve CI başarısızlık politikası.
+12. **QA-024 — Performans başlangıç çizgisi (en son):** Sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor.
+
+REQ-013–015 ve QA-016–018 kabul kriterleri bu belgede tanımlanmıştır. QA-019–024 ayrıntılı kabul kriterleri geliştirmeye başlanırken oluşturulacaktır. Performans aşaması özellikle en sona bırakılmıştır.
 
 Önceliği olmayan/şimdilik ertelenenler: gerçek PSP/para transferi, otomatik KYC/KYB ve gerçek kargo sağlayıcısı; e-posta/parola yaşam döngüsü özellikleri ise harici e-posta servisi yerine test edilebilir yerel fake ile ele alınmalıdır.
 
@@ -854,3 +862,22 @@ Proje canlı kullanıma alınmayacağı için dış sağlayıcı entegrasyonlar�
 - `apps/web/e2e/accessibility.spec.ts`: Chromium'da giriş ekranı axe WCAG 2.1 A/AA taraması; Tab gezinmesi ve görünür odak halkası.
 - Tarama, giriş ekranında **13 düşük kontrastlı metin öğesi** buldu; `apps/web/src/App.css` renkleri WCAG AA eşiğini sağlayacak şekilde düzeltildi ve tarama sıfır ihlalle geçti.
 - JSDOM taramaları renk kontrastı, responsive reflow ve görsel düzeni değerlendiremez. Tarayıcı axe taraması şimdilik giriş ekranıyla sınırlıdır; ekran okuyucu ve manuel erişilebilirlik denetimi otomatikleştirilmiş değildir.
+
+## QA-018 — PostgreSQL testlerinin CI'a eklenmesi
+
+- **Durum:** Tamamlandı.
+- **Amaç:** SQLite üzerinde hızlı çalışan backend regresyonunu korurken PostgreSQL'e özgü migration, transaction, constraint ve concurrency davranışlarını her CI koşusunda gerçek PostgreSQL servisi üzerinde doğrulamak.
+
+### Kabul kriterleri
+
+1. SQLite backend regresyonu değişmeden kendi CI işinde çalışır; PostgreSQL testleri ondan bağımsız ayrı iş/rapordur.
+2. PostgreSQL CI servisi sürümlü (17), ephemeral ve yalnız entegrasyon testi için ayrılmıştır. Test bağlantısı yalnız adı `_test` ile biten `shop_test` veritabanını hedefler; geliştirme/kalıcı veritabanı kullanılmaz.
+3. Migration'lar test veritabanına uygulanır; PostgreSQL işaretli testler boş veritabanında geçer. Bağlantı, migration veya test hatası PostgreSQL işini ve aggregate workflow'u başarısız kılar.
+4. PostgreSQL JUnit sonuçları artefakt olarak saklanır ve birleşik CI raporunda bağımsız aşama/test sayısı olarak görünür.
+
+### Test izlenebilirliği
+
+- `.github/workflows/ci.yml`: PostgreSQL 17 service health check, `shop_test`, bağımsız `postgres` job, migration/integration test komutu ve JUnit artefaktı.
+- `apps/api/tests/test_cart_postgres.py`: PostgreSQL ürün filtreleme, cart constraint/stock/concurrency, checkout yarışları ve idempotency, webhook/refund/return/expiry, adres-default ve sipariş snapshot/ödeme toplamı.
+- `apps/api/tests/test_cart_postgres.py::postgres_engine`: URL'in PostgreSQL backend'i ve `_test` suffix'i için koruma; test başına yalnız uygulama tabloları truncate edilir.
+- `scripts/ci-summary.mjs`: PostgreSQL raporunu diğer SQLite/backend, frontend ve browser aşamalarından ayrı gösterir; `report` işi PostgreSQL başarısızlığı ya da rapor eksikliğinde workflow'u başarısız yapar.

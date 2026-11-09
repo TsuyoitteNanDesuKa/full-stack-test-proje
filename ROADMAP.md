@@ -430,9 +430,15 @@ Canlıya çıkış, gerçek PSP/KYC/kargo entegrasyonu veya üretim altyapısı 
 3. **REQ-015 — Adres defteri ve yerel teslimat seçenekleri (tamamlandı):** Buyer çoklu adres CRUD/default; Standart 49,90 TL, Hızlı 89,90 TL; ürün ara toplamı 1.000 TL ve üzerindeyse yalnız Standart ücretsiz. Sipariş adres/ücret snapshot'ı değişmez; gerçek taşıyıcı yok. Ürün iadeleri teslimat ücretini kapsamaz.
 4. **QA-016 — API sözleşme/regresyon otomasyonu (tamamlandı):** Sürümlü OpenAPI snapshot, üretilen modeller, istemci tip/yol/yöntem/başlık kontrolleri ve CI.
 5. **QA-017 — Erişilebilirlik otomasyonu (tamamlandı):** WCAG 2.1 A/AA axe taramaları, kritik akışlarda klavye sırası ve görünür odak kontrolleri.
-6. **QA-018 — Performans başlangıç çizgisi:** sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor; release/live ortamı gerektirmez.
+6. **QA-018 — PostgreSQL testlerinin CI'a eklenmesi (tamamlandı):** CI'da izole PostgreSQL 17 servisi, yalnızca `shop_test` veritabanı ve migration/entegrasyon testleri; SQLite testlerinden bağımsız kalite kapısı.
+7. **QA-019 — CI'da deterministik E2E:** PR'larda harici/koşullu Keycloak gerektirmeyen, izole test kimlik sağlayıcısı veya test doubles kullanan tekrarlanabilir kritik kullanıcı akışları; gerçek Keycloak E2E ayrıca korunur.
+8. **QA-020 — Coverage kapsamının netleştirilmesi:** frontend coverage ölçümünü kritik UI ve akış modüllerine genişletmek veya raporlamayı seçili dosyalar olarak açıkça sınırlamak; eşikler ve rapor doğru kapsamı göstermeli.
+9. **QA-021 — API yanıt sözleşmesi doğrulaması:** temsilî API yanıtlarını sürümlü OpenAPI/JSON Schema'ya karşı doğrulamak; istemci tip/yol kontrollerini tamamlamak.
+10. **QA-022 — Tarayıcıda erişilebilirlik kapsamı:** giriş ekranı dışındaki kritik buyer/admin akışlarını Chromium axe ile taramak; kontrast ve görsel davranışı tarayıcıda doğrulamak.
+11. **QA-023 — Bağımlılık güvenlik kapıları:** frontend/backend bağımlılık taramasını CI'da tekrarlanabilir biçimde çalıştırmak, bulgular için anlaşılır rapor ve başarısızlık politikası belirlemek.
+12. **QA-024 — Performans başlangıç çizgisi (en son):** sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor; release/live ortamı gerektirmez.
 
-REQ-013, REQ-014, REQ-015, QA-016 ve QA-017'nin ayrıntılı kabul kriterleri ve test planları `docs/requirements.md` içinde tutulur.
+REQ-013, REQ-014, REQ-015, QA-016, QA-017 ve QA-018'in kabul kriterleri `docs/requirements.md` içinde tutulur. QA-019–QA-024 sıradaki çalışma dilimleridir; her madde geliştirmeye başlamadan önce test edilebilir kabul kriterleri ve test izlenebilirliğiyle ayrıntılandırılacaktır.
 
 ### Öncelik 8 — REQ-013: Katalog arama, filtreleme ve sıralama
 
@@ -512,6 +518,13 @@ REQ-013, REQ-014, REQ-015, QA-016 ve QA-017'nin ayrıntılı kabul kriterleri ve
 - **Çözülen bulgu:** Chromium taraması giriş ekranında WCAG AA metin kontrastını karşılamayan 13 metin öğesi tespit etti; metin renkleri eşiklere göre koyulaştırıldı/açıklaştırıldı ve tarama temiz geçti.
 - **İzlenebilirlik:** `apps/web/src/accessibility.test.tsx` bileşen taramalarını ve klavye sırasını; `apps/web/e2e/accessibility.spec.ts` gerçek tarayıcı kontrastını, giriş eylemlerine klavye erişimini ve görünür focus ring'i doğrular.
 - **Sınırlar:** JSDOM bileşen taramaları renk kontrastı ve gerçek görsel düzeni ölçmez. Tarayıcı taraması giriş ekranıyla sınırlıdır; ekran okuyucu, büyütme/reflow ve manuel erişilebilirlik değerlendirmesi kapsam dışıdır.
+
+### Öncelik 12 — QA-018: PostgreSQL testlerinin CI'a eklenmesi
+
+- **Durum:** Tamamlandı. PostgreSQL 17 üzerinde migration ve entegrasyon paketi ayrı CI işinde çalışır; sonuçlar birleşik rapora eklenir ve iş başarısız olursa workflow başarısızdır.
+- **Kapsam:** PostgreSQL servisi her workflow koşusunda ephemeral'dır. `SHOP_TEST_DATABASE_URL` yalnız `shop_test` veritabanını hedefler ve uygulama migration'ları ile PostgreSQL işaretli testler bu veritabanında çalışır. Mevcut SQLite backend testi bağımsız kalır.
+- **Test izlenebilirliği:** `apps/api/tests/test_cart_postgres.py` ürün filtreleri, cart constraints/concurrency, checkout/stock yarışı, ödeme webhook/idempotency, admin refund, return, expiry ve address/checkout snapshot davranışını kapsar.
+- **Raporlama:** PostgreSQL JUnit XML artefaktı 14 gün saklanır; `scripts/ci-summary.mjs` ayrı PostgreSQL kalite aşamasını ve test sayısını raporlar.
 
 ### Her incremental dilim için ortak Definition of Done
 

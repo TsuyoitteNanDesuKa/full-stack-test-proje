@@ -87,6 +87,8 @@ $env:SHOP_TEST_DATABASE_URL = "postgresql+psycopg://shop:shop-local-dev-only@127
 uv run pytest -m postgres tests/test_cart_postgres.py
 ```
 
+GitHub Actions runs this same PostgreSQL suite in its own job against an ephemeral PostgreSQL 17 service and dedicated `shop_test` database. Its JUnit report is retained as a CI artifact and displayed as a separate stage in the unified test summary; the SQLite suite remains an independent job.
+
 The test database is separate from the persistent development database. The suite verifies real PostgreSQL migrations, concurrent first-cart creation, concurrent same-buyer stock limits, the intentional non-reservation of stock across different buyers' carts, deleted-product foreign-key behavior, and the unique cart-item constraint. Cart stock checks are per buyer's cart, not inventory reservations; checkout must recheck and reserve stock atomically.
 
 The Keycloak registration browser test lives in `apps/web/e2e`; see the web README for enabling it.
