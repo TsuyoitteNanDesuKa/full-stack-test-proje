@@ -4,7 +4,8 @@ import OrderHistoryPanel from './OrderHistoryPanel'
 import { createPayment, createProductReturn, getMyOrders } from './api'
 import type { CustomerOrder, CustomerPayment, ProductReturn } from './api'
 
-vi.mock('./api', () => ({
+vi.mock('./api', async (importOriginal) => ({
+  ...await importOriginal<typeof import('./api')>(),
   createPayment: vi.fn(),
   createProductReturn: vi.fn(),
   getMyOrders: vi.fn(),
@@ -264,5 +265,48 @@ describe('OrderHistoryPanel', () => {
 
     expect(await screen.findByRole('heading', { name: 'Sipariş #21' })).toBeInTheDocument()
     expect(getMyOrders).toHaveBeenCalledTimes(2)
+  })
+
+  it('validates a return and reuses the idempotency key after a network failure', async () => {
+    const deliveredOrder: CustomerOrder = {
+      ...sampleOrder,
+      status: 'delivered',
+      history: [{
+        action: 'admin_status_changed',
+        from_status: 'shipped',
+        to_status: 'delivered',
+        reason: null,
+        created_at: new Date().toISOString(),
+      }],
+    }
+    vi.mocked(getMyOrders).mockResolvedValue([deliveredOrder])
+    vi.mocked(createProductReturn)
+      .mockRejectedValueOnce(new Error('network unavailable'))
+      .mockResolvedValueOnce({
+        id: 51,
+        order_item_id: 31,
+        product_name: 'Liva krem',
+        quantity: 1,
+        reason: 'Hasarlı ürün',
+        status: 'approved',
+        refund_amount: '12.50',
+        created_at: new Date().toISOString(),
+      })
+    render(<OrderHistoryPanel latestOrder={null} refreshVersion={0} token="buyer-token" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Siparişlerim' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'İade et Liva krem' }))
+    fireEvent.click(screen.getByRole('button', { name: 'İade talebini gönder' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('İade miktarı ve en az 5 karakterlik nedeni kontrol et.')
+    expect(createProductReturn).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText('İade nedeni'), { target: { value: 'Hasarlı ürün' } })
+    fireEvent.click(screen.getByRole('button', { name: 'İade talebini gönder' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('İade talebi gönderilemedi.')
+    fireEvent.click(screen.getByRole('button', { name: 'İade talebini gönder' }))
+    expect(await screen.findByText(/İade talebin otomatik onaylandı/)).toBeInTheDocument()
+    expect(createProductReturn).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(createProductReturn).mock.calls[0][3]).toBe(
+      vi.mocked(createProductReturn).mock.calls[1][3],
+    )
   })
 })

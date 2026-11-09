@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import AddressBookPanel from './AddressBookPanel'
 import type { CustomerAddress } from './api'
-import { createAddress, deleteAddress, updateAddress } from './api'
+import { ApiError, createAddress, deleteAddress, updateAddress } from './api'
 
 vi.mock('./api', () => ({
   ApiError: class ApiError extends Error {
@@ -110,5 +110,53 @@ describe('AddressBookPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Sil' }))
     await waitFor(() => expect(deleteAddress).toHaveBeenCalledWith('buyer-token', savedAddress.id))
     expect(onSaved).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports address validation errors and permits retrying the edit', async () => {
+    vi.mocked(updateAddress).mockRejectedValueOnce(new ApiError('invalid', 422))
+    const user = userEvent.setup()
+    render(
+      <AddressBookPanel
+        addresses={[savedAddress]}
+        isLoading={false}
+        loadError=""
+        onRetry={vi.fn()}
+        onSaved={onSaved}
+        token="buyer-token"
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Düzenle' }))
+    await user.click(screen.getByRole('button', { name: 'Değişiklikleri kaydet' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Adres bilgilerini ve telefon biçimini kontrol et.',
+    )
+    expect(onSaved).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Değişiklikleri kaydet' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Adres güncellendi.')
+    expect(onSaved).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the edit form after a failed delete and resets it after a successful retry', async () => {
+    vi.mocked(deleteAddress).mockRejectedValueOnce(new Error('delete failed'))
+    const user = userEvent.setup()
+    render(
+      <AddressBookPanel
+        addresses={[savedAddress]}
+        isLoading={false}
+        loadError=""
+        onRetry={vi.fn()}
+        onSaved={onSaved}
+        token="buyer-token"
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Düzenle' }))
+    await user.click(screen.getByRole('button', { name: 'Sil' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Adres silinemedi.')
+    expect(screen.getByRole('heading', { name: 'Adresi düzenle' })).toBeInTheDocument()
+    expect(onSaved).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Sil' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Adres silindi.')
+    expect(screen.getByRole('heading', { name: 'Yeni adres ekle' })).toBeInTheDocument()
+    expect(onSaved).toHaveBeenCalledOnce()
   })
 })

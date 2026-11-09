@@ -5,6 +5,7 @@ from conftest import create_test_token
 from factories import product_payload
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from shop_api.models import CustomerAddress, CustomerOrder, Payment, Product
@@ -180,6 +181,54 @@ def test_address_validation_rejects_invalid_phone_postal_and_normalized_text(
     ):
         assert client.post("/api/v1/addresses", json=payload, headers=headers).status_code == 422
     assert client.get("/api/v1/addresses", headers=headers).json() == []
+
+
+@pytest.mark.parametrize(
+    ("phone", "expected"),
+    [
+        ("00905551234567", "+905551234567"),
+        ("5551234567", "+905551234567"),
+    ],
+)
+def test_address_phone_normalizes_international_and_local_forms(
+    client: TestClient, phone: str, expected: str
+) -> None:
+    headers = auth_headers(client, "phone-normalization")
+    response = create_address(client, headers, phone=phone, postal_code=None)
+    assert response.status_code == 201
+    assert response.json()["phone"] == expected
+    assert response.json()["postal_code"] is None
+
+
+@pytest.mark.parametrize("operation", ["create", "update"])
+def test_default_address_conflict_rolls_back_changes(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    headers = auth_headers(client, "address-conflict")
+    existing = create_address(client, headers, is_default=True).json()
+    other = create_address(client, headers, label="Ofis").json()
+
+    def fail_commit(_session: Session) -> None:
+        raise IntegrityError("UPDATE customer_addresses", {}, Exception("unique conflict"))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Session, "commit", fail_commit)
+        if operation == "create":
+            response = create_address(client, headers, label="Yeni", is_default=True)
+        else:
+            response = client.put(
+                f"/api/v1/addresses/{other['id']}",
+                json=address_payload(label="Değişen", is_default=True),
+                headers=headers,
+            )
+
+    assert response.status_code == 409
+    assert "eş zamanlı değiştirildi" in response.json()["detail"]
+    addresses = client.get("/api/v1/addresses", headers=headers).json()
+    assert [(address["id"], address["label"], address["is_default"]) for address in addresses] == [
+        (existing["id"], "Ev", True),
+        (other["id"], "Ofis", False),
+    ]
 
 
 def test_checkout_rejects_another_buyers_address_without_mutating_cart_or_stock(

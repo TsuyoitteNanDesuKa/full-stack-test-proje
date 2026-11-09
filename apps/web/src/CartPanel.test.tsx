@@ -92,6 +92,18 @@ describe('cart panel', () => {
     expect(props.onRemove).toHaveBeenCalledWith(21)
   })
 
+  it('rejects quantities exceeding available stock without submitting', async () => {
+    const { props } = renderCart()
+    const quantity = screen.getByRole('spinbutton', { name: 'Miktar: Cart product' })
+    fireEvent.change(quantity, { target: { value: '6' } })
+    const form = quantity.closest('form')
+    expect(form).not.toBeNull()
+    fireEvent.submit(form!)
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Miktar mevcut stok içinde olmalıdır.')
+    expect(props.onUpdate).not.toHaveBeenCalled()
+  })
+
   it('marks a deleted product unavailable and only allows removing it', () => {
     const deletedItem: CartItem = {
       ...availableItem,

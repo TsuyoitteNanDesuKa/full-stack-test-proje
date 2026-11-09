@@ -417,6 +417,47 @@ def test_return_stock_limit_failure_rolls_back_return_and_payment(
         assert payment is not None and payment.status == "succeeded"
 
 
+@pytest.mark.parametrize("invalid_state", ["missing_transition", "failed_payment"])
+def test_return_rejects_missing_transition_or_unsuccessful_payment_without_mutation(
+    client: TestClient, engine, invalid_state: str
+) -> None:
+    order_id, item_id, product_id = create_shipped_order(client, engine)
+    with Session(engine) as session:
+        if invalid_state == "missing_transition":
+            event = session.scalar(
+                select(OrderStatusEvent).where(
+                    OrderStatusEvent.order_id == order_id,
+                    OrderStatusEvent.action == "admin_status_changed",
+                    OrderStatusEvent.to_status == "delivered",
+                )
+            )
+            assert event is not None
+            session.delete(event)
+        else:
+            payment = session.scalar(select(Payment).where(Payment.order_id == order_id))
+            assert payment is not None
+            payment.status = "failed"
+        session.commit()
+
+    response = submit_return(client, order_id, item_id)
+    assert response.status_code == 409
+    expected_detail = (
+        "Siparişin iade süresi belirlenemedi."
+        if invalid_state == "missing_transition"
+        else "İade için sipariş ödemesinin başarılı olması gerekir."
+    )
+    assert response.json()["detail"] == expected_detail
+    with Session(engine) as session:
+        assert session.scalar(select(func.count()).select_from(ProductReturn)) == 0
+        product = session.get(Product, product_id)
+        assert product is not None and product.stock == 3
+
+
+def test_return_rejects_reason_that_is_too_short_after_trimming(client: TestClient) -> None:
+    response = submit_return(client, 1, 1, reason="  abc  ")
+    assert response.status_code == 422
+
+
 def test_reusing_return_idempotency_key_with_different_payload_conflicts(
     client: TestClient,
     engine,

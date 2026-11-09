@@ -115,4 +115,41 @@ describe('AdminOrdersPanel', () => {
       'Siparişler yüklenemedi. Lütfen tekrar dene.',
     )
   })
+
+  it('recovers after a failed refresh', async () => {
+    vi.mocked(getAdminOrders)
+      .mockRejectedValueOnce(new Error('initial failure'))
+      .mockRejectedValueOnce(new Error('retry failure'))
+      .mockResolvedValueOnce([sampleOrder])
+    const user = userEvent.setup()
+    render(<AdminOrdersPanel token="admin-token" />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Siparişler yüklenemedi.')
+    await user.click(screen.getByRole('button', { name: 'Yenile' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Siparişler yüklenemedi.')
+    await user.click(screen.getByRole('button', { name: 'Yenile' }))
+    expect(await screen.findByRole('heading', { name: 'Sipariş #21' })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(getAdminOrders).toHaveBeenCalledTimes(3)
+  })
+
+  it('reports status update and refund failures without losing the order or reason', async () => {
+    vi.mocked(updateAdminOrderStatus).mockRejectedValue(new Error('status failure'))
+    vi.mocked(refundAdminOrder).mockRejectedValue(new Error('refund failure'))
+    const user = userEvent.setup()
+    render(<AdminOrdersPanel token="admin-token" />)
+
+    await user.click(await screen.findByRole('button', { name: 'Hazırlanıyor aşamasına geçir' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Sipariş #21 güncellenemedi.')
+    const reason = screen.getByRole('textbox', { name: 'İptal/iade nedeni' })
+    await user.type(reason, '  Alıcı talebi  ')
+    await user.click(screen.getByRole('button', { name: 'İptal et ve yerel iade kaydı oluştur' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Sipariş #21 için iade kaydı oluşturulamadı.',
+    )
+    expect(refundAdminOrder).toHaveBeenCalledWith('admin-token', 21, 'Alıcı talebi')
+    expect(reason).toHaveValue('  Alıcı talebi  ')
+    expect(screen.getByRole('heading', { name: 'Sipariş #21' })).toBeInTheDocument()
+  })
 })
