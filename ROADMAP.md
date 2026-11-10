@@ -435,11 +435,11 @@ Canlıya çıkış, gerçek PSP/KYC/kargo entegrasyonu veya üretim altyapısı 
 8. **QA-020 — Test sınıflandırması ve çalışma sıklığı (tamamlandı):** Pytest marker'ları ve Playwright tag'leri; PR'da regresyon + smoke, nightly/elle tetiklenen kapsamlı Keycloak E2E ve raporlama.
 9. **QA-021 — Coverage kapsamının netleştirilmesi (tamamlandı):** kritik UI panelleri ve auth coverage kapsamına eklendi; mevcut üç dosyanın %100 kapısı korundu, genişletilmiş kapsam için toplam/dosya eşikleri ve ölçülen dosyaların CI raporlaması eklendi.
 10. **QA-022 — API yanıt sözleşmesi doğrulaması (tamamlandı):** temsilî gerçek API yanıtları sürümlü OpenAPI şemalarına doğrulanır; frontend'in tip/yol/yöntem/başlık kontrolleri sözleşme kapısında kalır.
-11. **QA-023 — Tarayıcıda erişilebilirlik kapsamı:** giriş ekranı dışındaki kritik buyer/admin akışlarını Chromium axe ile taramak; kontrast ve görsel davranışı tarayıcıda doğrulamak.
+11. **QA-023 — Tarayıcıda erişilebilirlik kapsamı (tamamlandı):** Chromium axe WCAG 2.1 A/AA buyer/admin akışlarında; kontrast kusurları giderildi, 320px mobil genişlikte yatay taşma kapısı eklendi.
 12. **QA-024 — Bağımlılık güvenlik kapıları:** frontend/backend bağımlılık taramasını CI'da tekrarlanabilir biçimde çalıştırmak, bulgular için anlaşılır rapor ve başarısızlık politikası belirlemek.
 13. **QA-025 — Performans başlangıç çizgisi (en son):** sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor; release/live ortamı gerektirmez.
 
-REQ-013, REQ-014, REQ-015 ve QA-016–QA-022'nin kabul kriterleri `docs/requirements.md` içinde tutulur. Sıradaki maddeler QA-023–QA-025'tir; performans QA-025 olarak en sonda kalır.
+REQ-013, REQ-014, REQ-015 ve QA-016–QA-023'ün kabul kriterleri `docs/requirements.md` içinde tutulur. Sıradaki maddeler QA-024–QA-025'tir; performans QA-025 olarak en sonda kalır.
 
 Önceki maddelerdeki frontend coverage yüzdeleri, ilgili koşuda ölçüme dahil edilen dosyalar içindir; tüm frontend'in coverage'ı olarak yorumlanmamalıdır.
 
@@ -564,6 +564,14 @@ REQ-013, REQ-014, REQ-015 ve QA-016–QA-022'nin kabul kriterleri `docs/requirem
 - **Kapsam:** Kimlik, ana sayfa, ürün listeleme/oluşturma, adres listeleme/oluşturma, sepet, sipariş oluşturma/listeleme, ödeme, admin sipariş listeleme/detay ve mevcut olmayan satıcı başvurusu (`null`) yanıtları. Dinamik yol parametreleri OpenAPI şablonuna eşlenir; HTTP durum kodu, JSON content-type, required alanlar, tipler, nullable değerler, formatlar ve yerel `$ref`'ler doğrulanır.
 - **Bağımlılık:** `jsonschema` yalnız backend geliştirme/test grubuna eklendi; üretim API bağımlılıklarına eklenmedi.
 - **Doğrulama:** OpenAPI yanıt sözleşmesi ve snapshot testleri, frontend `contract:check`, backend Ruff ve tam pytest kapıları geçer. Geçersiz/eksik payload'ın şemadan reddedildiği negatif test de bulunur.
+
+### Öncelik 17 — QA-023: Tarayıcıda erişilebilirlik kapsamı
+
+- **Durum:** Tamamlandı. İzole API/JWKS ile gerçek Chromium'da dolu buyer/admin ekranları WCAG 2.1 A/AA axe taramasından geçer; kritik görünümler 320px mobil genişlikte de taşmasız doğrulanır.
+- **Kapsam:** Buyer mağaza/katalog, adres defteri, dolu sepet/checkout, sipariş geçmişi; admin sipariş yönetimi ve satıcı başvuruları. PR `@smoke` Playwright işi içinde çalışır.
+- **Bulgular ve düzeltmeler:** Gerçek tarayıcı taraması tablo başlıkları, kategori ve ürün açıklaması renk kontrastı ile sipariş zaman damgalarında AA kontrast ihlali buldu; metin renkleri koyulaştırıldı. 320px viewport kontrolü `body` minimum genişliğinin 360px olmasından kaynaklanan yatay taşmayı yakaladı; minimum genişlik 320px'e indirildi.
+- **Sınırlar:** Axe otomatik taraması manuel ekran okuyucu, klavye deneyimi, büyütme ve tüm cihaz/browser kombinasyonlarının yerini tutmaz. Responsive kontrol seçili kritik akışlarda 320px genişliği ve yatay sayfa taşmasını doğrular.
+- **Doğrulama:** `npm run test:e2e:smoke` yeni QA-023 senaryosu dahil geçer; 320px buyer/admin görünümlerinde axe ve yatay taşma kontrolleri temizdir.
 
 ### Her incremental dilim için ortak Definition of Done
 

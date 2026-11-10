@@ -1133,7 +1133,7 @@
 .order-history-item > time {
   display: block;
   margin-top: 6px;
-  color: #8a9286;
+  color: #62685e;
 }
 
 .order-history-item > ul {
@@ -1240,7 +1240,7 @@
 .order-status-history time {
   display: block;
   margin-top: 3px;
-  color: #8a9286;
+  color: #62685e;
 }
 
 .order-status-history p {
@@ -1688,7 +1688,7 @@
 
 .product-table thead th {
   background: #f5f6f1;
-  color: #7d8778;
+  color: #586451;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.7px;
@@ -1758,14 +1758,14 @@
   padding: 5px 8px;
   border-radius: 20px;
   background: #f0f3eb;
-  color: #64755f;
+  color: #4f624d;
   font-size: 9px;
   white-space: nowrap;
 }
 
 .product-description {
   min-width: 230px;
-  color: #838a7f;
+  color: #62685e;
   line-height: 1.6;
 }
 

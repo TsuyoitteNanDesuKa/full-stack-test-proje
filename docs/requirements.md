@@ -718,11 +718,11 @@ Proje canlı kullanıma alınmayacağı için dış sağlayıcı entegrasyonlar�
 8. **QA-020 — Test sınıflandırması ve çalışma sıklığı (tamamlandı):** Pytest/Playwright etiketleri, PR smoke ve nightly/elle tetiklenen Keycloak E2E ayrımı, unified raporlama.
 9. **QA-021 — Coverage kapsamının netleştirilmesi (tamamlandı):** Frontend coverage ölçümünü kritik UI akışlarıyla hizalama ve gerçek ölçülen dosyaları CI özetinde gösterme.
 10. **QA-022 — API yanıt sözleşmesi doğrulaması (tamamlandı):** Temsilî API yanıtlarını sürümlü OpenAPI/JSON Schema'ya doğrulama ve istemci sözleşme kontrollerini CI kalite kapısında tutma.
-11. **QA-023 — Tarayıcıda erişilebilirlik kapsamı:** Giriş ekranı dışındaki kritik akışlarda gerçek tarayıcı axe taramaları.
+11. **QA-023 — Tarayıcıda erişilebilirlik kapsamı (tamamlandı):** Giriş dışındaki kritik buyer/admin akışlarında Chromium axe WCAG 2.1 A/AA taramaları; kontrast ve mobil yatay taşma doğrulaması.
 12. **QA-024 — Bağımlılık güvenlik kapıları:** Frontend/backend bağımlılık taraması ve CI başarısızlık politikası.
 13. **QA-025 — Performans başlangıç çizgisi (en son):** Sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor.
 
-REQ-013–015 ve QA-016–022 kabul kriterleri bu belgede tanımlanmıştır. QA-023–025 ayrıntılı kabul kriterleri geliştirmeye başlanırken oluşturulacaktır. Performans aşaması özellikle en sona bırakılmıştır.
+REQ-013–015 ve QA-016–023 kabul kriterleri bu belgede tanımlanmıştır. QA-024–025 ayrıntılı kabul kriterleri geliştirmeye başlanırken oluşturulacaktır. Performans aşaması özellikle en sona bırakılmıştır.
 
 Önceliği olmayan/şimdilik ertelenenler: gerçek PSP/para transferi, otomatik KYC/KYB ve gerçek kargo sağlayıcısı; e-posta/parola yaşam döngüsü özellikleri ise harici e-posta servisi yerine test edilebilir yerel fake ile ele alınmalıdır.
 
@@ -985,3 +985,25 @@ Kategoriler örtüşebilir. PostgreSQL testleri `integration` ve `postgres`; Pla
 - `apps/web/src/api.openapi.test.ts`, `apps/web/scripts/openapi-contract.mjs`: frontend çağrı biçimi ve generated model denetimi.
 - `.github/workflows/ci.yml`: backend pytest ve frontend `contract:check` PR kalite kapıları.
 - **Doğrulama:** `uv run pytest tests/test_response_contract.py tests/test_openapi_contract.py -q` 8 test geçti; `npm run contract:check` ve Ruff kontrolü başarılı.
+
+## QA-023 — Tarayıcıda erişilebilirlik kapsamı
+
+- **Durum:** Tamamlandı.
+- **Amaç:** JSDOM'un gerçek renk/yerleşim davranışını ölçemediği durumları Chromium'da kritik dolu buyer/admin akışları üzerinden test etmek.
+
+### Kabul kriterleri
+
+1. İzole PR E2E ortamında WCAG 2.1 A/AA axe taramaları gerçek Chromium'da buyer katalog/mağaza, adres defteri, sepet/checkout ve sipariş geçmişini; admin sipariş yönetimi ve satıcı başvuruları ekranlarını kapsar.
+2. Tarama, WCAG tag setindeki renk kontrastı dahil ihlalleri rapor ayrıntılarıyla başarısız kılar; gerçek tarama dışlanmaz veya kural kapatılmaz.
+3. Buyer ve admin kritik görünümleri 320px genişlikte taranır ve sayfada yatay taşma olmadığı ölçülür. Görsel düzen doğrulaması burada reflow/overflow kontrolü ile sınırlıdır.
+4. Yeni tarama deterministik `@smoke` E2E grubunda her PR'da, geçici API/SQLite/JWKS ortamında çalışır; gerçek Keycloak veya kalıcı kullanıcı gerektirmez.
+5. Bulunan görsel kusurlar gerekli en küçük stil/viewport değişikliğiyle giderilir; test ve sınırlar README/roadmap'de belirtilir.
+
+### Test izlenebilirliği ve doğrulama
+
+- `apps/web/e2e/accessibility.spec.ts`: anonim giriş taraması ve klavye odağı yanında QA-023 buyer/admin akışlarının axe ve 320px yatay taşma kontrolleri.
+- `apps/web/src/App.css`: ürün tablosu başlık, kategori, açıklama ve sipariş zamanı metinleri için kontrast iyileştirmeleri.
+- `apps/web/src/index.css`: 320px ekranlarda yatay sayfa taşmasını engelleyen minimum gövde genişliği.
+- `.github/workflows/ci.yml`, `apps/web/e2e/run-playwright.mjs`: mevcut PR browser `@smoke` işi test-only JWKS ile genişletilmiş erişilebilirlik senaryosunu çalıştırır.
+- **Doğrulama:** `npm run test:e2e:smoke` başarıyla tamamlandı; QA-023 testi buyer/admin dolu ekranlarında axe ve mobil reflow kapılarını geçti. `npm run build` ve `npm run lint` başarılı.
+- **Sınırlar:** Otomatik axe ve dar viewport kontrolü manuel ekran okuyucu testi, yakınlaştırma/reflow farklı seviyeleri ve diğer browser/cihaz kombinasyonlarını kapsamaz.
