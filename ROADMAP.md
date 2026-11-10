@@ -434,12 +434,12 @@ Canlıya çıkış, gerçek PSP/KYC/kargo entegrasyonu veya üretim altyapısı 
 7. **QA-019 — CI'da deterministik E2E (tamamlandı):** PR'larda yerel test JWKS sağlayıcısı ve ephemeral RSA anahtarıyla Keycloak/harici servis gerektirmeyen gerçek API+SQLite buyer checkout/mock ödeme akışı; gerçek Keycloak E2E ayrıca korunur.
 8. **QA-020 — Test sınıflandırması ve çalışma sıklığı (tamamlandı):** Pytest marker'ları ve Playwright tag'leri; PR'da regresyon + smoke, nightly/elle tetiklenen kapsamlı Keycloak E2E ve raporlama.
 9. **QA-021 — Coverage kapsamının netleştirilmesi (tamamlandı):** kritik UI panelleri ve auth coverage kapsamına eklendi; mevcut üç dosyanın %100 kapısı korundu, genişletilmiş kapsam için toplam/dosya eşikleri ve ölçülen dosyaların CI raporlaması eklendi.
-10. **QA-022 — API yanıt sözleşmesi doğrulaması:** temsilî API yanıtlarını sürümlü OpenAPI/JSON Schema'ya karşı doğrulamak; istemci tip/yol kontrollerini tamamlamak.
+10. **QA-022 — API yanıt sözleşmesi doğrulaması (tamamlandı):** temsilî gerçek API yanıtları sürümlü OpenAPI şemalarına doğrulanır; frontend'in tip/yol/yöntem/başlık kontrolleri sözleşme kapısında kalır.
 11. **QA-023 — Tarayıcıda erişilebilirlik kapsamı:** giriş ekranı dışındaki kritik buyer/admin akışlarını Chromium axe ile taramak; kontrast ve görsel davranışı tarayıcıda doğrulamak.
 12. **QA-024 — Bağımlılık güvenlik kapıları:** frontend/backend bağımlılık taramasını CI'da tekrarlanabilir biçimde çalıştırmak, bulgular için anlaşılır rapor ve başarısızlık politikası belirlemek.
 13. **QA-025 — Performans başlangıç çizgisi (en son):** sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor; release/live ortamı gerektirmez.
 
-REQ-013, REQ-014, REQ-015 ve QA-016–QA-021'in kabul kriterleri `docs/requirements.md` içinde tutulur. Sıradaki maddeler QA-022–QA-025'tir; performans QA-025 olarak en sonda kalır.
+REQ-013, REQ-014, REQ-015 ve QA-016–QA-022'nin kabul kriterleri `docs/requirements.md` içinde tutulur. Sıradaki maddeler QA-023–QA-025'tir; performans QA-025 olarak en sonda kalır.
 
 Önceki maddelerdeki frontend coverage yüzdeleri, ilgili koşuda ölçüme dahil edilen dosyalar içindir; tüm frontend'in coverage'ı olarak yorumlanmamalıdır.
 
@@ -557,6 +557,13 @@ REQ-013, REQ-014, REQ-015 ve QA-016–QA-021'in kabul kriterleri `docs/requireme
 - **Kapılar:** Genişletilmiş kapsamın toplamında statement %93, branch %88, function %95 ve line %93; her dosyada sırasıyla %81, %70, %88 ve %83. Önceki `App.tsx`, `api.ts`, `ProductCreatePage.tsx` grubunun dört ölçümde %100 kapısı korunur. Yeni `*Panel.tsx` dosyaları otomatik dahil olur.
 - **Doğrulama:** 212 Vitest testi geçti; genişletilmiş kapsamda statement %93,14, branch %88,50, function %95,60, line %93,75. Eksik coverage'da yeni ve eski eşiklerin başarısızlığı ve CI raporunun kapsam/eksik rapor davranışı doğrulandı; build/lint başarılı.
 - **Sınır:** Coverage çalıştırılan kodu ölçer, kapsamlı davranış doğrulaması veya gerçek tarayıcı/backend E2E yerine geçmez.
+
+### Öncelik 16 — QA-022: API yanıt sözleşmesi doğrulaması
+
+- **Durum:** Tamamlandı. İzole SQLite üzerinde gerçek FastAPI yanıtları sürümlü `docs/openapi.json` içindeki JSON Schema'lara doğrulanır; frontend API çağrılarının yol/yöntem/header/query/body ve üretilen modellerle uyumu CI'da zaten denetlenir.
+- **Kapsam:** Kimlik, ana sayfa, ürün listeleme/oluşturma, adres listeleme/oluşturma, sepet, sipariş oluşturma/listeleme, ödeme, admin sipariş listeleme/detay ve mevcut olmayan satıcı başvurusu (`null`) yanıtları. Dinamik yol parametreleri OpenAPI şablonuna eşlenir; HTTP durum kodu, JSON content-type, required alanlar, tipler, nullable değerler, formatlar ve yerel `$ref`'ler doğrulanır.
+- **Bağımlılık:** `jsonschema` yalnız backend geliştirme/test grubuna eklendi; üretim API bağımlılıklarına eklenmedi.
+- **Doğrulama:** OpenAPI yanıt sözleşmesi ve snapshot testleri, frontend `contract:check`, backend Ruff ve tam pytest kapıları geçer. Geçersiz/eksik payload'ın şemadan reddedildiği negatif test de bulunur.
 
 ### Her incremental dilim için ortak Definition of Done
 

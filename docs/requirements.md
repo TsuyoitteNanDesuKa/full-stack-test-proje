@@ -717,12 +717,12 @@ Proje canlı kullanıma alınmayacağı için dış sağlayıcı entegrasyonlar�
 7. **QA-019 — CI'da deterministik E2E:** PR'larda harici/koşullu Keycloak gerektirmeyen kritik kullanıcı akışları.
 8. **QA-020 — Test sınıflandırması ve çalışma sıklığı (tamamlandı):** Pytest/Playwright etiketleri, PR smoke ve nightly/elle tetiklenen Keycloak E2E ayrımı, unified raporlama.
 9. **QA-021 — Coverage kapsamının netleştirilmesi (tamamlandı):** Frontend coverage ölçümünü kritik UI akışlarıyla hizalama ve gerçek ölçülen dosyaları CI özetinde gösterme.
-10. **QA-022 — API yanıt sözleşmesi doğrulaması:** Temsilî API yanıtlarını OpenAPI/JSON Schema'ya karşı doğrulama.
+10. **QA-022 — API yanıt sözleşmesi doğrulaması (tamamlandı):** Temsilî API yanıtlarını sürümlü OpenAPI/JSON Schema'ya doğrulama ve istemci sözleşme kontrollerini CI kalite kapısında tutma.
 11. **QA-023 — Tarayıcıda erişilebilirlik kapsamı:** Giriş ekranı dışındaki kritik akışlarda gerçek tarayıcı axe taramaları.
 12. **QA-024 — Bağımlılık güvenlik kapıları:** Frontend/backend bağımlılık taraması ve CI başarısızlık politikası.
 13. **QA-025 — Performans başlangıç çizgisi (en son):** Sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor.
 
-REQ-013–015 ve QA-016–021 kabul kriterleri bu belgede tanımlanmıştır. QA-022–025 ayrıntılı kabul kriterleri geliştirmeye başlanırken oluşturulacaktır. Performans aşaması özellikle en sona bırakılmıştır.
+REQ-013–015 ve QA-016–022 kabul kriterleri bu belgede tanımlanmıştır. QA-023–025 ayrıntılı kabul kriterleri geliştirmeye başlanırken oluşturulacaktır. Performans aşaması özellikle en sona bırakılmıştır.
 
 Önceliği olmayan/şimdilik ertelenenler: gerçek PSP/para transferi, otomatik KYC/KYB ve gerçek kargo sağlayıcısı; e-posta/parola yaşam döngüsü özellikleri ise harici e-posta servisi yerine test edilebilir yerel fake ile ele alınmalıdır.
 
@@ -963,3 +963,25 @@ Kategoriler örtüşebilir. PostgreSQL testleri `integration` ve `postgres`; Pla
 - `scripts/ci-summary.mjs`, `scripts/ci-summary.test.mjs`: JSON'dan gerçek dosya listesi, eksik kapsam hatası ve Keycloak raporlama regresyonu.
 - `npm run test:coverage`: 212 test geçti; toplam statement %93,14, branch %88,50, function %95,60 ve line %93,75. Eksik kapsamlı bir test çalışmasında eski %100 ve yeni eşiklerin başarısız olduğu ayrıca doğrulandı.
 - `npm run build`, `npm run lint` ve `node --test scripts/ci-summary.test.mjs` başarılı. Gerçek GitHub Actions koşusunun rapor artefaktı sunucu ortamında ayrıca gözlemlenmelidir.
+
+## QA-022 — API yanıt sözleşmesi doğrulaması
+
+- **Durum:** Tamamlandı.
+- **Amaç:** Gerçek backend yanıt örneklerinin sürümlü OpenAPI response şemalarından sapmasını ve frontend çağrılarının sözleşmede tanımsız kalmasını CI'da yakalamak.
+
+### Kabul kriterleri
+
+1. Temsilî başarılı yanıtlar FastAPI `TestClient` üzerinden üretilir ve `docs/openapi.json` snapshot'ındaki ilgili operation/status/content JSON Schema'sına doğrulanır. Test, uygulamanın güncel OpenAPI çıktısını değil sürümlü snapshot'ı kullanır.
+2. Doğrulama yerel `$ref`'leri, dinamik path parametrelerini, required alanları, türleri, nullable alanları ve JSON Schema formatlarını destekler; yanıtın HTTP durumu ve JSON content-type'ı operation tanımıyla eşleşir.
+3. En az auth/current user, home, products, addresses, cart, order, payment, admin order ve seller application yanıt biçimleri kapsanır; boş/nullable seller başvurusu da doğrulanır. Eksik required alanı olan yanıtın reddedildiği negatif test bulunur.
+4. `apps/web/src/api.openapi.test.ts` tüm istemci çağrılarının path/method ve gerekli auth/header/query/body koşullarını snapshot'a göre denetler; `npm run contract:check` üretilen istemci modellerini snapshot ile karşılaştırır.
+5. Backend response-schema testleri varsayılan pytest/PR kapısında çalışır; istemci sözleşme kontrolü frontend PR kalite kapısında kalır. Validator yalnız test bağımlılığıdır.
+
+### Test izlenebilirliği ve doğrulama
+
+- `apps/api/tests/test_response_contract.py`: gerçek SQLite/TestClient yanıtlarını sürümlü response şemalarına doğrulama ve eksik alan negatif testi.
+- `apps/api/tests/test_openapi_contract.py`, `apps/api/scripts/openapi_contract.py`: backend OpenAPI snapshot üretim/deterministik kontrolü.
+- `apps/api/pyproject.toml`, `apps/api/uv.lock`: test grubu için `jsonschema` validator bağımlılığı.
+- `apps/web/src/api.openapi.test.ts`, `apps/web/scripts/openapi-contract.mjs`: frontend çağrı biçimi ve generated model denetimi.
+- `.github/workflows/ci.yml`: backend pytest ve frontend `contract:check` PR kalite kapıları.
+- **Doğrulama:** `uv run pytest tests/test_response_contract.py tests/test_openapi_contract.py -q` 8 test geçti; `npm run contract:check` ve Ruff kontrolü başarılı.
