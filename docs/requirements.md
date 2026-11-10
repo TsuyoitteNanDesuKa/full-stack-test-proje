@@ -719,10 +719,11 @@ Proje canlı kullanıma alınmayacağı için dış sağlayıcı entegrasyonlar�
 9. **QA-021 — Coverage kapsamının netleştirilmesi (tamamlandı):** Frontend coverage ölçümünü kritik UI akışlarıyla hizalama ve gerçek ölçülen dosyaları CI özetinde gösterme.
 10. **QA-022 — API yanıt sözleşmesi doğrulaması (tamamlandı):** Temsilî API yanıtlarını sürümlü OpenAPI/JSON Schema'ya doğrulama ve istemci sözleşme kontrollerini CI kalite kapısında tutma.
 11. **QA-023 — Tarayıcıda erişilebilirlik kapsamı (tamamlandı):** Giriş dışındaki kritik buyer/admin akışlarında Chromium axe WCAG 2.1 A/AA taramaları; kontrast ve mobil yatay taşma doğrulaması.
-12. **QA-024 — Bağımlılık güvenlik kapıları:** Frontend/backend bağımlılık taraması ve CI başarısızlık politikası.
-13. **QA-025 — Performans başlangıç çizgisi (en son):** Sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor.
+12. **QA-024 — E2E mimarisi ve standartlaştırma:** Playwright fixture + API seed + gerektiği yerde ince POM düzenini standartlaştırma; testleri iş senaryolarına göre organize etme.
+13. **QA-025 — Bağımlılık güvenlik kapıları:** Frontend/backend bağımlılık taraması ve CI başarısızlık politikası.
+14. **QA-026 — Performans başlangıç çizgisi (en son):** Sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor.
 
-REQ-013–015 ve QA-016–023 kabul kriterleri bu belgede tanımlanmıştır. QA-024–025 ayrıntılı kabul kriterleri geliştirmeye başlanırken oluşturulacaktır. Performans aşaması özellikle en sona bırakılmıştır.
+REQ-013–015 ve QA-016–023 kabul kriterleri bu belgede tanımlanmıştır. QA-024–026 ayrıntılı kabul kriterleri geliştirmeye başlanırken oluşturulacaktır. Performans aşaması özellikle en sona bırakılmıştır.
 
 Önceliği olmayan/şimdilik ertelenenler: gerçek PSP/para transferi, otomatik KYC/KYB ve gerçek kargo sağlayıcısı; e-posta/parola yaşam döngüsü özellikleri ise harici e-posta servisi yerine test edilebilir yerel fake ile ele alınmalıdır.
 
@@ -918,7 +919,7 @@ REQ-013–015 ve QA-016–023 kabul kriterleri bu belgede tanımlanmıştır. QA
 | `e2e` | Browser üzerinden tam kullanıcı yolu | Smoke E2E her PR; kapsamlı paket ayrıca |
 | `security` | Kimlik doğrulama, yetkilendirme ve güvenlik kuralları | Her PR'da ilgili regression; ileride kapsamlı taramalar ayrıca |
 | `keycloak` | Gerçek Keycloak realm/OIDC/rol entegrasyonu | Nightly (02:00 UTC) ve elle `workflow_dispatch`; PR'da çalışmaz |
-| `performance` | Yük/performans ölçümleri | QA-025'te tanımlanacak; PR kapısı değildir |
+| `performance` | Yük/performans ölçümleri | QA-026'da tanımlanacak; PR kapısı değildir |
 
 Kategoriler örtüşebilir. PostgreSQL testleri `integration` ve `postgres`; Playwright smoke senaryosu hem `e2e` hem `@smoke`'tır. Pytest'te strict marker kontrolü açıktır; `smoke`, `integration`, `security`, `keycloak` veya `performance` almamış yeni testler otomatik `regression` sınıfına girer.
 

@@ -125,6 +125,8 @@ Set-Location apps/web
 npm run test:e2e:smoke
 ```
 
+Yeni E2E senaryolarında API ile test verisi hazırlama, ortak Playwright fixture'ları, gerektiğinde ince POM ve iş senaryosu odaklı spec yaklaşımı izlenir; ayrıntılar [web E2E standardında](./apps/web/README.md#test-layers) ve roadmap'deki QA-024'te yer alır.
+
 Gerçek Keycloak kapsamlı senaryoları CI'da her gece 02:00 UTC'de ve `workflow_dispatch` ile ephemeral realm üzerinde çalışır. Yerelde çalıştırmak için Keycloak realm'ini başlatıp bootstrap admin parolasını test sürecine verin. Değeri kaynak koda veya bu belgeye yazmayın:
 
 ```powershell

@@ -436,10 +436,19 @@ Canlıya çıkış, gerçek PSP/KYC/kargo entegrasyonu veya üretim altyapısı 
 9. **QA-021 — Coverage kapsamının netleştirilmesi (tamamlandı):** kritik UI panelleri ve auth coverage kapsamına eklendi; mevcut üç dosyanın %100 kapısı korundu, genişletilmiş kapsam için toplam/dosya eşikleri ve ölçülen dosyaların CI raporlaması eklendi.
 10. **QA-022 — API yanıt sözleşmesi doğrulaması (tamamlandı):** temsilî gerçek API yanıtları sürümlü OpenAPI şemalarına doğrulanır; frontend'in tip/yol/yöntem/başlık kontrolleri sözleşme kapısında kalır.
 11. **QA-023 — Tarayıcıda erişilebilirlik kapsamı (tamamlandı):** Chromium axe WCAG 2.1 A/AA buyer/admin akışlarında; kontrast kusurları giderildi, 320px mobil genişlikte yatay taşma kapısı eklendi.
-12. **QA-024 — Bağımlılık güvenlik kapıları:** frontend/backend bağımlılık taramasını CI'da tekrarlanabilir biçimde çalıştırmak, bulgular için anlaşılır rapor ve başarısızlık politikası belirlemek.
-13. **QA-025 — Performans başlangıç çizgisi (en son):** sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor; release/live ortamı gerektirmez.
+12. **QA-024 — E2E mimarisi ve standartlaştırma (şimdi):** API ile test verisi hazırlama, Playwright fixture'larıyla ortak auth/yardımcılar, tekrar kullanılan kararlı UI bölgeleri için ince POM ve senaryo odaklı spec yapısını standartlaştırmak; Composer/Journey katmanını yalnızca tekrar oluştuğunda eklemek.
+13. **QA-025 — Bağımlılık güvenlik kapıları:** frontend/backend bağımlılık taramasını CI'da tekrarlanabilir biçimde çalıştırmak, bulgular için anlaşılır rapor ve başarısızlık politikası belirlemek.
+14. **QA-026 — Performans başlangıç çizgisi (en son):** sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor; release/live ortamı gerektirmez.
 
-REQ-013, REQ-014, REQ-015 ve QA-016–QA-023'ün kabul kriterleri `docs/requirements.md` içinde tutulur. Sıradaki maddeler QA-024–QA-025'tir; performans QA-025 olarak en sonda kalır.
+REQ-013, REQ-014, REQ-015 ve QA-016–QA-023'ün kabul kriterleri `docs/requirements.md` içinde tutulur. Sıradaki madde QA-024'tür; performans QA-026 olarak en sonda kalır.
+
+#### Şimdi — QA-024: E2E mimarisi ve standartlaştırma
+
+- **Amaç:** Playwright E2E testlerinde tekrar kullanılabilirliği ve okunabilirliği artırırken orta ölçekli projeye gereksiz soyutlama eklememek.
+- **Benimsenen yaklaşım:** Test verisi ve başlangıç durumu mümkün olduğunca gerçek FastAPI test API'si üzerinden hazırlanır; ortak kimlik doğrulama ve altyapı Playwright fixture'larında tutulur. Tekrarlanan, kararlı UI bölgeleri için ince POM'lar kullanılır; spec'ler sayfadan çok buyer/admin gibi iş senaryolarına göre düzenlenir. Çok adımlı Composer/Journey katmanı ancak aynı akış en az üç senaryoda tekrarlandığında değerlendirilir.
+- **Kapsam:** Mevcut E2E dosyalarını ve yardımcılarını bu standartla gözden geçirip uygun küçük refactor'ları yapmak; fixture kapsamı, adlandırma, test verisi temizliği, bekleme/assertion ve tag kurallarını web README'de açıklamak.
+- **Sınırlar:** E2E senaryosunun doğrulamakta olduğu davranış UI üzerinden sürdürülür; API hazırlığı doğrulanması gereken UI davranışını atlamaz. Veritabanına doğrudan erişim varsayılan seed yöntemi değildir. Tek kullanımlık/yalın kontroller için POM veya Composer zorunlu tutulmaz.
+- **Tamamlanma ölçütü:** Birkaç temsilî smoke ve Keycloak senaryosu ortak fixture/API seed ve ince UI nesneleriyle yeniden düzenlenir; test adı/etiketi, bağımsız veri ve cleanup korunur; ilgili PR smoke, Keycloak seçimi, lint ve build kontrolleri geçer.
 
 Önceki maddelerdeki frontend coverage yüzdeleri, ilgili koşuda ölçüme dahil edilen dosyalar içindir; tüm frontend'in coverage'ı olarak yorumlanmamalıdır.
 
@@ -572,6 +581,13 @@ REQ-013, REQ-014, REQ-015 ve QA-016–QA-023'ün kabul kriterleri `docs/requirem
 - **Bulgular ve düzeltmeler:** Gerçek tarayıcı taraması tablo başlıkları, kategori ve ürün açıklaması renk kontrastı ile sipariş zaman damgalarında AA kontrast ihlali buldu; metin renkleri koyulaştırıldı. 320px viewport kontrolü `body` minimum genişliğinin 360px olmasından kaynaklanan yatay taşmayı yakaladı; minimum genişlik 320px'e indirildi.
 - **Sınırlar:** Axe otomatik taraması manuel ekran okuyucu, klavye deneyimi, büyütme ve tüm cihaz/browser kombinasyonlarının yerini tutmaz. Responsive kontrol seçili kritik akışlarda 320px genişliği ve yatay sayfa taşmasını doğrular.
 - **Doğrulama:** `npm run test:e2e:smoke` yeni QA-023 senaryosu dahil geçer; 320px buyer/admin görünümlerinde axe ve yatay taşma kontrolleri temizdir.
+
+### Öncelik 18 — QA-024: E2E mimarisi ve standartlaştırma
+
+- **Durum:** Sıradaki geliştirme; uygulamaya henüz başlanmadı.
+- **Standart:** API ile durum/test verisi hazırlama; cross-cutting auth ve servis yaşam döngüsü için Playwright fixture'ları; tekrar kullanılan kararlı UI bölgeleri için ince POM; iş senaryosu odaklı spec düzeni. Composer/Journey yalnızca aynı çok adımlı akış en az üç testte tekrarlandığında eklenir.
+- **İlk uygulama alanı:** Deterministik buyer checkout, erişilebilirlik buyer/admin senaryoları ve Keycloak browser testlerinden tekrar eden kurulum/etkileşimleri belirle; her refactor'da testin gerçek UI davranışını doğrulamaya devam ettiğini ve izolasyon/cleanup'ı koruduğunu kanıtla.
+- **Test/kalite:** Smoke ve Keycloak selector'ları, senaryolar arası bağımsızlık, her koşuda benzersiz test verisi ve cleanup; Playwright smoke/ilgili Keycloak testleri, frontend lint ve build geçer.
 
 ### Her incremental dilim için ortak Definition of Done
 
