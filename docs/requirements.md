@@ -11,6 +11,7 @@ Müşterilerin ürünleri bulup satın alabildiği bir çevrimiçi mağaza geli�
 - İlk istemci uygulaması tarayıcı üzerinden kullanılacaktır; bu gereksinim backend API ve login arayüzünü kapsar.
 - REQ-001'in yerel parola tabanlı ilk prototipi Keycloak/OIDC entegrasyonuyla değiştirilmektedir; alıcı self-registration REQ-006 kapsamındadır.
 - Alıcı, satıcı ve platform yöneticisi farklı iş profilleridir. Herkese açık kayıt yalnızca alıcı hesabı oluşturur; satıcı/yönetici rolü kullanıcı tarafından seçilemez veya yükseltilemez.
+- Ürün öğrenme kapsamı çok satıcılı marketplace akışlarını ve yerel/mock ödeme, sipariş operasyonu ve iptal davranışlarını kapsar. Gerçek ödeme/PSP, kargo/taşıyıcı ve KYC/KYB entegrasyonları ile canlıya çıkış kapsam dışıdır.
 - E-posta doğrulama ve parola sıfırlama daha sonraki dilimlere bırakılmıştır; ilk kayıt akışında e-posta doğrulaması zorunlu değildir.
 - Yerel geliştirme ve Alembic migration hedefi Docker Compose PostgreSQL'dir. Hızlı unit/API testleri ve izole Playwright E2E veritabanı olarak SQLite kullanılır. PostgreSQL bağlantı/migration temeli REQ-009 QA adımında kuruldu; PostgreSQL eşzamanlılık testleri kapanış koşulu olarak ayrıca çalıştırılacaktır.
 - Ana sayfa ve ürün kataloğu yalnızca doğrulanmış kullanıcılara sunulur. Ürün CRUD'u admin için mağaza genelinde, onaylı seller için yalnızca kendisine ait ürünlerde kullanılabilir.
@@ -28,8 +29,8 @@ Bu araştırma, sağlayıcıların kamuya açık müşteri/satıcı akışları 
 | Profil | Pazar yeri örüntüsü ve proje kararı |
 |---|---|
 | Alıcı | Trendyol'un herkese açık giriş/kayıt ekranı e-posta ile devam etme ve Google/Facebook ile devam etme seçeneklerini gösteriyor. Amazon'un tüketici hesapları da ayrı bir alışveriş hesabı deneyimi sunuyor. İlk dilimde kullanıcı e-posta ve parola ile kendi alıcı hesabını oluşturur; adres/ödeme bilgisi kayıt sırasında istenmez. |
-| Satıcı | Amazon'ın resmi satıcı kayıt rehberi, satıcı kaydını alıcı hesabından ayrı bir iş akışı olarak tanımlıyor; işletme, birincil irtibat, banka/ödeme bilgileri ve kimlik doğrulaması istiyor. Trendyol Partner/Satıcı portalı ayrı bir iş yüzeyi; erişilebilen herkese açık sayfalar iç rol ve doğrulama ayrıntılarını göstermiyor. Projede alıcı hesabı satıcı başvurusu yapabilir; ilk dilimde belge toplamadan admin manuel incelemesi uygulanır. Onaylı satıcı, alıcı rolünü koruyarak yalnızca kendi ürünlerini yönetir. Formal KYC/KYB, ödeme ve satıcı ekipleri bu gereksinimin dışındadır. |
-| Platform yöneticisi | Pazar yerlerinde platform operasyonu ve moderasyonu alıcı/satıcı deneyimlerinden ayrıdır. Bu projede admin rolü yalnızca güvenilir yönetim kanalından atanır; herkese açık kayıtla admin olunamaz. Admin, mağaza genelindeki yönetim işlemlerini yapar; satıcıya ait ürün/işletme yetkileri ileride ayrı kurallarla tanımlanır. |
+| Satıcı | Amazon'ın resmi satıcı kayıt rehberi, satıcı kaydını alıcı hesabından ayrı bir iş akışı olarak tanımlıyor; işletme, birincil irtibat, banka/ödeme bilgileri ve kimlik doğrulaması istiyor. Trendyol Partner/Satıcı portalı ayrı bir iş yüzeyi; erişilebilen herkese açık sayfalar iç rol ve doğrulama ayrıntılarını göstermiyor. Projede alıcı hesabı satıcı başvurusu yapabilir; admin beyanları manuel inceler. Onay, öğrenme uygulamasında satıcı yetkisini açar; marketplace sipariş erişimi REQ-017'de tanımlanır. Gerçek KYC/KYB, ödeme ve kargo entegrasyonları kapsam dışıdır. |
+| Platform yöneticisi | Pazar yerlerinde platform operasyonu ve moderasyonu alıcı/satıcı deneyimlerinden ayrıdır. Bu projede admin rolü yalnızca güvenilir yönetim kanalından atanır; herkese açık kayıtla admin olunamaz. Admin, mağaza geneli yönetim ve satıcı başvurusu incelemesini yapar; marketplace gözetim kuralları ilgili gereksinimlerde tanımlanır. |
 
 **Kaynaklar (30 Ekim 2026'da erişilen kamuya açık sayfalar):**
 
@@ -431,18 +432,7 @@ Trendyol'un resmi Partner Portalı satıcılar için ayrı bir iş yüzeyi oldu�
 - [Amazon — How to sell on Amazon](https://sell.amazon.com/sell) (ABD satıcı kayıt rehberi; ülkeye göre değişiklik gösterebilir).
 - [Trendyol Partner Portalı](https://partner.trendyol.com/) (JavaScript/oturum gerektirir; iç başvuru adımları kamuya açık olarak doğrulanamadı).
 
-**İlk sürüm kararı:** Başvurular bireysel satıcı, şahıs işletmesi ve şirket türlerini seçebilir. Form yalnızca temel beyanları alır; kimlik/vergi numarası, banka bilgisi ve belge dosyası toplamaz. Yetkili admin beyan edilen bilgileri manuel olarak inceler. Bu kontrol formal KYC, sicil doğrulaması veya hukuki uygunluk teyidi değildir; `approved` yalnızca uygulamadaki satıcı erişiminin admin tarafından açıldığını ifade eder. İlan yayımlama, sipariş/ödeme alma ve gerçek satışa başlama için gerekli hukuki/işletme doğrulaması ayrıca tanımlanıp tamamlanmalıdır.
-
-### Sonraki araştırma: otomatik doğrulama ve entegrasyon
-
-Otomatik KYC/KYB doğrulaması bu gereksinimin ve ilk uygulama diliminin **dışındadır**; daha sonra ayrı bir araştırma/teknoloji kararı olarak ele alınacaktır. İleride araştırılacak seçenekler:
-
-- Şirket/işletme varlığı ve unvanı için MERSİS/Ticaret Sicili verilerine veya erişim izni olan bir KYB sağlayıcısına entegrasyon olanağı.
-- Gerekli görülürse GİB belge/mükellefiyet doğrulaması ve kimlik/temsilci doğrulaması için yetkili resmî servis veya sözleşmeli KYC sağlayıcısı. Mevcut kamuya açık doğrulama ekranları tek başına kullanılabilir bir API veya entegrasyon hakkı bulunduğunu göstermez.
-- Ülke ve işletme türü kapsamı, doğrulanan veri ve kanıtlar, erişim/sözleşme koşulları, KVKK ve veri saklama etkisi, maliyet ve sağlayıcı hata/yanıt süresi.
-- Net başarılı/net başarısız/belirsiz sonuç politikası; eşleşmeme, servis kesintisi ve yetersiz kanıtta manuel incelemeye güvenli dönüş; gerekçeli karar ve audit izi.
-
-Sağlayıcı ve yasal/operasyonel gereklilikler araştırılmadan otomatik onay, belirli bir kamu API'sinin varlığı veya KYC kapsamı taahhüt edilmez. Otomatik bir kontrol devreye girse dahi tek başına başvuru beyanı ya da doğrulama servisi sonucu, satış/ödeme için hukuki uygunluk garantisi olarak sunulmamalıdır.
+**Öğrenme projesi kararı:** Başvurular bireysel satıcı, şahıs işletmesi ve şirket türlerini seçebilir. Form yalnızca temel beyanları alır; kimlik/vergi numarası, banka bilgisi ve belge dosyası toplamaz. Yetkili admin beyan edilen bilgileri manuel inceler. `approved`, formal KYC/sicil doğrulaması veya hukuki uygunluk anlamına gelmez; yalnızca uygulama içindeki mock marketplace satıcı yetkilerini açar. Gerçek KYC/KYB entegrasyonu, yasal uygunluk teyidi, PSP/para hareketi ve kargo/taşıyıcı entegrasyonu bu projenin kapsamı dışındadır.
 
 ### Başvuru alanları
 
@@ -663,9 +653,9 @@ Keycloak erişim/rol atama hatasında işlem başarı gibi raporlanmaz; başvuru
 - `POST /api/v1/payments/webhook` — sağlayıcı event ID, payment reference, durum, tutar/para birimi ve sağlayıcı imzası; kart verisi payload şemasında bulunmaz.
 - `/api/v1/payments/mock-checkout/{payment_id}/{token}` — mock adaptörün sentetik sonuç seçimi için hosted sandbox sayfası; gerçek ödeme veya kart girişi yoktur.
 - **Tamamlanan doğrulama:** Backend SQLite/PostgreSQL 249 test ve %97,46 coverage; web 144 test ve %100 coverage; Keycloak E2E 8/8; frontend build/lint, Ruff ve `git diff --check` başarılı.
-- **Gerçek PSP için bekleyen testler:** Seçilecek sağlayıcının sandbox sözleşme testleri, başarı/ret/zaman aşımı ve sağlayıcı hata yanıtları.
+- **Kapsam dışı:** Gerçek PSP seçimi, sağlayıcı sandbox sözleşme testleri ve canlı para tahsilatı/iadesi yapılmayacaktır; ödeme davranışı mock adapter ile doğrulanır.
 
-**Mock sandbox çıkış ölçütü (tamamlandı):** Yetkili, tutarı doğrulanmış ödeme sonucu sipariş durumuna bir kez yansır; başarısız veya süresi dolmuş sipariş stoku bir kez iade eder; hassas ödeme verisi uygulamaya hiç girmez. Gerçek PSP entegrasyonunun çıkış ölçütleri sağlayıcı seçimi ve sandbox erişimi sağlandığında tamamlanacaktır.
+**Mock sandbox çıkış ölçütü (tamamlandı):** Yetkili, tutarı doğrulanmış mock ödeme sonucu sipariş durumuna bir kez yansır; başarısız veya süresi dolmuş sipariş stoku bir kez iade eder; hassas ödeme verisi uygulamaya hiç girmez. Gerçek PSP entegrasyonu kapsam dışıdır.
 
 ## REQ-012 — Sipariş takibi ve operasyonel yönetim
 
@@ -706,7 +696,7 @@ Keycloak erişim/rol atama hatasında işlem başarı gibi raporlanmaz; başvuru
 
 ## İleri gereksinim adayları
 
-Proje canlı kullanıma alınmayacağı için dış sağlayıcı entegrasyonlarını ürün hedefi değil, gerektiğinde test doubles/contract testleriyle çalışılacak QA egzersizleri olarak ele alacağız. Önerilen sonraki sıra:
+Gerçek ödeme/PSP, kargo/taşıyıcı ve KYC/KYB entegrasyonları öğrenme projesinin kapsamı dışındadır; iş akışları yerel/mock davranışlarla doğrulanır. Önerilen sonraki sıra:
 
 1. **REQ-013 — Katalog arama, filtreleme ve sıralama:** Tamamlandı.
 2. **REQ-014 — Teslimat sonrası yerel ürün iadesi:** Sipariş/kalem durum makinesi, gerekçeli karar, audit, stok ve idempotency kuralları için ayrı kabul kriterleri oluşturulacak; gerçek para iadesi yapılmayacak.
@@ -721,11 +711,14 @@ Proje canlı kullanıma alınmayacağı için dış sağlayıcı entegrasyonlar�
 11. **QA-023 — Tarayıcıda erişilebilirlik kapsamı (tamamlandı):** Giriş dışındaki kritik buyer/admin akışlarında Chromium axe WCAG 2.1 A/AA taramaları; kontrast ve mobil yatay taşma doğrulaması.
 12. **QA-024 — E2E mimarisi ve standartlaştırma (tamamlandı):** Playwright fixture + API seed + tekrar eden login UI'ı için ince POM; deterministik E2E 4/4 ve gerçek Keycloak E2E 10/10 geçti.
 13. **QA-025 — Bağımlılık güvenlik kapıları (tamamlandı):** Kilitli frontend/backend bağımlılıklarını CI'da tarama, raporlama ve severity kapısı uygulama.
-14. **QA-026 — Performans başlangıç çizgisi (en son):** Sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor.
+14. **REQ-016 — Satıcı onayı ve marketplace yetkileri:** Manuel onayın uygulama içindeki anlamı, onaylı satıcıların ilan ve mock marketplace yetkileri ile rol sınırları netleştirilir; KYC/yasal uygunluk iddiası yoktur.
+15. **REQ-017 — Marketplace satıcı sipariş operasyonları:** Satıcıya ait satışların ve manuel sipariş operasyonlarının güvenli yönetimi; satıcılar arası veri izolasyonu ve admin gözetimi.
+16. **REQ-018 — Alıcının sipariş iptali:** Alıcının kendi uygun siparişini iptali; mock ödeme/iade, stok, transaction ve idempotency kuralları.
+17. **QA-026 — Performans başlangıç çizgisi (en son):** Sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor.
 
-REQ-013–015 ve QA-016–QA-025 kabul kriterleri bu belgede tanımlanmıştır. QA-026 performans aşaması özellikle en sona bırakılmıştır.
+REQ-013–015 ve QA-016–QA-025 tamamlanmıştır. REQ-016–REQ-018'in ayrıntılı kabul kriterleri ve test planları geliştirme öncesinde bu belgede tanımlanacak; QA-026 bu gereksinimlerden sonra başlatılacaktır.
 
-Önceliği olmayan/şimdilik ertelenenler: gerçek PSP/para transferi, otomatik KYC/KYB ve gerçek kargo sağlayıcısı; e-posta/parola yaşam döngüsü özellikleri ise harici e-posta servisi yerine test edilebilir yerel fake ile ele alınmalıdır.
+Kapsam dışı: gerçek PSP/para transferi, KYC/KYB ve gerçek kargo sağlayıcısı. E-posta/parola yaşam döngüsü özellikleri bu yol haritasında yer almıyor.
 
 ## REQ-013 — Katalog arama, filtreleme ve sıralama
 
@@ -1052,3 +1045,31 @@ Kategoriler örtüşebilir. PostgreSQL testleri `integration` ve `postgres`; Pla
 - `apps/api/pyproject.toml`, `apps/api/uv.lock`: `pytest` güvenlik bulgusunu gidermek için pytest en az `9.0.3` olacak şekilde kilit güncellendi.
 - **Yerel tarama bulgusu:** npm audit 0 advisory buldu. Backend scan `pytest 8.4.2` için `PYSEC-2026-1845` bildirdi ve non-zero çıktı; pytest 9.2.0'a yükseltildikten sonra aynı hash-lock taraması temiz geçti.
 - **Doğrulama:** npm audit 0 advisory buldu. Python locked scan pytest 9.2.0 dahil temiz geçti. Geçici `pytest==8.4.2` dependency probu `PYSEC-2026-1845` nedeniyle exit code 1 ile kapıyı durdurdu. `uv run --locked pytest`: 289 geçti, 14 PostgreSQL testi beklenen şekilde atlandı. Ruff lint/format, frontend lint/build ve YAML parse kontrolü geçti.
+
+## REQ-016 — Satıcı onayı ve marketplace yetkileri
+
+- **Öncelik:** P1
+- **Durum:** Tamamlandı. Bu dilimin temel akışı REQ-007 ve ürün yetkilendirmesinde mevcut olduğundan, onay/rol/başvuru durumu sınırları ek regresyon testleriyle açıkça güvenceye alındı.
+- **Kullanıcı hikâyesi:** Satıcı olarak yalnızca admin başvurumu onaylayıp Keycloak `seller` rolünü başarıyla doğruladıktan sonra ürün yayımlamak ve kendi ürünlerimi yönetmek istiyorum. Alıcı rolüm ve alışveriş yeteneklerim devam etsin.
+- **Yetki kaynağı:** Ürün yazma isteği hem doğrulanmış access token'da `seller` rolü hem de aynı `sub` için `approved` başvuru gerektirir. Tek başına token rolü veya başvuru durumu yetki sağlamaz. Admin ürün işlemleri seller başvurusundan bağımsızdır.
+- **Onay akışı:** Admin başvuruyu `under_review → approval_pending` geçirir; Keycloak rol atama ve doğrulama başarılı olduğunda `approved` olur. Provisioning başarısızsa başvuru `approval_pending` kalır, işlem başarı gibi raporlanmaz ve seller token'ı verilmedikçe ürün yazma reddedilir. Rol atama denemesi güvenle tekrar edilebilir; audit geçişleri korunur.
+- **Satıcı sınırı:** Onaylı seller yeni ürünü kendi doğrulanmış token `sub` değeriyle sahiplenir; istemci owner kimliği belirleyemez. Seller yalnızca kendi ürünlerini düzenleyebilir/silebilir; başka satıcı ürününde `404` döner. Admin tüm ürünleri yönetebilir. Ürün kataloğu buyer'lara ortak görünür.
+- **Alıcı rolünün devamı:** Onaylı seller'ın `buyer` rolü korunur; alıcı kataloğu ve mevcut alışveriş işlevleri etkilenmez. Bu gereksinim satıcı sipariş/fulfillment paneli veya sipariş erişimi eklemez; bunlar REQ-017 kapsamındadır.
+- **Manuel onayın anlamı:** Başvuru, beyan bilgilerine dayalı uygulama içi manuel karardır. Onay formal KYC/KYB, ticari/yasal uygunluk veya canlı satış izni iddiası değildir. Gerçek PSP/para hareketi, kargo/taşıyıcı ve KYC/KYB entegrasyonları kapsam dışıdır; yalnızca yerel/mock akışlar kullanılır.
+
+### Kabul kriterleri
+
+1. `buyer` veya `seller` rolü tek başına seller ürün yazma yetkisi vermez. POST/PUT/DELETE ürün istekleri yalnız admin'e veya hem `seller` rolü hem aynı `sub` için `approved` başvurusu bulunan kullanıcıya izin verir.
+2. `draft`, `submitted`, `under_review`, `changes_requested`, `approval_pending`, `rejected` ve `withdrawn` durumlarında seller rolü bulunsa bile ürün oluşturma reddedilir; onay dışı durum sonradan oluştuğunda mevcut seller ürünü düzenleme/silme de reddedilir.
+3. `approved` başvurusu olup token'ında `seller` rolü bulunmayan kullanıcı ürün oluşturamaz. Başvuru `approved` olmadan seller yetkisi token'a eklenmez.
+4. Onaylı seller ürün oluştururken sahiplik doğrulanmış token `sub` değerinden atanır; payload ile başka sahip atanamaz. Seller başka bir satıcının ürününü düzenleyemez/silemez; admin seller sahiplik sınırını aşabilir.
+5. Onaylı seller'ın `buyer` yetkileri ve ortak katalog görünümü korunur. Başvuru/ürün izinleri checkout, siparişin seller tarafından görülmesi veya fulfillment yetkisi tanımlamaz.
+6. Admin'in onay isteği önce `approval_pending` durumunu kalıcılaştırır. Keycloak rol provisioning hatası `503` döndürür; başvuru pending kalır. Retry başarılı rol atamasını doğrular ve ancak sonra `approved` yapar; başarısız/tekrarlı işlem satıcıya onaysız erişim veya yinelenen audit geçişi sağlamaz.
+7. Gerçek ödeme, taşıyıcı/kargo ve KYC/KYB servisleri çağrılmaz; onay hukuki uygunluk olarak sunulmaz.
+
+### Test katmanı ve izlenebilirlik
+
+- **API/izin matrisi:** `apps/api/tests/test_products.py`; onaysız her başvuru durumu, seller rolü olmadan approved başvuru, approval-pending'e dönen başvuru sonrası POST/PUT/DELETE, approved seller CRUD'u, seller sahipliği ve buyer ortak katalog görünümü.
+- **Onay/rol provisioning:** `apps/api/tests/test_seller_applications.py`; başarılı onay/audit, Keycloak provisioning hatası, pending durum ve güvenli retry.
+- **Gerçek Keycloak E2E:** `apps/web/e2e/seller-applications.spec.ts`; buyer başvurur, admin onaylar, yeni oturumda buyer+seller rolleri görülür, seller ürün yayımlar ve başka buyer ortak katalogda ürünü salt okunur görür.
+- **Geliştirme/test kapısı:** İlgili backend testleri, frontend lint/build ve mevcut gerçek Keycloak E2E kalite kapısı geçmelidir; E2E yalnız yapılandırılmış yerel test realm'inde çalıştırılır.

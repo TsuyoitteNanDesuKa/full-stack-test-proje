@@ -825,7 +825,12 @@ def test_product_endpoints_reject_invalid_bearer_token(
     assert response.status_code == 401
 
 
-def create_approved_seller_application(engine, subject: str, suffix: str) -> None:
+def create_seller_application(
+    engine,
+    subject: str,
+    suffix: str,
+    status: str = "approved",
+) -> None:
     now = datetime.now(UTC)
     with sessionmaker(bind=engine, class_=Session)() as session:
         session.add(
@@ -841,7 +846,7 @@ def create_approved_seller_application(engine, subject: str, suffix: str) -> Non
                 district="Kadikoy",
                 primary_category="Home",
                 business_description=f"Seller products and catalog {suffix}",
-                status="approved",
+                status=status,
                 created_at=now,
                 updated_at=now,
             )
@@ -873,12 +878,118 @@ def test_seller_without_approved_application_cannot_create_products(
     )
 
 
+@pytest.mark.parametrize(
+    "application_status",
+    [
+        "draft",
+        "submitted",
+        "under_review",
+        "changes_requested",
+        "approval_pending",
+        "rejected",
+        "withdrawn",
+    ],
+)
+def test_seller_with_non_approved_application_cannot_create_products(
+    client: TestClient,
+    engine,
+    application_status: str,
+) -> None:
+    subject = f"seller-{application_status}"
+    create_seller_application(engine, subject, application_status, application_status)
+    token = create_test_token(
+        client,
+        subject=subject,
+        roles=["buyer", "seller"],
+    )
+
+    response = client.post(
+        "/api/v1/products",
+        json=product_payload(),
+        headers={"Authorization": "Bearer " + token},
+    )
+
+    assert response.status_code == 403
+    assert (
+        client.get(
+            "/api/v1/products",
+            headers={"Authorization": "Bearer " + token},
+        ).json()["total"]
+        == 0
+    )
+
+
+def test_seller_role_without_approved_application_cannot_manage_existing_products(
+    client: TestClient,
+    engine,
+) -> None:
+    subject = "seller-pending-after-product-creation"
+    create_seller_application(engine, subject, "pending-revoke")
+    token = create_test_token(
+        client,
+        subject=subject,
+        roles=["buyer", "seller"],
+    )
+    headers = {"Authorization": "Bearer " + token}
+    created = client.post("/api/v1/products", json=product_payload(), headers=headers)
+    assert created.status_code == 201
+    product = created.json()
+
+    with sessionmaker(bind=engine, class_=Session)() as session:
+        application = session.scalar(
+            select(SellerApplication).where(SellerApplication.owner_subject == subject)
+        )
+        assert application is not None
+        application.status = "approval_pending"
+        session.commit()
+
+    update_response = client.put(
+        f"/api/v1/products/{product['id']}",
+        json=product_payload(),
+        headers=headers,
+    )
+    delete_response = client.delete(f"/api/v1/products/{product['id']}", headers=headers)
+
+    assert update_response.status_code == 403
+    assert delete_response.status_code == 403
+    with sessionmaker(bind=engine, class_=Session)() as session:
+        assert session.get(Product, product["id"]) is not None
+
+
+def test_approved_application_without_seller_token_cannot_create_products(
+    client: TestClient,
+    engine,
+) -> None:
+    subject = "approved-buyer-without-seller-claim"
+    create_seller_application(engine, subject, "buyer-no-seller")
+    token = create_test_token(
+        client,
+        subject=subject,
+        roles=["buyer"],
+    )
+
+    response = client.post(
+        "/api/v1/products",
+        json=product_payload(),
+        headers={"Authorization": "Bearer " + token},
+    )
+
+    assert response.status_code == 403
+    assert (
+        client.get(
+            "/api/v1/products",
+            headers={"Authorization": "Bearer " + token},
+        ).json()["total"]
+        == 0
+    )
+
+
 def test_seller_can_manage_only_owned_products_and_buyers_see_shared_catalog(
     client: TestClient,
     engine,
 ) -> None:
-    create_approved_seller_application(engine, "seller-one", "One")
-    create_approved_seller_application(engine, "seller-two", "Two")
+    create_seller_application(engine, "seller-one", "One")
+    create_seller_application(engine, "seller-two", "Two")
     seller_one_token = create_test_token(
         client,
         subject="seller-one",

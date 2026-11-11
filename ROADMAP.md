@@ -221,8 +221,8 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 **Durum:** Tamamlandı. Backend/veri modeli, buyer başvuru arayüzü, admin inceleme arayüzü, satıcı ürün sahipliği ve katmanlı testler gerçek Keycloak akışıyla doğrulandı.
 
 - REQ-007 gereksinimi `docs/requirements.md` içinde tanımlandı: bireysel/şahıs işletmesi/şirket türü; yasal ad/unvan, mağaza adı, irtibat telefonu, il/ilçe, ana kategori ve kısa işletme tanıtımı. Keycloak `sub` ve e-posta token'dan alınır.
-- İlk sürümde yalnızca beyan bilgileri admin tarafından manuel incelenir; belge dosyası, T.C. kimlik/vergi numarası, banka bilgisi ve tam adres toplanmaz. Bu karar formal KYC veya mevzuata uygunluk teyidi değildir; ilan/payout/satışa başlama daha sonraki doğrulanmış gereksinime bağlıdır.
-- Otomatik KYC/KYB bu dilime dahil değildir. Daha sonra yetkili resmî servis veya sözleşmeli sağlayıcı araştırması yapılacak: MERSİS/Ticaret Sicili, GİB ve kimlik doğrulama seçeneklerinin gerçekten erişilebilirliği/entegrasyon hakkı, ülke kapsamı, KVKK, maliyet ve manuel incelemeye dönüş yolu doğrulanmadan teknoloji seçilmeyecek.
+- İlk sürümde yalnızca beyan bilgileri admin tarafından manuel incelenir; belge dosyası, T.C. kimlik/vergi numarası, banka bilgisi ve tam adres toplanmaz. Onay, öğrenme uygulamasında satıcı rolü ve mock marketplace yetkileri verir; formal KYC veya mevzuata uygunluk teyidi değildir.
+- Otomatik KYC/KYB entegrasyonu ve gerçek ticari uygunluk doğrulaması bu projenin kapsamı dışındadır.
 - Durum makinesi: `draft → submitted → under_review → changes_requested / approval_pending / rejected`; Keycloak rol atama başarıyla doğrulanınca `approval_pending → approved`. Rol ataması başarısız olursa seller yetkisi verilmez ve işlem güvenle tekrar denenir.
 - Bir alıcıya en fazla bir aktif başvuru; ret sonrası yeni başvuru yeni kayıt olarak açılır. Admin kararları aktör, zaman ve sonuçla audit edilir.
 
@@ -247,7 +247,7 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 - [x] Gerçek Keycloak E2E (buyer → admin review → seller role → yeni oturum → seller ürün yayını → buyer ortak katalog görünümü) geçti.
 - [x] Tam API/web regresyonu, %100 frontend coverage, lint, build, migration ve `git diff --check` çıkış kapıları geçti.
 
-**Çıkış ölçütü:** Başvuru ve admin kararları izlenebilir; Keycloak rol provisioning hataları başarı gibi gösterilmez; onaysız kullanıcı seller yetkisi kazanamaz. Bu dilim formal KYC/satış uygunluğu veya ödeme kabulü sağlamaz.
+**Çıkış ölçütü:** Başvuru ve admin kararları izlenebilir; Keycloak rol provisioning hataları başarı gibi gösterilmez; onaysız kullanıcı seller yetkisi kazanamaz. Marketplace içindeki satış yetkileri REQ-016'da netleştirilir; bu dilim formal KYC veya mevzuata uygunluk teyidi sağlamaz.
 
 ### Öncelik 3 — REQ-008: Admin rolü atama ve yönetici erişimi
 
@@ -360,15 +360,15 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 
 ### Öncelik 6 — REQ-011: Ödeme entegrasyonu
 
-**Amaç:** Sipariş, gerçek kart verisini uygulama sunucusuna almadan güvenilir bir ödeme sağlayıcısı üzerinden ödenebilsin.
+**Amaç:** Yerel öğrenme uygulamasında gerçek kart veya para hareketi olmadan mock ödeme akışı test edilebilsin.
 
-- **Durum:** Mock sandbox dilimi tamamlandı: son backend varsayılan test koşusunda 239 test geçti, PostgreSQL için ayrılmış 10 test `SHOP_TEST_DATABASE_URL` ayarlı olmadığından atlandı; coverage %97,19 (eşik %95). Web 144 test/%100 coverage ve Keycloak E2E 8/8 önceki tam doğrulamada geçti; build/lint, Ruff ve `git diff --check` başarılı. Canlı kullanım hedeflenmediğinden gerçek PSP entegrasyonu öncelikli değil; dış sağlayıcı davranışları gerekirse fake provider/contract testleriyle kapsanacak.
+- **Durum:** Mock sandbox dilimi tamamlandı: son backend varsayılan test koşusunda 239 test geçti, PostgreSQL için ayrılmış 10 test `SHOP_TEST_DATABASE_URL` ayarlı olmadığından atlandı; coverage %97,19 (eşik %95). Web 144 test/%100 coverage ve Keycloak E2E 8/8 önceki tam doğrulamada geçti; build/lint, Ruff ve `git diff --check` başarılı. Gerçek PSP ve canlı tahsilat/iade bu öğrenme projesinin kapsamı dışındadır.
 - **Kararlar:** Mock hosted checkout; iki dakikalık ödeme süresi; kesin başarısızlık/iptal/zaman aşımında REQ-010’dan düşülen stok bir transaction içinde ve tek sefer iade edilir. Webhook imzası, tutar/para birimi ve event ID doğrulanır. Kart bilgisi uygulamaya alınmaz.
-- Sağlayıcı adapter sözleşmesi ve yalnızca geliştirme/test için mock hosted checkout.
+- Yalnızca geliştirme/test için mock hosted checkout ve ödeme adapter sözleşmesi.
 - Ödeme modeli, migration, buyer sahipli ödeme başlatma/durum API’si ve zorunlu idempotency.
 - İmzalı webhook, yinelenen/ters sıradaki olayların idempotent işlenmesi; ödeme başarı/ret/iptal ve expiry stok iadesi.
 - Frontend hosted checkout yönlendirmesi ve sipariş ödeme durumlarının gösterimi.
-- Gerçek sağlayıcı (iyzico veya seçilecek PSP) sandbox hesabı ve credential'ları bu projenin kapsamı dışında; canlı tahsilat/iade yapılmayacak.
+- Gerçek sağlayıcı (iyzico veya başka PSP), sandbox hesabı/credential'ları ve canlı tahsilat/iade bu projenin kapsamı dışındadır.
 
 **Geliştirme tamamlandıktan hemen sonra — test geliştirme planı:**
 
@@ -421,9 +421,9 @@ Temel ürün CRUD'u v1.0 olarak etiketlenmeden önce aşağıdaki açık test ko
 - [x] PostgreSQL entegrasyon ve eşzamanlılık testleri 11/11 geçti.
 - [x] Keycloak E2E 8/8 geçti; checkout → mock ödeme → admin durum/iade ve alıcı geçmişi dahil.
 
-### QA odaklı sonraki gereksinimler — sıralı backlog
+### Sıradaki gereksinimler — sıralı backlog
 
-Canlıya çıkış, gerçek PSP/KYC/kargo entegrasyonu veya üretim altyapısı bu projenin hedefi değildir. Yeni dilimler; otomasyonla doğrulanabilir iş kurallarını ve test katmanlarını artıracak şekilde, dış servislere bağımlı olmadan ele alınır.
+Canlıya çıkış, gerçek ödeme sağlayıcısı, kargo/taşıyıcı veya KYC/KYB entegrasyonu ve üretim altyapısı bu projenin kapsamı dışındadır. Yeni dilimler yerel/mock akışlarla otomasyonla doğrulanabilir iş kurallarını ve test katmanlarını artırır.
 
 1. **REQ-013 — Katalog arama, filtreleme ve sıralama:** Tamamlandı.
 2. **REQ-014 — Teslimat sonrası yerel ürün iadesi (tamamlandı):** Buyer shipped/delivered siparişte 30 gün içinde kalem bazında kısmi/tam miktar için otomatik onaylanan yerel iade talebi açar; ödeme/iade kaydı ve stok tek transaction'da, idempotent uygulanır. Gerçek para/kargo yok.
@@ -438,9 +438,12 @@ Canlıya çıkış, gerçek PSP/KYC/kargo entegrasyonu veya üretim altyapısı 
 11. **QA-023 — Tarayıcıda erişilebilirlik kapsamı (tamamlandı):** Chromium axe WCAG 2.1 A/AA buyer/admin akışlarında; kontrast kusurları giderildi, 320px mobil genişlikte yatay taşma kapısı eklendi.
 12. **QA-024 — E2E mimarisi ve standartlaştırma (tamamlandı):** ortak scenario fixture'ı/API seed, retry başına benzersiz kimlik ve Keycloak login için ince POM; deterministik E2E 4/4, gerçek Keycloak E2E 10/10 geçti.
 13. **QA-025 — Bağımlılık güvenlik kapıları (tamamlandı):** lockfile bazlı npm/pip-audit kapıları, rapor artefaktları ve zafiyet bulgusunda CI başarısızlığı.
-14. **QA-026 — Performans başlangıç çizgisi (en son):** sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor; release/live ortamı gerektirmez.
+14. **REQ-016 — Satıcı onayı ve marketplace yetkileri (tamamlandı):** Admin onayı + Keycloak `seller` rolü + `approved` başvurunun birlikte aranması; ürün sahibi ve mevcut buyer yetkileri korunur. Gerçek KYC yoktur.
+15. **REQ-017 — Marketplace satıcı sipariş operasyonları:** Satıcı yalnızca kendi satışlarını görebilir ve sipariş hazırlama durumlarını manuel yönetebilir; satıcılar arası veri/işlem sınırları ve admin gözetimi test edilir. Taşıyıcı entegrasyonu yoktur.
+16. **REQ-018 — Alıcının sipariş iptali:** Alıcı kendi uygun siparişini iptal edebilir; durum yetkisi, mock ödeme/iade kaydı, stok iadesi ve tekrarlı istek güvenliği tanımlanıp doğrulanır. Gerçek para hareketi yoktur.
+17. **QA-026 — Performans başlangıç çizgisi (en son):** sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor; release/live ortamı gerektirmez.
 
-REQ-013, REQ-014, REQ-015 ve QA-016–QA-025'in kabul kriterleri `docs/requirements.md` içinde tutulur. Kalan QA maddesi QA-026 performans başlangıç çizgisidir ve en sonda kalır.
+REQ-013–REQ-016 ve QA-016–QA-025 tamamlanmıştır. REQ-017–REQ-018'in ayrıntılı kabul kriterleri ve test planları geliştirme öncesinde `docs/requirements.md` içinde tanımlanır; QA-026 bu iki işlevsel gereksinim tamamlandıktan sonra başlatılır.
 
 #### QA-024 — E2E mimarisi ve standartlaştırma (tamamlandı)
 
@@ -596,6 +599,38 @@ REQ-013, REQ-014, REQ-015 ve QA-016–QA-025'in kabul kriterleri `docs/requireme
 - **Standart:** API ile durum/test verisi hazırlama; cross-cutting auth ve servis yaşam döngüsü için Playwright fixture'ları; tekrar kullanılan kararlı UI bölgeleri için ince POM; iş senaryosu odaklı spec düzeni. Composer/Journey yalnızca aynı çok adımlı akış en az üç testte tekrarlandığında eklenir.
 - **Uygulama alanı:** Deterministik checkout ve buyer/admin erişilebilirlik senaryolarında ortak API seed/auth fixture'ı; admin erişim, katalog CRUD, sepet ve satıcı başvurusu Keycloak akışlarında ortak login POM. Browser assertion'ları senaryolarda kaldı.
 - **Test/kalite:** Smoke ve Keycloak tag'leri, senaryolar arası bağımsızlık, retry başına benzersiz veri ve per-run cleanup; deterministik senaryolar 4/4, Keycloak senaryoları 10/10 geçti.
+
+### Öncelik 19 — REQ-016: Satıcı onayı ve marketplace yetkileri
+
+- **Durum:** Tamamlandı. İşlev REQ-007/katalog akışında mevcuttu; seller rolü ile başvuru durumunun birlikte doğrulanması ve onay durumlarının negatif matrisi testlerle güçlendirildi.
+- **Amaç:** Mevcut manuel başvuru onayının uygulama içindeki sonuçlarını açıkça tanımlamak; onaysız kullanıcıların satıcı ürünü yayımlamasını veya yönetmesini engellemek.
+- **Kapsam:** Admin beyan edilen başvuruyu manuel inceler. Yalnızca Keycloak `seller` rolü ve `approved` başvuru birlikte ürün yazma yetkisi verir. Satıcı token `sub` değeriyle yalnızca kendi ürünlerini yönetir; buyer rolü/alışverişi ve admin'in mağaza geneli yönetimi etkilenmez.
+- **Kapsam dışı:** KYC/KYB, resmi sicil/kimlik doğrulaması, gerçek ödeme sağlayıcısı/para hareketi, kargo entegrasyonu ve seller sipariş operasyonları (REQ-017).
+- **Test/kalite:** `apps/api/tests/test_products.py` ve `tests/test_seller_applications.py` 113/113 geçti; onaysız durum matrisi, seller rolü olmadan approved başvuru, pending'e dönüşte ürün oluşturma/düzenleme/silme yasağı, rol provisioning hatası/retry ve mevcut sahiplik regresyonu doğrulandı. Ruff lint/format temiz. Gerçek Keycloak onay → yeni buyer+seller oturumu → ürün yayımlama → ortak buyer katalog görünümü E2E senaryosu REQ-007 suite'inde mevcuttur.
+- [x] Kabul kriterleri ve test katmanı izlenebilirliği `docs/requirements.md` içinde tanımlandı.
+- [x] Seller rolü ve başvuru durumu birlikte zorunlu; onay dışı yedi durumun ürün oluşturması reddedilir.
+- [x] Seller başvurusu onay dışına alındığında var olan ürünlerini güncelleme/silme reddedilir.
+- [x] Buyer-only token, approved başvuru olsa da seller ürün yetkisi kazanmaz; seller sahiplik ve ortak katalog davranışı korunur.
+- [x] Backend seller/product testleri, Ruff lint ve format kapıları geçti.
+
+### Öncelik 20 — REQ-017: Marketplace satıcı sipariş operasyonları
+
+- **Amaç:** Satıcının yalnızca kendi satışlarını görüp manuel sipariş operasyonlarını yönetebildiği birden fazla satıcılı marketplace akışını kurmak.
+- **Kapsam:** Sipariş/satıcı kalemlerinin ilişkilendirilmesi ve görünümü, satıcıya ait siparişlerin listelenmesi/detayı ve satıcı operasyon durumlarının yönetimi; admin gözetimi korunur. Satıcılar arası veri izolasyonu ve çok satıcılı sepet/sipariş davranışı gereksinim aşamasında karara bağlanır.
+- **Kapsam dışı:** Gerçek kargo/taşıyıcı API'si, kargo etiketi veya takip entegrasyonu. Teslimat durumları uygulama içinde manuel/test amaçlı yönetilir.
+- **Test odağı:** Satıcı sahipliği, sipariş/kalem sınırları, yetkisiz çapraz satıcı erişimi, geçerli durum geçişleri, admin görünümü ve buyer sipariş geçmişi regresyonu.
+
+### Öncelik 21 — REQ-018: Alıcının sipariş iptali
+
+- **Amaç:** Alıcının kendisine ait ve iptale uygun siparişi uygulama üzerinden iptal edebilmesi.
+- **Kapsam:** İptale uygun sipariş durumları ve yarış koşulları gereksinim tasarımında belirlenir; başarılı iptal, mock ödeme/iade kaydı ve stok etkisiyle tutarlı ve idempotent olmalıdır. Admin iptali, ödeme zaman aşımı ve teslimat sonrası ürün iadesi akışlarıyla çakışma ele alınır.
+- **Kapsam dışı:** Gerçek para iadesi veya PSP entegrasyonu.
+- **Test odağı:** Sipariş sahipliği, uygun/uygunsuz durumlar, tekrarlı/eşzamanlı istek, transaction atomikliği ve stok/ödeme/audit regresyonları.
+
+### Öncelik 22 — QA-026: Performans başlangıç çizgisi
+
+- REQ-016, REQ-017 ve REQ-018 çıkış ölçütleri tamamlandıktan sonra başlanır.
+- Sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor tanımlanır; release/canlı ortam gerektirmez.
 
 ### Her incremental dilim için ortak Definition of Done
 

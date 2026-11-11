@@ -55,7 +55,7 @@ Komponent axe taramaları JSDOM'da renk kontrastı ve responsive düzeni değerl
 - İlerleyen dilimlerde ürün kataloğu, arama, sepet, sipariş ve müşteri hesabı akışları.
 - API'de Keycloak imzası, issuer, audience, süre ve rollerin doğrulanması.
 
-E-posta doğrulama ve parola sıfırlama daha sonraki dilimlere bırakılmıştır. Alıcı kayıt diliminden sonra REQ-007 kapsamında bireysel, şahıs işletmesi ve şirket başvuruları; belge toplamayan, admin tarafından manuel incelenen ilk akış olarak planlanmıştır. Bu ilk inceleme formal KYC veya satışa yasal uygunluk teyidi değildir; ilan yayımlama ve ödeme alma ayrı doğrulama gereksinimlerine bağlıdır. Admin rolü şimdilik yalnızca Keycloak yönetim konsolundan güvenilir operatör tarafından verilebilir. Gerçek zamanlı işbirliği, mikroservisler ve mobil uygulama da kapsam dışındadır.
+E-posta doğrulama ve parola sıfırlama daha sonraki dilimlere bırakılmıştır. Alıcı kayıt diliminden sonra REQ-007 kapsamında bireysel, şahıs işletmesi ve şirket başvuruları; belge toplamayan, admin tarafından manuel incelenen ilk akış olarak planlanmıştır. Bu inceleme formal KYC veya satışa yasal uygunluk teyidi değildir; onaylı satıcıların uygulama içi marketplace yetkileri REQ-016'da netleştirilecektir. Gerçek ödeme/PSP, kargo/taşıyıcı ve KYC/KYB entegrasyonları kapsam dışıdır; ilgili akışlar yerel/mock davranışlarla sınanır. Admin rolü şimdilik yalnızca Keycloak yönetim konsolundan güvenilir operatör tarafından verilebilir. Gerçek zamanlı işbirliği, mikroservisler ve mobil uygulama da kapsam dışındadır.
 
 ## Örnek kullanım senaryosu: Alıcı kaydı ve giriş
 
