@@ -719,11 +719,11 @@ Proje canlı kullanıma alınmayacağı için dış sağlayıcı entegrasyonlar�
 9. **QA-021 — Coverage kapsamının netleştirilmesi (tamamlandı):** Frontend coverage ölçümünü kritik UI akışlarıyla hizalama ve gerçek ölçülen dosyaları CI özetinde gösterme.
 10. **QA-022 — API yanıt sözleşmesi doğrulaması (tamamlandı):** Temsilî API yanıtlarını sürümlü OpenAPI/JSON Schema'ya doğrulama ve istemci sözleşme kontrollerini CI kalite kapısında tutma.
 11. **QA-023 — Tarayıcıda erişilebilirlik kapsamı (tamamlandı):** Giriş dışındaki kritik buyer/admin akışlarında Chromium axe WCAG 2.1 A/AA taramaları; kontrast ve mobil yatay taşma doğrulaması.
-12. **QA-024 — E2E mimarisi ve standartlaştırma:** Playwright fixture + API seed + gerektiği yerde ince POM düzenini standartlaştırma; testleri iş senaryolarına göre organize etme.
+12. **QA-024 — E2E mimarisi ve standartlaştırma (tamamlandı):** Playwright fixture + API seed + tekrar eden login UI'ı için ince POM; deterministik E2E 4/4 ve gerçek Keycloak E2E 10/10 geçti.
 13. **QA-025 — Bağımlılık güvenlik kapıları:** Frontend/backend bağımlılık taraması ve CI başarısızlık politikası.
 14. **QA-026 — Performans başlangıç çizgisi (en son):** Sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor.
 
-REQ-013–015 ve QA-016–023 kabul kriterleri bu belgede tanımlanmıştır. QA-024–026 ayrıntılı kabul kriterleri geliştirmeye başlanırken oluşturulacaktır. Performans aşaması özellikle en sona bırakılmıştır.
+REQ-013–015 ve QA-016–024 kabul kriterleri bu belgede tanımlanmıştır. QA-025–026 ayrıntılı kabul kriterleri geliştirmeye başlanırken oluşturulacaktır. Performans aşaması özellikle en sona bırakılmıştır.
 
 Önceliği olmayan/şimdilik ertelenenler: gerçek PSP/para transferi, otomatik KYC/KYB ve gerçek kargo sağlayıcısı; e-posta/parola yaşam döngüsü özellikleri ise harici e-posta servisi yerine test edilebilir yerel fake ile ele alınmalıdır.
 
@@ -829,7 +829,7 @@ REQ-013–015 ve QA-016–023 kabul kriterleri bu belgede tanımlanmıştır. QA
 
 ## QA-016 — API sözleşme ve regresyon otomasyonu
 
-- **Durum:** Tamamlandı.
+- **Durum:** Tamamlandı. Tüm değiştirilen smoke ve `@keycloak` E2E senaryoları ilgili kiplerinde geçti.
 - **Amaç:** Backend OpenAPI değişikliklerinin ve tanımlanmış frontend API istemcisi uyumsuzluklarının servis başlatmadan yerelde ve CI'da fark edilmesi.
 
 ### Kabul kriterleri
@@ -1008,3 +1008,25 @@ Kategoriler örtüşebilir. PostgreSQL testleri `integration` ve `postgres`; Pla
 - `.github/workflows/ci.yml`, `apps/web/e2e/run-playwright.mjs`: mevcut PR browser `@smoke` işi test-only JWKS ile genişletilmiş erişilebilirlik senaryosunu çalıştırır.
 - **Doğrulama:** `npm run test:e2e:smoke` başarıyla tamamlandı; QA-023 testi buyer/admin dolu ekranlarında axe ve mobil reflow kapılarını geçti. `npm run build` ve `npm run lint` başarılı.
 - **Sınırlar:** Otomatik axe ve dar viewport kontrolü manuel ekran okuyucu testi, yakınlaştırma/reflow farklı seviyeleri ve diğer browser/cihaz kombinasyonlarını kapsamaz.
+
+## QA-024 — E2E mimarisi ve standartlaştırma
+
+- **Durum:** Tamamlandı.
+- **Amaç:** Playwright testlerinde API hazırlığı, ortak fixture ve ince UI nesnelerini kullanırken doğrulanan kullanıcı davranışını browser üzerinden tutmak; senaryoya özgü adımları yapay katmanlara taşımamak.
+
+### Kabul kriterleri
+
+1. Playwright ortak scenario fixture'ı test başına, repeat/retry ve worker'ı da hesaba katan benzersiz kimlik üretir; aynı kimlik rol token'ı, browser authentication ve API seed işlemleri için kullanılır.
+2. Ürün, adres, sepet ve sipariş hazırlığı gerçek test API'sine gider. Seed çağrısı beklenen HTTP durum kodunu sağlamazsa hata açık response body ile fail olur; testler uygulama DB'sine doğrudan yazmaz.
+3. QA-019 checkout senaryosu ve QA-023 erişilebilirlik senaryosu ortak fixture kullanır. UI doğrulaması—adres formu, sepet, sipariş oluşturma/ödeme ve buyer/admin ekranları—browser üzerinden devam eder; API seed yalnızca ön koşulları kurar.
+4. Tekrarlanan Keycloak hosted login adımları ince `KeycloakLoginPage` içinde paylaşılır. CRUD, erişim, sepet, kayıt ve satıcı başvurusu senaryolarının business-flow adımları spec'lerde kalır; ortak Composer/Journey katmanı eklenmez.
+5. `@smoke` ve `@keycloak` sınıflandırması korunur. Her Playwright koşusu geçici SQLite ve deterministik kipte ephemeral JWKS'i temizler; Keycloak testleri oluşturdukları geçici hesapları teardown/`afterEach` cleanup'ında kaldırır.
+6. Smoke E2E, değiştirilen tüm `@keycloak` E2E senaryoları, frontend lint ve build başarılıdır. Keycloak test yürütmesi yalnızca realm, test admin parolası ve seller akışı için service-account ayarı yapılandırılmış ortamda çalıştırılır; yalnızca test keşfi başarılı sayılmaz.
+
+### Test izlenebilirliği ve doğrulama
+
+- `apps/web/e2e/fixtures.ts`: retry/worker kapsamlı scenario ID, API seed helper'ları ve ortak auth fixture'ı.
+- `apps/web/e2e/qa-019-deterministic.spec.ts`, `apps/web/e2e/accessibility.spec.ts`: fixture ile seed edilen önkoşullardan sonra browser'da devam eden smoke senaryoları.
+- `apps/web/e2e/keycloakLoginPage.ts`: Keycloak login formu ve auth response beklemesi için ince POM; `admin-access.spec.ts`, `admin-crud.spec.ts`, `cart.spec.ts`, `login.spec.ts`, `seller-applications.spec.ts` kullanır.
+- `apps/web/e2e/run-playwright.mjs`, `apps/web/e2e/start-api.mjs`: geçici DB, ephemeral identity key ve kaynak cleanup'ı; Keycloak senaryolarında hesap temizliği ilgili spec'lerde kalır.
+- **Doğrulama:** Deterministik kipte `npm run test:e2e` 4/4 geçti; gerçek realm kipinde `E2E_KEYCLOAK_E2E=1 npm run test:e2e:keycloak` 10/10 geçti. Keycloak kipindeki iki cart senaryosunun ortak login POM değişikliği sırasında eksik fixture örneği hatası test koşusunda yakalanıp düzeltildi ve tam suite yeniden çalıştırılarak geçti. `npm run lint` ve `npm run build` başarılı.

@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 import type { Page, Response } from '@playwright/test'
 import { createTestProduct } from '../src/test/testData'
 import { createKeycloakAdminClient, createKeycloakTestAdmin } from './keycloakAdmin'
+import { KeycloakLoginPage } from './keycloakLoginPage'
 
 const keycloakE2EEnabled = process.env.E2E_KEYCLOAK_E2E === '1'
 
@@ -39,22 +40,6 @@ async function registerBuyer(
   return identityResponse
 }
 
-async function login(page: Page, email: string, password: string): Promise<Response> {
-  await page.goto('/')
-  await page.getByRole('button', { name: /giriş yap/i }).click()
-  await expect(page).toHaveURL(/localhost:8080/)
-  await page.locator('#username').fill(email)
-  await page.locator('#password').fill(password)
-
-  const identityResponse = page.waitForResponse(
-    (response) =>
-      response.url().endsWith('/api/v1/auth/me') &&
-      response.request().method() === 'GET',
-  )
-  await page.getByRole('button', { name: 'Sign In' }).click()
-  return identityResponse
-}
-
 async function createSellerProduct(
   page: Page,
   product: ReturnType<typeof createTestProduct>,
@@ -87,6 +72,7 @@ test.describe('REQ-007 seller application workflow @keycloak', () => {
   }) => {
     test.setTimeout(120_000)
     const admin = await createKeycloakTestAdmin(request)
+    const adminLogin = new KeycloakLoginPage(adminPage)
     const buyerContext = await browser.newContext()
     const buyerPage = await buyerContext.newPage()
     const catalogBuyerContext = await browser.newContext()
@@ -123,8 +109,8 @@ test.describe('REQ-007 seller application workflow @keycloak', () => {
       expect((await submitResponsePromise).status()).toBe(200)
       await expect(buyerPage.getByText('Gönderildi', { exact: true })).toBeVisible()
 
-      const adminLogin = await login(adminPage, admin.email, admin.password)
-      expect(adminLogin.status()).toBe(200)
+      const adminIdentity = await adminLogin.login(admin.email, admin.password)
+      expect(adminIdentity.status()).toBe(200)
       await adminPage.getByRole('button', { name: 'Satıcı başvurularını yönet' }).click()
       await expect(adminPage.getByText(storeName)).toBeVisible()
       await adminPage.getByRole('button', { name: 'İncelemeye al' }).click()
@@ -133,7 +119,10 @@ test.describe('REQ-007 seller application workflow @keycloak', () => {
 
       await buyerPage.getByRole('button', { name: /çıkış yap/i }).click()
       await expect(buyerPage.getByRole('button', { name: /giriş yap/i })).toBeVisible()
-      const renewedIdentity = await login(buyerPage, buyer.email, buyer.password)
+      const renewedIdentity = await new KeycloakLoginPage(buyerPage).login(
+        buyer.email,
+        buyer.password,
+      )
       expect(renewedIdentity.status()).toBe(200)
       const roles = (await renewedIdentity.json()).roles as string[]
       expect(roles).toContain('buyer')

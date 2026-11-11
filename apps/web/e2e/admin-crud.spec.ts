@@ -1,29 +1,10 @@
 import { expect, test } from '@playwright/test'
-import type { Page, Response } from '@playwright/test'
+import type { Page } from '@playwright/test'
 import { createTestProduct, productRequest } from '../src/test/testData'
 import { createKeycloakTestAdmin } from './keycloakAdmin'
+import { KeycloakLoginPage } from './keycloakLoginPage'
 
 const keycloakE2EEnabled = process.env.E2E_KEYCLOAK_E2E === '1'
-
-async function login(
-  page: Page,
-  email: string,
-  password: string,
-): Promise<Response> {
-  await page.goto('/')
-  await page.getByRole('button', { name: /giriş yap/i }).click()
-  await expect(page).toHaveURL(/localhost:8080/)
-  await page.locator('#username').fill(email)
-  await page.locator('#password').fill(password)
-
-  const identityResponse = page.waitForResponse(
-    (response) =>
-      response.url().endsWith('/api/v1/auth/me') &&
-      response.request().method() === 'GET',
-  )
-  await page.getByRole('button', { name: 'Sign In' }).click()
-  return identityResponse
-}
 
 async function fillProductForm(
   page: Page,
@@ -71,12 +52,13 @@ test.describe('REQ-003/004/005/006 admin product CRUD regression @keycloak', () 
   }) => {
     test.setTimeout(60_000)
     const admin = await createKeycloakTestAdmin(request)
+    const keycloakLogin = new KeycloakLoginPage(page)
     const buyerContext = await browser.newContext()
     const buyerPage = await buyerContext.newPage()
     let buyerEmail: string | undefined
 
     try {
-      const adminIdentityResponse = await login(page, admin.email, admin.password)
+      const adminIdentityResponse = await keycloakLogin.login(admin.email, admin.password)
       expect(adminIdentityResponse.status()).toBe(200)
       expect((await adminIdentityResponse.json()).is_admin).toBe(true)
       await expect(page.getByRole('button', { name: '+ Ürün ekle' })).toBeVisible()

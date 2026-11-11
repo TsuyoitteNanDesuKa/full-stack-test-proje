@@ -436,19 +436,19 @@ Canlıya çıkış, gerçek PSP/KYC/kargo entegrasyonu veya üretim altyapısı 
 9. **QA-021 — Coverage kapsamının netleştirilmesi (tamamlandı):** kritik UI panelleri ve auth coverage kapsamına eklendi; mevcut üç dosyanın %100 kapısı korundu, genişletilmiş kapsam için toplam/dosya eşikleri ve ölçülen dosyaların CI raporlaması eklendi.
 10. **QA-022 — API yanıt sözleşmesi doğrulaması (tamamlandı):** temsilî gerçek API yanıtları sürümlü OpenAPI şemalarına doğrulanır; frontend'in tip/yol/yöntem/başlık kontrolleri sözleşme kapısında kalır.
 11. **QA-023 — Tarayıcıda erişilebilirlik kapsamı (tamamlandı):** Chromium axe WCAG 2.1 A/AA buyer/admin akışlarında; kontrast kusurları giderildi, 320px mobil genişlikte yatay taşma kapısı eklendi.
-12. **QA-024 — E2E mimarisi ve standartlaştırma (şimdi):** API ile test verisi hazırlama, Playwright fixture'larıyla ortak auth/yardımcılar, tekrar kullanılan kararlı UI bölgeleri için ince POM ve senaryo odaklı spec yapısını standartlaştırmak; Composer/Journey katmanını yalnızca tekrar oluştuğunda eklemek.
+12. **QA-024 — E2E mimarisi ve standartlaştırma (tamamlandı):** ortak scenario fixture'ı/API seed, retry başına benzersiz kimlik ve Keycloak login için ince POM; deterministik E2E 4/4, gerçek Keycloak E2E 10/10 geçti.
 13. **QA-025 — Bağımlılık güvenlik kapıları:** frontend/backend bağımlılık taramasını CI'da tekrarlanabilir biçimde çalıştırmak, bulgular için anlaşılır rapor ve başarısızlık politikası belirlemek.
 14. **QA-026 — Performans başlangıç çizgisi (en son):** sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor; release/live ortamı gerektirmez.
 
-REQ-013, REQ-014, REQ-015 ve QA-016–QA-023'ün kabul kriterleri `docs/requirements.md` içinde tutulur. Sıradaki madde QA-024'tür; performans QA-026 olarak en sonda kalır.
+REQ-013, REQ-014, REQ-015 ve QA-016–QA-024'ün kabul kriterleri `docs/requirements.md` içinde tutulur. Sıradaki madde QA-025'tir; performans QA-026 olarak en sonda kalır.
 
-#### Şimdi — QA-024: E2E mimarisi ve standartlaştırma
+#### QA-024 — E2E mimarisi ve standartlaştırma (tamamlandı)
 
 - **Amaç:** Playwright E2E testlerinde tekrar kullanılabilirliği ve okunabilirliği artırırken orta ölçekli projeye gereksiz soyutlama eklememek.
 - **Benimsenen yaklaşım:** Test verisi ve başlangıç durumu mümkün olduğunca gerçek FastAPI test API'si üzerinden hazırlanır; ortak kimlik doğrulama ve altyapı Playwright fixture'larında tutulur. Tekrarlanan, kararlı UI bölgeleri için ince POM'lar kullanılır; spec'ler sayfadan çok buyer/admin gibi iş senaryolarına göre düzenlenir. Çok adımlı Composer/Journey katmanı ancak aynı akış en az üç senaryoda tekrarlandığında değerlendirilir.
-- **Kapsam:** Mevcut E2E dosyalarını ve yardımcılarını bu standartla gözden geçirip uygun küçük refactor'ları yapmak; fixture kapsamı, adlandırma, test verisi temizliği, bekleme/assertion ve tag kurallarını web README'de açıklamak.
+- **Uygulama:** `e2e/fixtures.ts` test başına repeat/retry/worker ile ayrışan scenario ID, rol token'ı, browser auth ve ürün/adres/sepet/sipariş API hazırlığını sunar. Deterministik checkout ve erişilebilirlik senaryoları bu fixture'a taşındı. `KeycloakLoginPage` birden fazla Keycloak spec'inde tekrar eden hosted login UI adımlarını kapsar; çok adımlı business flow'lar spec'lerde kaldı.
 - **Sınırlar:** E2E senaryosunun doğrulamakta olduğu davranış UI üzerinden sürdürülür; API hazırlığı doğrulanması gereken UI davranışını atlamaz. Veritabanına doğrudan erişim varsayılan seed yöntemi değildir. Tek kullanımlık/yalın kontroller için POM veya Composer zorunlu tutulmaz.
-- **Tamamlanma ölçütü:** Birkaç temsilî smoke ve Keycloak senaryosu ortak fixture/API seed ve ince UI nesneleriyle yeniden düzenlenir; test adı/etiketi, bağımsız veri ve cleanup korunur; ilgili PR smoke, Keycloak seçimi, lint ve build kontrolleri geçer.
+- **Doğrulama:** Deterministik kipte `npm run test:e2e` 4/4 geçti (Keycloak etiketli 10 senaryo bu kipte beklenen şekilde skip); `E2E_KEYCLOAK_E2E=1` ve yerel Keycloak bootstrap ayarıyla `npm run test:e2e:keycloak` 10/10 geçti. `npm run lint` ve `npm run build` başarılı.
 
 Önceki maddelerdeki frontend coverage yüzdeleri, ilgili koşuda ölçüme dahil edilen dosyalar içindir; tüm frontend'in coverage'ı olarak yorumlanmamalıdır.
 
@@ -584,10 +584,10 @@ REQ-013, REQ-014, REQ-015 ve QA-016–QA-023'ün kabul kriterleri `docs/requirem
 
 ### Öncelik 18 — QA-024: E2E mimarisi ve standartlaştırma
 
-- **Durum:** Sıradaki geliştirme; uygulamaya henüz başlanmadı.
+- **Durum:** Tamamlandı.
 - **Standart:** API ile durum/test verisi hazırlama; cross-cutting auth ve servis yaşam döngüsü için Playwright fixture'ları; tekrar kullanılan kararlı UI bölgeleri için ince POM; iş senaryosu odaklı spec düzeni. Composer/Journey yalnızca aynı çok adımlı akış en az üç testte tekrarlandığında eklenir.
-- **İlk uygulama alanı:** Deterministik buyer checkout, erişilebilirlik buyer/admin senaryoları ve Keycloak browser testlerinden tekrar eden kurulum/etkileşimleri belirle; her refactor'da testin gerçek UI davranışını doğrulamaya devam ettiğini ve izolasyon/cleanup'ı koruduğunu kanıtla.
-- **Test/kalite:** Smoke ve Keycloak selector'ları, senaryolar arası bağımsızlık, her koşuda benzersiz test verisi ve cleanup; Playwright smoke/ilgili Keycloak testleri, frontend lint ve build geçer.
+- **Uygulama alanı:** Deterministik checkout ve buyer/admin erişilebilirlik senaryolarında ortak API seed/auth fixture'ı; admin erişim, katalog CRUD, sepet ve satıcı başvurusu Keycloak akışlarında ortak login POM. Browser assertion'ları senaryolarda kaldı.
+- **Test/kalite:** Smoke ve Keycloak tag'leri, senaryolar arası bağımsızlık, retry başına benzersiz veri ve per-run cleanup; deterministik senaryolar 4/4, Keycloak senaryoları 10/10 geçti.
 
 ### Her incremental dilim için ortak Definition of Done
 

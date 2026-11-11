@@ -1,6 +1,5 @@
 import { createPublicKey, verify } from 'node:crypto'
-import { expect, test } from '@playwright/test'
-import { authenticateAs, createTestAccessToken } from './deterministicAuth'
+import { expect, test } from './fixtures'
 
 test.describe('QA-019 deterministic buyer checkout @smoke', () => {
   test.skip(
@@ -11,8 +10,8 @@ test.describe('QA-019 deterministic buyer checkout @smoke', () => {
   test('buyer checks out a product and completes the mock payment', async ({
     page,
     request,
-  }, testInfo) => {
-    const scenarioId = String(testInfo.retry)
+    scenario,
+  }) => {
     const jwksResponse = await request.get(
       'http://127.0.0.1:8082/realms/e2e/protocol/openid-connect/certs',
     )
@@ -25,13 +24,13 @@ test.describe('QA-019 deterministic buyer checkout @smoke', () => {
     ])
 
     const product = {
-      name: `QA-019 Product ${scenarioId}`,
+      name: `QA-019 ${scenario.id.slice(4, 16)}`,
       category: 'Test',
       description: 'Product for the deterministic CI checkout scenario.',
       price: '25.00',
       stock: 5,
     }
-    const adminToken = createTestAccessToken('admin', scenarioId)
+    const adminToken = scenario.api.token('admin')
     const [header, payload, signature] = adminToken.split('.')
     expect(
       verify(
@@ -42,19 +41,15 @@ test.describe('QA-019 deterministic buyer checkout @smoke', () => {
       ),
     ).toBe(true)
     const identityResponse = await request.get('http://127.0.0.1:8001/api/v1/auth/me', {
-      headers: { authorization: `Bearer ${adminToken}` },
+      headers: scenario.api.headers('admin'),
     })
     const identityBody = (await identityResponse.json()) as { roles: string[] }
     expect(identityResponse.status(), JSON.stringify(identityBody)).toBe(200)
     expect(identityBody.roles).toContain('admin')
 
-    const createProductResponse = await request.post(
-      'http://127.0.0.1:8001/api/v1/products',
-      { data: product, headers: { authorization: `Bearer ${adminToken}` } },
-    )
-    expect(createProductResponse.status()).toBe(201)
+    await scenario.api.createProduct(product)
 
-    await authenticateAs(page, 'buyer', scenarioId)
+    await scenario.authenticate(page, 'buyer')
     await page.goto('/')
     await expect(page.getByRole('heading', { name: 'Alışverişe hoş geldiniz.' }))
       .toBeVisible()
@@ -64,9 +59,7 @@ test.describe('QA-019 deterministic buyer checkout @smoke', () => {
       'http://127.0.0.1:8001/api/v1/products',
       {
         data: { ...product, name: 'QA-019 Forbidden Product' },
-        headers: {
-          authorization: `Bearer ${createTestAccessToken('buyer', scenarioId)}`,
-        },
+        headers: scenario.api.headers('buyer'),
       },
     )
     expect(forbiddenProductCreate.status()).toBe(403)

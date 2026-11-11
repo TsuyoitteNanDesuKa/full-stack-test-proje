@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 import type { Page, Response } from '@playwright/test'
 import { createTestProduct } from '../src/test/testData'
 import { createKeycloakAdminClient, createKeycloakTestAdmin } from './keycloakAdmin'
+import { KeycloakLoginPage } from './keycloakLoginPage'
 
 const keycloakE2EEnabled = process.env.E2E_KEYCLOAK_E2E === '1'
 
@@ -36,22 +37,6 @@ async function registerBuyer(
       response.request().method() === 'GET',
   )
   await page.locator('#kc-register-form input[type="submit"]').click()
-  return identityResponse
-}
-
-async function login(page: Page, email: string, password: string): Promise<Response> {
-  await page.goto('/')
-  await page.getByRole('button', { name: /giriş yap/i }).click()
-  await expect(page).toHaveURL(/localhost:8080/)
-  await page.locator('#username').fill(email)
-  await page.locator('#password').fill(password)
-
-  const identityResponse = page.waitForResponse(
-    (response) =>
-      response.url().endsWith('/api/v1/auth/me') &&
-      response.request().method() === 'GET',
-  )
-  await page.getByRole('button', { name: 'Sign In' }).click()
   return identityResponse
 }
 
@@ -113,6 +98,7 @@ test.describe('REQ-009 cart, REQ-010 checkout, and REQ-012 order lifecycle @keyc
   }) => {
     test.setTimeout(120_000)
     const admin = await createKeycloakTestAdmin(request)
+    const adminLogin = new KeycloakLoginPage(adminPage)
     const firstBuyerContext = await browser.newContext()
     const firstBuyerPage = await firstBuyerContext.newPage()
     const secondBuyerContext = await browser.newContext()
@@ -122,8 +108,8 @@ test.describe('REQ-009 cart, REQ-010 checkout, and REQ-012 order lifecycle @keyc
     const product = createTestProduct({ stock: 5, price: '12.50' })
 
     try {
-      const adminLogin = await login(adminPage, admin.email, admin.password)
-      expect(adminLogin.status()).toBe(200)
+      const adminIdentity = await adminLogin.login(admin.email, admin.password)
+      expect(adminIdentity.status()).toBe(200)
       const productResponse = await createProduct(adminPage, product)
       expect(productResponse.status()).toBe(201)
       const createdProduct = (await productResponse.json()) as { id: number }
@@ -332,13 +318,14 @@ test.describe('REQ-009 cart, REQ-010 checkout, and REQ-012 order lifecycle @keyc
   }) => {
     test.setTimeout(90_000)
     const admin = await createKeycloakTestAdmin(request)
+    const adminLogin = new KeycloakLoginPage(adminPage)
     const buyerContext = await browser.newContext()
     const buyerPage = await buyerContext.newPage()
     const buyer = createBuyerCredentials()
     const product = createTestProduct({ stock: 5, price: '1000.00' })
 
     try {
-      expect((await login(adminPage, admin.email, admin.password)).status()).toBe(200)
+      expect((await adminLogin.login(admin.email, admin.password)).status()).toBe(200)
       expect((await createProduct(adminPage, product)).status()).toBe(201)
       expect((await registerBuyer(buyerPage, buyer.email, buyer.password)).status()).toBe(200)
       await buyerPage.getByRole('button', { name: `Sepete ekle ${product.name}` }).click()
@@ -398,14 +385,15 @@ test.describe('REQ-009 cart, REQ-010 checkout, and REQ-012 order lifecycle @keyc
   }) => {
     test.setTimeout(90_000)
     const admin = await createKeycloakTestAdmin(request)
+    const adminLogin = new KeycloakLoginPage(adminPage)
     const buyerContext = await browser.newContext()
     const buyerPage = await buyerContext.newPage()
     const buyer = createBuyerCredentials()
     const product = createTestProduct({ stock: 5, price: '12.50' })
 
     try {
-      const adminLogin = await login(adminPage, admin.email, admin.password)
-      expect(adminLogin.status()).toBe(200)
+      const adminIdentity = await adminLogin.login(admin.email, admin.password)
+      expect(adminIdentity.status()).toBe(200)
       const createResponse = await createProduct(adminPage, product)
       expect(createResponse.status()).toBe(201)
 

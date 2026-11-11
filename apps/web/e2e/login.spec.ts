@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 import type { Locator, Page, Response } from '@playwright/test'
 import { createTestProduct, productRequest } from '../src/test/testData'
 import { createKeycloakAdminClient } from './keycloakAdmin'
+import { KeycloakLoginPage } from './keycloakLoginPage'
 
 const keycloakE2EEnabled = process.env.E2E_KEYCLOAK_E2E === '1'
 const temporaryBuyerEmails = new Map<string, string>()
@@ -53,21 +54,6 @@ async function submitRegistration(page: Page, form: Locator): Promise<Response> 
   return identityResponsePromise
 }
 
-async function loginAsBuyer(page: Page, email: string, password: string): Promise<Response> {
-  await page.getByRole('button', { name: /giriş yap/i }).click()
-  await expect(page).toHaveURL(/localhost:8080/)
-  await page.locator('#username').fill(email)
-  await page.locator('#password').fill(password)
-
-  const identityResponsePromise = page.waitForResponse(
-    (response) =>
-      response.url().endsWith('/api/v1/auth/me') &&
-      response.request().method() === 'GET',
-  )
-  await page.getByRole('button', { name: 'Sign In' }).click()
-  return identityResponsePromise
-}
-
 test.describe('REQ-001 authentication and REQ-006 buyer registration @keycloak', () => {
   test.skip(
     !keycloakE2EEnabled,
@@ -104,7 +90,7 @@ test.describe('REQ-001 authentication and REQ-006 buyer registration @keycloak',
 
     await page.getByRole('button', { name: /çıkış yap/i }).click()
     await expect(page.getByRole('button', { name: /giriş yap/i })).toBeVisible()
-    const identityResponse = await loginAsBuyer(page, email, password)
+    const identityResponse = await new KeycloakLoginPage(page).login(email, password)
 
     const accessToken = identityResponse.request().headers()['authorization']
     expect(accessToken).toMatch(/^Bearer /)
