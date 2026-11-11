@@ -720,10 +720,10 @@ Proje canlı kullanıma alınmayacağı için dış sağlayıcı entegrasyonlar�
 10. **QA-022 — API yanıt sözleşmesi doğrulaması (tamamlandı):** Temsilî API yanıtlarını sürümlü OpenAPI/JSON Schema'ya doğrulama ve istemci sözleşme kontrollerini CI kalite kapısında tutma.
 11. **QA-023 — Tarayıcıda erişilebilirlik kapsamı (tamamlandı):** Giriş dışındaki kritik buyer/admin akışlarında Chromium axe WCAG 2.1 A/AA taramaları; kontrast ve mobil yatay taşma doğrulaması.
 12. **QA-024 — E2E mimarisi ve standartlaştırma (tamamlandı):** Playwright fixture + API seed + tekrar eden login UI'ı için ince POM; deterministik E2E 4/4 ve gerçek Keycloak E2E 10/10 geçti.
-13. **QA-025 — Bağımlılık güvenlik kapıları:** Frontend/backend bağımlılık taraması ve CI başarısızlık politikası.
+13. **QA-025 — Bağımlılık güvenlik kapıları (tamamlandı):** Kilitli frontend/backend bağımlılıklarını CI'da tarama, raporlama ve severity kapısı uygulama.
 14. **QA-026 — Performans başlangıç çizgisi (en son):** Sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor.
 
-REQ-013–015 ve QA-016–024 kabul kriterleri bu belgede tanımlanmıştır. QA-025–026 ayrıntılı kabul kriterleri geliştirmeye başlanırken oluşturulacaktır. Performans aşaması özellikle en sona bırakılmıştır.
+REQ-013–015 ve QA-016–QA-025 kabul kriterleri bu belgede tanımlanmıştır. QA-026 performans aşaması özellikle en sona bırakılmıştır.
 
 Önceliği olmayan/şimdilik ertelenenler: gerçek PSP/para transferi, otomatik KYC/KYB ve gerçek kargo sağlayıcısı; e-posta/parola yaşam döngüsü özellikleri ise harici e-posta servisi yerine test edilebilir yerel fake ile ele alınmalıdır.
 
@@ -1030,3 +1030,25 @@ Kategoriler örtüşebilir. PostgreSQL testleri `integration` ve `postgres`; Pla
 - `apps/web/e2e/keycloakLoginPage.ts`: Keycloak login formu ve auth response beklemesi için ince POM; `admin-access.spec.ts`, `admin-crud.spec.ts`, `cart.spec.ts`, `login.spec.ts`, `seller-applications.spec.ts` kullanır.
 - `apps/web/e2e/run-playwright.mjs`, `apps/web/e2e/start-api.mjs`: geçici DB, ephemeral identity key ve kaynak cleanup'ı; Keycloak senaryolarında hesap temizliği ilgili spec'lerde kalır.
 - **Doğrulama:** Deterministik kipte `npm run test:e2e` 4/4 geçti; gerçek realm kipinde `E2E_KEYCLOAK_E2E=1 npm run test:e2e:keycloak` 10/10 geçti. Keycloak kipindeki iki cart senaryosunun ortak login POM değişikliği sırasında eksik fixture örneği hatası test koşusunda yakalanıp düzeltildi ve tam suite yeniden çalıştırılarak geçti. `npm run lint` ve `npm run build` başarılı.
+
+## QA-025 — Bağımlılık güvenlik kapıları
+
+- **Öncelik:** QA-024 sonrasındaki sıradaki QA geliştirmesi.
+- **Durum:** Tamamlandı.
+- **Amaç:** Kilitli frontend ve backend bağımlılıklarını CI'da her push/PR'da bilinen güvenlik advisory'lerine karşı taramak; bulguları anlaşılır biçimde raporlamak ve belirlenmiş eşiklerde kalite kapısını başarısız kılmak.
+
+### Kabul kriterleri
+
+1. Frontend taraması committed `apps/web/package-lock.json` ağacında `npm audit` ile çalışır. Düşük ve üzeri tüm severity seviyeleri başarısız olur.
+2. Backend'de `uv export --locked` runtime ve varsayılan `dev` grubunu dahil ederek hash'li, tam kilitli paket listesini üretir. `pip-audit` sürümü sabitlenmiştir ve bu listede `--require-hashes --disable-pip` ile yeni sürüm çözmeden tarar.
+3. Bilinen advisory bulgusu, npm audit eşiği, lockfile/export hatası, scanner hatası veya advisory servisine erişim hatası CI job'ını başarısız kılar. Bildirilen Python bulgularından herhangi biri kapıyı başarısız kılar. Genel/kalıcı ignore listesi ve otomatik dependency düzeltmesi yoktur.
+4. npm audit okunabilir stdout raporu; pip-audit tablo raporu üretir. Her iki rapor mevcut frontend/backend rapor artefaktlarıyla birlikte, job başarısız olsa bile yüklenir ve CI'da 14 gün saklanır.
+5. Güvenlik taraması frontend ve backend install adımları başarılı olduğunda her push/PR'da çalışır. Mevcut local taramada bulunan pytest advisory'si güvenli pytest sürümüne yükseltilir; lockfile güncellenir.
+6. Kabul: temiz tarama başarılı; en az bir bilinen advisory taramayı non-zero ile durdurur; backend pytest, frontend lint/build ve CI workflow doğrulaması geçer.
+
+### Uygulama ve izlenebilirlik
+
+- `.github/workflows/ci.yml`: frontend `npm audit --audit-level=low`; backend locked uv export + sabitlenmiş `pip-audit==2.10.1`; raporlar mevcut 14 günlük artefaktlara eklenir.
+- `apps/api/pyproject.toml`, `apps/api/uv.lock`: `pytest` güvenlik bulgusunu gidermek için pytest en az `9.0.3` olacak şekilde kilit güncellendi.
+- **Yerel tarama bulgusu:** npm audit 0 advisory buldu. Backend scan `pytest 8.4.2` için `PYSEC-2026-1845` bildirdi ve non-zero çıktı; pytest 9.2.0'a yükseltildikten sonra aynı hash-lock taraması temiz geçti.
+- **Doğrulama:** npm audit 0 advisory buldu. Python locked scan pytest 9.2.0 dahil temiz geçti. Geçici `pytest==8.4.2` dependency probu `PYSEC-2026-1845` nedeniyle exit code 1 ile kapıyı durdurdu. `uv run --locked pytest`: 289 geçti, 14 PostgreSQL testi beklenen şekilde atlandı. Ruff lint/format, frontend lint/build ve YAML parse kontrolü geçti.

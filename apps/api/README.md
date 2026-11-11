@@ -8,6 +8,8 @@ FastAPI storefront API secured by Keycloak access tokens. The API does not colle
 - `uv`
 - Docker Compose (local PostgreSQL and Keycloak services)
 
+CI exports the locked runtime and default development dependencies with `uv export --locked`, then scans the exact versions with `pip-audit==2.10.1`. Any known Python vulnerability fails the CI job; the readable scan output is retained with backend artifacts for 14 days.
+
 ## Setup
 
 From the repository root, start PostgreSQL and Keycloak. The PostgreSQL service binds to loopback only and uses a persistent Docker volume. Its default credentials are for local development only; override `POSTGRES_DB`, `POSTGRES_USER`, and `POSTGRES_PASSWORD` for other environments.

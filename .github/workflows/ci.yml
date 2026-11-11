@@ -28,6 +28,22 @@ jobs:
         working-directory: apps/api
         run: uv sync --locked
 
+      - name: Audit locked backend dependencies
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        working-directory: apps/api
+        run: |
+          mkdir -p reports
+          uv export --locked --format requirements-txt --no-emit-project \
+            --output-file reports/backend-dependencies.txt
+          set +e
+          set -o pipefail
+          uvx --from pip-audit==2.10.1 pip-audit \
+            --requirement reports/backend-dependencies.txt \
+            --require-hashes --disable-pip \
+            --format columns 2>&1 | tee reports/backend-dependency-audit.txt
+          audit_status=${PIPESTATUS[0]}
+          exit "$audit_status"
+
       - name: Ruff lint
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         working-directory: apps/api
@@ -134,6 +150,14 @@ jobs:
         id: dependencies
         working-directory: apps/web
         run: npm ci
+
+      - name: Audit locked frontend dependencies
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        working-directory: apps/web
+        run: |
+          mkdir -p test-results
+          set -o pipefail
+          npm audit --audit-level=low 2>&1 | tee test-results/frontend-dependency-audit.txt
 
       - name: Oxlint
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}

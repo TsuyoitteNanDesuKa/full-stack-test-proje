@@ -437,10 +437,10 @@ Canlıya çıkış, gerçek PSP/KYC/kargo entegrasyonu veya üretim altyapısı 
 10. **QA-022 — API yanıt sözleşmesi doğrulaması (tamamlandı):** temsilî gerçek API yanıtları sürümlü OpenAPI şemalarına doğrulanır; frontend'in tip/yol/yöntem/başlık kontrolleri sözleşme kapısında kalır.
 11. **QA-023 — Tarayıcıda erişilebilirlik kapsamı (tamamlandı):** Chromium axe WCAG 2.1 A/AA buyer/admin akışlarında; kontrast kusurları giderildi, 320px mobil genişlikte yatay taşma kapısı eklendi.
 12. **QA-024 — E2E mimarisi ve standartlaştırma (tamamlandı):** ortak scenario fixture'ı/API seed, retry başına benzersiz kimlik ve Keycloak login için ince POM; deterministik E2E 4/4, gerçek Keycloak E2E 10/10 geçti.
-13. **QA-025 — Bağımlılık güvenlik kapıları:** frontend/backend bağımlılık taramasını CI'da tekrarlanabilir biçimde çalıştırmak, bulgular için anlaşılır rapor ve başarısızlık politikası belirlemek.
+13. **QA-025 — Bağımlılık güvenlik kapıları (tamamlandı):** lockfile bazlı npm/pip-audit kapıları, rapor artefaktları ve zafiyet bulgusunda CI başarısızlığı.
 14. **QA-026 — Performans başlangıç çizgisi (en son):** sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor; release/live ortamı gerektirmez.
 
-REQ-013, REQ-014, REQ-015 ve QA-016–QA-024'ün kabul kriterleri `docs/requirements.md` içinde tutulur. Sıradaki madde QA-025'tir; performans QA-026 olarak en sonda kalır.
+REQ-013, REQ-014, REQ-015 ve QA-016–QA-025'in kabul kriterleri `docs/requirements.md` içinde tutulur. Kalan QA maddesi QA-026 performans başlangıç çizgisidir ve en sonda kalır.
 
 #### QA-024 — E2E mimarisi ve standartlaştırma (tamamlandı)
 
@@ -449,6 +449,14 @@ REQ-013, REQ-014, REQ-015 ve QA-016–QA-024'ün kabul kriterleri `docs/requirem
 - **Uygulama:** `e2e/fixtures.ts` test başına repeat/retry/worker ile ayrışan scenario ID, rol token'ı, browser auth ve ürün/adres/sepet/sipariş API hazırlığını sunar. Deterministik checkout ve erişilebilirlik senaryoları bu fixture'a taşındı. `KeycloakLoginPage` birden fazla Keycloak spec'inde tekrar eden hosted login UI adımlarını kapsar; çok adımlı business flow'lar spec'lerde kaldı.
 - **Sınırlar:** E2E senaryosunun doğrulamakta olduğu davranış UI üzerinden sürdürülür; API hazırlığı doğrulanması gereken UI davranışını atlamaz. Veritabanına doğrudan erişim varsayılan seed yöntemi değildir. Tek kullanımlık/yalın kontroller için POM veya Composer zorunlu tutulmaz.
 - **Doğrulama:** Deterministik kipte `npm run test:e2e` 4/4 geçti (Keycloak etiketli 10 senaryo bu kipte beklenen şekilde skip); `E2E_KEYCLOAK_E2E=1` ve yerel Keycloak bootstrap ayarıyla `npm run test:e2e:keycloak` 10/10 geçti. `npm run lint` ve `npm run build` başarılı.
+
+#### QA-025 — Bağımlılık güvenlik kapıları (tamamlandı)
+
+- **Amaç:** Kilitli frontend ve backend bağımlılıklarında bilinen zafiyetleri her push/PR'da bulmak, anlaşılır rapor sağlamak ve güvenlik bulgularını CI kalite kapısı yapmak.
+- **Tarama:** `npm audit --audit-level=low` doğrudan `apps/web/package-lock.json` ağacını tarar. Backend'de `uv export --locked` tüm runtime ve varsayılan dev bağımlılıklarını hash'li requirements dosyasına çıkarır; sürümü sabitlenmiş `pip-audit` bu tam listeyi hash zorunluluğu ve pip çözümlemesi olmadan tarar.
+- **Başarısızlık politikası:** npm low/moderate/high/critical bulgularının tümü ve pip-audit'in bildirdiği tüm Python zafiyetleri PR/push kalite kapısını başarısız kılar. Ağ/servis/lockfile/tarama hataları da başarısız olur. Otomatik `audit fix` veya sessiz/baseline suppress yoktur; istisna gerekiyorsa CVE/etki/süre ve kaldırma koşulu belgelenip gözden geçirilmelidir.
+- **Raporlama:** Frontend'in okunabilir npm audit raporu ve backend'in pip-audit tablo çıktısı mevcut frontend/backend CI artefaktlarına eklenir ve 14 gün tutulur. Bulgu olduğunda rapor iş logunda da gösterilir.
+- **Doğrulama:** npm audit 0 advisory, pip-audit temiz kilitli liste taraması başarılı. Eski `pytest==8.4.2` üzerinde `PYSEC-2026-1845` test probu audit'ten non-zero çıkış aldı; güvenli sürüme geçince temiz tarama verdi. Backend pytest 289 geçti/14 PostgreSQL testi atlandı; Ruff lint/format, frontend lint/build ve `git diff --check` geçti.
 
 Önceki maddelerdeki frontend coverage yüzdeleri, ilgili koşuda ölçüme dahil edilen dosyalar içindir; tüm frontend'in coverage'ı olarak yorumlanmamalıdır.
 
