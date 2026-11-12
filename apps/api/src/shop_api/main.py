@@ -23,6 +23,7 @@ from shop_api.routes import (
     payments,
     products,
     seller_applications,
+    seller_orders,
 )
 
 
@@ -82,6 +83,7 @@ def create_app(settings: Settings | None = None, db_engine: Engine | None = None
     app.include_router(products.router)
     app.include_router(addresses.router)
     app.include_router(seller_applications.router)
+    app.include_router(seller_orders.router)
     app.include_router(cart.router)
     app.include_router(orders.router)
     app.include_router(orders.admin_router)

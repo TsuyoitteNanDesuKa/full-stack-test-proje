@@ -15,21 +15,30 @@ from shop_api.models import (
     CartItem,
     CustomerAddress,
     CustomerOrder,
+    OrderFulfillment,
+    OrderFulfillmentEvent,
     OrderItem,
     OrderStatusEvent,
     Payment,
     Product,
     ProductReturn,
 )
+from shop_api.order_fulfillment import (
+    advance_order_fulfillments,
+    create_order_fulfillments,
+    set_order_fulfillments_status,
+)
 from shop_api.order_lifecycle import order_status_history, record_order_status_event
 from shop_api.payment_expiry import StockRestorationError, restore_order_stock
 from shop_api.schemas import (
+    AdminOrderFulfillmentResponse,
     AdminOrderRefundRequest,
     AdminOrderResponse,
     AdminOrderStatusRequest,
     DeliveryMethod,
     OrderAddressSnapshot,
     OrderCreateRequest,
+    OrderFulfillmentResponse,
     OrderItemResponse,
     OrderResponse,
     OrderStatus,
@@ -67,6 +76,63 @@ def _order_response(
     returns = db.scalars(
         select(ProductReturn).where(ProductReturn.order_id == order.id).order_by(ProductReturn.id)
     ).all()
+    fulfillments = db.scalars(
+        select(OrderFulfillment)
+        .where(OrderFulfillment.order_id == order.id)
+        .order_by(OrderFulfillment.id)
+    ).all()
+    fulfillment_ids = [fulfillment.id for fulfillment in fulfillments]
+    fulfillment_items = (
+        db.scalars(
+            select(OrderItem)
+            .where(OrderItem.fulfillment_id.in_(fulfillment_ids))
+            .order_by(OrderItem.id)
+        ).all()
+        if fulfillment_ids
+        else []
+    )
+    fulfillment_events = (
+        db.scalars(
+            select(OrderFulfillmentEvent)
+            .where(OrderFulfillmentEvent.fulfillment_id.in_(fulfillment_ids))
+            .order_by(OrderFulfillmentEvent.id)
+        ).all()
+        if fulfillment_ids
+        else []
+    )
+    items_by_fulfillment: dict[int, list[OrderItem]] = {}
+    for item in fulfillment_items:
+        if item.fulfillment_id is not None:
+            items_by_fulfillment.setdefault(item.fulfillment_id, []).append(item)
+    events_by_fulfillment: dict[int, list[OrderFulfillmentEvent]] = {}
+    for event in fulfillment_events:
+        events_by_fulfillment.setdefault(event.fulfillment_id, []).append(event)
+    fulfillment_responses = []
+    for fulfillment in fulfillments:
+        fulfillment_data = {
+            "id": fulfillment.id,
+            "store_name": fulfillment.store_name,
+            "status": fulfillment.status,
+            "items": [
+                OrderItemResponse.model_validate(item)
+                for item in items_by_fulfillment.get(fulfillment.id, [])
+            ],
+            "history": [
+                {
+                    "action": event.action,
+                    "from_status": event.from_status,
+                    "to_status": event.to_status,
+                    "created_at": event.created_at,
+                    **({"actor_subject": event.actor_subject} if admin else {}),
+                }
+                for event in events_by_fulfillment.get(fulfillment.id, [])
+            ],
+        }
+        fulfillment_responses.append(
+            AdminOrderFulfillmentResponse(**fulfillment_data)
+            if admin
+            else OrderFulfillmentResponse(**fulfillment_data)
+        )
     items_by_id = {item.id: item for item in items}
     response_data = {
         "id": order.id,
@@ -105,6 +171,7 @@ def _order_response(
             )
             for item in items
         ],
+        "fulfillments": fulfillment_responses,
         "returns": [
             ProductReturnResponse(
                 id=product_return.id,
@@ -320,6 +387,13 @@ def create_order(
     )
     db.add(order)
     db.flush()
+    create_order_fulfillments(
+        db,
+        order=order,
+        products_by_id=products_by_id,
+        order_items=order_items,
+        now=now,
+    )
     record_order_status_event(
         db,
         order_id=order.id,
@@ -612,6 +686,13 @@ def update_order_status(
 
     previous_status = order.status
     now = datetime.now(UTC)
+    advance_order_fulfillments(
+        db,
+        order=order,
+        target_status=target_status.value,
+        actor_subject=admin.subject,
+        now=now,
+    )
     order.status = target_status
     record_order_status_event(
         db,
@@ -651,6 +732,19 @@ def refund_order_for_admin(
             status_code=status.HTTP_409_CONFLICT,
             detail="Yalnızca ödenmiş ve kargoya verilmemiş sipariş iade edilebilir.",
         )
+    advanced_fulfillment = db.scalar(
+        select(OrderFulfillment.id)
+        .where(
+            OrderFulfillment.order_id == order.id,
+            OrderFulfillment.status.in_({OrderStatus.SHIPPED.value, OrderStatus.DELIVERED.value}),
+        )
+        .limit(1)
+    )
+    if advanced_fulfillment is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Satıcı paketlerinden biri kargoya verildiği için sipariş iade edilemez.",
+        )
 
     now = datetime.now(UTC)
     previous_status = order.status
@@ -665,6 +759,14 @@ def refund_order_for_admin(
             status_code=status.HTTP_409_CONFLICT,
             detail="Stok sınırı nedeniyle sipariş iadesi tamamlanamadı.",
         ) from error
+    set_order_fulfillments_status(
+        db,
+        order_id=order.id,
+        target_status=OrderStatus.CANCELLED.value,
+        action="admin_refund",
+        actor_subject=admin.subject,
+        created_at=now,
+    )
     record_order_status_event(
         db,
         order_id=order.id,

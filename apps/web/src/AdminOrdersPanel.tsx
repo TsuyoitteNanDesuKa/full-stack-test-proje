@@ -28,6 +28,8 @@ const eventLabels: Record<string, string> = {
   admin_status_changed: 'Sipariş durumu güncellendi',
   admin_refund: 'Yerel iade kaydı oluşturuldu',
   legacy_import: 'Önceki sipariş kaydı',
+  seller_status_changed: 'Satıcı paket durumunu güncelledi',
+  fulfillment_status_changed: 'Paket durumu güncellendi',
 }
 
 const nextStatuses: Partial<Record<OrderStatus, OrderFulfillmentStatus>> = {
@@ -193,6 +195,43 @@ export default function AdminOrdersPanel({ token }: { token: string }) {
                     </li>
                   ))}
                 </ul>
+                {order.fulfillments.length > 0 && (
+                  <section
+                    aria-label={`Sipariş ${order.id} satıcı paketleri`}
+                    className="admin-fulfillment-list"
+                  >
+                    <h4>Satıcı paketleri</h4>
+                    {order.fulfillments.map((fulfillment) => (
+                      <article key={fulfillment.id}>
+                        <div className="order-history-summary">
+                          <strong>{fulfillment.store_name}</strong>
+                          <span>{orderStatusLabels[fulfillment.status]}</span>
+                        </div>
+                        <ul>
+                          {fulfillment.items.map((item) => (
+                            <li key={item.id}>
+                              {item.product_name} · {item.quantity} adet
+                            </li>
+                          ))}
+                        </ul>
+                        <ol
+                          aria-label={`${fulfillment.store_name} paket geçmişi`}
+                          className="order-status-history"
+                        >
+                          {fulfillment.history.map((event, index) => (
+                            <li key={`${event.action}-${event.created_at}-${index}`}>
+                              <span>{eventLabels[event.action] ?? 'Paket durumu güncellendi'}</span>
+                              <time dateTime={event.created_at}>
+                                {new Date(event.created_at).toLocaleString('tr-TR')}
+                              </time>
+                              <p>İşlemi yapan: {event.actor_subject ?? 'Sistem'}</p>
+                            </li>
+                          ))}
+                        </ol>
+                      </article>
+                    ))}
+                  </section>
+                )}
                 <ol aria-label={`Sipariş ${order.id} işlem geçmişi`} className="order-status-history">
                   {order.history.map((event, index) => (
                     <li key={`${event.action}-${event.created_at}-${index}`}>

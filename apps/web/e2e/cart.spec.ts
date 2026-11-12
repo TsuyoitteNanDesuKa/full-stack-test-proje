@@ -239,7 +239,11 @@ test.describe('REQ-009 cart, REQ-010 checkout, and REQ-012 order lifecycle @keyc
       await expect(firstBuyerPage.getByRole('status')).toHaveText('Ödeme durumu: succeeded')
       await firstBuyerPage.goto('/')
       await firstBuyerPage.getByRole('button', { name: 'Siparişlerim' }).click()
-      await expect(firstBuyerPage.getByText('Ödendi', { exact: true })).toBeVisible()
+      const buyerOrder = firstBuyerPage.locator('.order-history-item').filter({
+        hasText: `Sipariş #${createdOrder.id}`,
+      })
+      await expect(buyerOrder.locator('.order-history-summary').first())
+        .toContainText('Ödendi')
       await expect(firstBuyerPage.getByText('Ödeme alındı')).toBeVisible()
       const adminOrders = adminPage.getByRole('region', { name: 'Sipariş yönetimi' })
       await adminOrders.getByRole('button', { name: 'Yenile' }).click()
@@ -257,7 +261,8 @@ test.describe('REQ-009 cart, REQ-010 checkout, and REQ-012 order lifecycle @keyc
       await expect(adminOrders.getByText(/yerel iade kaydı oluşturuldu/)).toBeVisible()
       await firstBuyerPage.getByRole('button', { name: 'Siparişlerim' }).click()
       await firstBuyerPage.getByRole('button', { name: 'Siparişlerim' }).click()
-      await expect(firstBuyerPage.getByText('İptal edildi', { exact: true })).toBeVisible()
+      await expect(buyerOrder.locator('.order-history-summary').first())
+        .toContainText('İptal edildi')
       await expect(firstBuyerPage.getByText('Sipariş iptal edildi ve iade kaydı oluşturuldu'))
         .toBeVisible()
 
@@ -436,7 +441,11 @@ test.describe('REQ-009 cart, REQ-010 checkout, and REQ-012 order lifecycle @keyc
       await adminOrder.getByRole('button', { name: 'Teslim edildi aşamasına geçir' }).click()
 
       await buyerPage.getByRole('button', { name: 'Siparişlerim' }).click()
-      await expect(buyerPage.getByText('Teslim edildi', { exact: true })).toBeVisible()
+      const buyerOrder = buyerPage.locator('.order-history-item').filter({
+        hasText: `Sipariş #${createdOrder.id}`,
+      })
+      await expect(buyerOrder.locator('.order-history-summary').first())
+        .toContainText('Teslim edildi')
       await buyerPage.getByRole('button', { name: `İade et ${product.name}` }).click()
       await buyerPage.getByLabel('İade nedeni').fill('Ürünün yarısını iade ediyorum')
       await buyerPage.getByRole('button', { name: 'İade talebini gönder' }).click()

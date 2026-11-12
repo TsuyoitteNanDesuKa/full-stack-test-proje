@@ -138,6 +138,29 @@ export interface OrderItem {
   line_total: string
 }
 
+export interface OrderFulfillmentEvent {
+  action: string
+  from_status: OrderStatus | null
+  to_status: OrderStatus
+  created_at: string
+  actor_subject?: string | null
+}
+
+export interface OrderFulfillment {
+  id: number
+  store_name: string
+  status: OrderStatus
+  items: OrderItem[]
+  history: OrderFulfillmentEvent[]
+}
+
+export interface SellerOrder extends OrderFulfillment {
+  order_id: number
+  created_at: string
+  updated_at: string
+  shipping_address: Omit<CustomerAddress, 'id' | 'is_default' | 'created_at' | 'updated_at'> | null
+}
+
 export interface ProductReturn {
   id: number
   order_item_id: number
@@ -165,6 +188,7 @@ export interface CustomerOrder {
   delivery_fee: string
   created_at: string
   items: OrderItem[]
+  fulfillments: OrderFulfillment[]
   returns?: ProductReturn[]
   history: OrderStatusEvent[]
 }
@@ -173,6 +197,9 @@ export interface AdminOrder extends Omit<CustomerOrder, 'history'> {
   owner_subject: string
   payment_status: PaymentStatus | null
   history: AdminOrderStatusEvent[]
+  fulfillments: Array<OrderFulfillment & {
+    history: Array<OrderFulfillmentEvent & { actor_subject: string | null }>
+  }>
 }
 
 export type PaymentStatus =
@@ -476,6 +503,32 @@ export function getMyOrder(token: string, orderId: number): Promise<CustomerOrde
 export function getAdminOrders(token: string): Promise<AdminOrder[]> {
   return request<AdminOrder[]>('/api/v1/admin/orders', {
     headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function getSellerOrders(
+  token: string,
+  limit = 50,
+  offset = 0,
+): Promise<SellerOrder[]> {
+  const query = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+  return request<SellerOrder[]>(`/api/v1/seller/orders?${query}`, {
+    headers: { Authorization: ['Bearer', token].join(' ') },
+  })
+}
+
+export function updateSellerOrderStatus(
+  token: string,
+  fulfillmentId: number,
+  orderStatus: OrderFulfillmentStatus,
+): Promise<SellerOrder> {
+  return request<SellerOrder>(`/api/v1/seller/orders/${fulfillmentId}/status`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: ['Bearer', token].join(' '),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ status: orderStatus }),
   })
 }
 

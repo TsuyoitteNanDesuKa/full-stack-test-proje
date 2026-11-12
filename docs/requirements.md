@@ -720,6 +720,41 @@ REQ-013–015 ve QA-016–QA-025 tamamlanmıştır. REQ-016–REQ-018'in ayrınt
 
 Kapsam dışı: gerçek PSP/para transferi, KYC/KYB ve gerçek kargo sağlayıcısı. E-posta/parola yaşam döngüsü özellikleri bu yol haritasında yer almıyor.
 
+## REQ-017 — Marketplace satıcı sipariş operasyonları
+
+- **Öncelik:** P1
+- **Durum:** Tamamlandı. Yerel Keycloak E2E 11/11; REQ-017 çok satıcılı senaryosu 1/1; frontend 227/227; etkilenen API testleri 32/32 geçti.
+- **Kullanıcı hikâyesi:** Onaylı satıcı olarak yalnızca bana ait sipariş kalemlerini ve teslimat için gereken bilgileri görmek, siparişi hazırlama ve manuel gönderim aşamalarında ilerletmek istiyorum. Alıcı olarak tek checkout/ödeme ile farklı satıcılardan ürün alabileyim ve her satıcı paketinin durumunu ayrı görebileyim.
+- **Sipariş modeli (karar):** Sepet birden fazla satıcının ürününü içerebilir. Checkout tek buyer siparişi, tek idempotency anahtarı, tek ödeme ve tek teslimat ücreti oluşturur. Her farklı satıcı için sipariş içinde bağımsız fulfillment kaydı ve ona bağlı kalemler oluşturulur; yönetici tarafından açılan/eskiden kalmış satıcı sahibi olmayan ürünler admin'in yönettiği ayrı fulfillment grubundadır. Fulfillment satıcı sahibi ve mağaza adı checkout anında snapshot olarak saklanır.
+- **Durum akışı:** Ödeme bekleyen her fulfillment `pending_payment` olur; başarılı mock ödeme `paid` yapar. Seller yalnız kendi fulfillment'ını bir sonraki aşamaya (`paid → processing → shipped → delivered`) geçirir. Geçersiz atlama/geri alma reddedilir, aynı hedef durum tekrarı idempotenttir. Sevk/teslim durumları yerel manuel bildirimlerdir, taşıyıcı olayı değildir.
+- **Buyer sipariş durumu:** Buyer'ın ana sipariş kaydı ödeme/iptal/iade için korunur. Başarılı ödemeden sonra, fulfillment'ların en az ilerlemiş olan durumu ana siparişin operasyon durumunu belirler. Buyer sipariş yanıtı her fulfillment'ı mağaza adı, durum ve yalnız o gruba ait kalemlerle gösterir. Buyer adres/iletişim snapshot'ı her seller fulfillment için görünür; satıcıya alıcının Keycloak subject'i, ödeme bilgisi veya başka satıcıların kalemleri verilmez.
+- **Admin gözetimi:** Admin tüm buyer siparişini ve fulfillment gruplarını görebilir. Mevcut admin durum ilerletmesi, ana siparişin en az ilerlemiş fulfillment grubunu bir sonraki duruma getirir; admin seller fulfillment'ını da yönetebilir. Admin iadesi yalnızca fulfillment'ların hiçbiri `shipped`/`delivered` değilken kabul edilir ve tüm grupları `cancelled` yapar.
+- **Yetki:** Seller endpoint'leri doğrulanmış `seller` token rolü ve aynı `sub` için `approved` başvuru gerektirir. Seller yalnız kendi fulfillment kayıtlarını listeleyebilir, okuyabilir ve ilerletebilir; başka seller veya admin-managed fulfillment'a erişim `404` döner. Admin genel sipariş yönetimi yetkisini korur.
+- **Ödeme/stok:** Ana sipariş seviyesindeki tek mock ödeme mevcut webhook/idempotency akışında kalır. Başarısız/iptal/zaman aşımında bütün fulfillment'lar `cancelled` olur ve sipariş stoğu mevcut transaction'da bir kez geri yüklenir. Gerçek ödeme veya iade yoktur.
+- **Kapsam dışı:** Gerçek PSP/para hareketi, kargo/taşıyıcı API'si, etiket/takip entegrasyonu, KYC/KYB ve satıcı ödemeleri/komisyon/settlement.
+
+### Kabul kriterleri
+
+1. Alıcı birden fazla satıcı ürününü tek sepette checkout edebilir; bir buyer order, tek payment ve her owner bazında ayrı fulfillment oluşur. Her kalem yalnız bir fulfillment'a bağlanır; fulfillment bazında kalemler ve mağaza adı checkout anı snapshot'ıdır.
+2. Eski siparişler migration ile seller sahibi bilinen kalemleri ilgili seller fulfillment'a; admin/owner bilgisi olmayan kalemleri admin-managed fulfillment'a alır. Sipariş/kalem/ödeme toplamları, buyer geçmişi ve idempotency davranışı değişmez; downgrade migration güvenlidir.
+3. Ödeme bekleyen fulfillment satıcı tarafından yönetilemez. Mock ödeme başarıyla sonuçlanınca ana sipariş ve tüm fulfillment'lar `paid`; ödeme başarısız/iptal/zaman aşımında hepsi `cancelled` olur.
+4. Seller endpoint'i yalnız geçerli `seller` token'ı ve `approved` başvurusu olan kullanıcıya açılır. Seller listesi yalnız kendisine ait fulfillment'ları verir; detay veya durum yazma için başka seller/admin-managed fulfillment ID'si kullanıldığında `404` döner. Buyer/admin yetki veremez.
+5. Seller yalnız sıradaki durum geçişini yapabilir; `paid → processing → shipped → delivered`. Atlanan/geri alınan durum `409`; aynı durum tekrarı yeni event üretmeden mevcut sonucu döndürür.
+6. Seller durum değişikliği fulfillment audit geçmişinde aktör ve zamanla kaydedilir. Ana buyer siparişinin operasyon durumu, fulfillment'ların en az ilerlemiş durumuyla tutarlı biçimde güncellenir; buyer yalnız genel durum ve güvenli fulfillment bilgilerini görür, admin audit aktörleri görür.
+7. Admin sipariş listesi/detayı tüm fulfillment'ları görebilir; mevcut durum API'si ana siparişin en az ilerlemiş fulfillment grubunu sıradaki aşamaya taşır. Admin iadesi, herhangi bir grup `shipped`/`delivered` ise reddedilir; başarılı yerel iade payment/sipariş/tüm fulfillment durumlarını ve stok etkisini atomik günceller.
+8. Çok satıcılı fulfillment kullanımı mevcut buyer sipariş/ödeme, admin yönetimi, stok iadesi, ürün silme/kalem snapshot'ı, ürün iadesi ve PostgreSQL/SQLite davranışlarını bozmaz.
+9. Buyer ve seller yanıtları hiçbir zaman başka satıcının fulfillment/kalemini veya admin-only actor subject'lerini içermez. Seller yalnız kendi fulfillment'ı için gereken teslimat snapshot'ını görür.
+10. Gerçek ödeme, taşıyıcı/kargo ve KYC/KYB entegrasyonu çağrılmaz; sevk/teslim durumu yalnızca uygulama içi eğitim amaçlı manuel durumdur.
+
+### Test katmanı ve izlenebilirlik
+
+- **Unit/API:** Rol ve başvuru yetkisi, multi-seller tek checkout/ödeme, kalem ataması, seller izolasyonu, durum geçişleri, idempotency, parent status aggregation ve hata/rollback.
+- **Migration/DB:** Eski order-item sahipliğinin mevcut product/application verisinden backfill edilmesi; silinmiş/admin ürünlerinin admin-managed kalması; SQLite ve PostgreSQL constraint, index, rollback.
+- **Payment/stock regresyon:** Mock webhook başarı/ret/expiry; tüm fulfillment durumlarının birlikte güncellenmesi; stok tek sefer iadesi; admin refund'ın sevk edilmiş herhangi bir paketi reddetmesi.
+- **Buyer/admin API ve UI:** Buyer sipariş geçmişinde satıcı paketleri; admin sipariş detayında tüm fulfillment ve actor audit; admin'in aggregate durum ilerletmesi ve iade kuralları.
+- **Seller API/UI:** Kendi sipariş gruplarını görüntüleme, adres/kalem bilgisi, sıradaki durum aksiyonu, loading/empty/error; başka satıcı ID'sine API erişim reddi.
+- **E2E:** En az iki approved seller ürünü ve buyer ile tek checkout; iki seller yalnız kendi paketlerini bağımsız ilerletir; buyer ara ve tamamlanan durumları görür; admin tüm fulfillment'ları görür. Gerçek Keycloak senaryosu yerel test realm'inde çalışır.
+
 ## REQ-013 — Katalog arama, filtreleme ve sıralama
 
 - **Öncelik:** P1 (QA odaklı sonraki dilim)

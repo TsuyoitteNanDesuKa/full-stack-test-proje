@@ -369,6 +369,8 @@ class PaymentStatus(StrEnum):
 
 
 class OrderItemResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     product_id: int | None
     product_name: str
@@ -424,6 +426,41 @@ class AdminOrderStatusEventResponse(OrderStatusEventResponse):
     actor_subject: str | None
 
 
+class OrderFulfillmentEventResponse(BaseModel):
+    action: str
+    from_status: OrderStatus | None
+    to_status: OrderStatus
+    created_at: datetime
+
+
+class AdminOrderFulfillmentEventResponse(OrderFulfillmentEventResponse):
+    actor_subject: str | None
+
+
+class OrderFulfillmentResponse(BaseModel):
+    id: int
+    store_name: str
+    status: OrderStatus
+    items: list[OrderItemResponse]
+    history: list[OrderFulfillmentEventResponse]
+
+
+class AdminOrderFulfillmentResponse(OrderFulfillmentResponse):
+    history: list[AdminOrderFulfillmentEventResponse]
+
+
+class SellerOrderResponse(BaseModel):
+    id: int
+    order_id: int
+    store_name: str
+    status: OrderStatus
+    created_at: datetime
+    updated_at: datetime
+    shipping_address: OrderAddressSnapshot | None
+    items: list[OrderItemResponse]
+    history: list[OrderFulfillmentEventResponse]
+
+
 class OrderResponse(BaseModel):
     id: int
     status: OrderStatus
@@ -434,6 +471,7 @@ class OrderResponse(BaseModel):
     delivery_fee: Decimal
     created_at: datetime
     items: list[OrderItemResponse]
+    fulfillments: list[OrderFulfillmentResponse]
     returns: list[ProductReturnResponse] = Field(default_factory=list)
     history: list[OrderStatusEventResponse]
 
@@ -441,6 +479,7 @@ class OrderResponse(BaseModel):
 class AdminOrderResponse(OrderResponse):
     owner_subject: str
     payment_status: PaymentStatus | None
+    fulfillments: list[AdminOrderFulfillmentResponse]
     history: list[AdminOrderStatusEventResponse]
 
 
@@ -486,6 +525,10 @@ class MockPaymentResultRequest(BaseModel):
 
 
 class AdminOrderStatusRequest(BaseModel):
+    status: OrderFulfillmentStatus
+
+
+class SellerOrderStatusRequest(BaseModel):
     status: OrderFulfillmentStatus
 
 

@@ -14,6 +14,7 @@ export type ResponseContracts = [
   Assert<Assignable<Schema.AddressResponse, Client.CustomerAddress>>,
   Assert<Assignable<Schema.OrderResponse, Client.CustomerOrder>>,
   Assert<Assignable<Schema.AdminOrderResponse, Client.AdminOrder>>,
+  Assert<Assignable<Schema.SellerOrderResponse, Client.SellerOrder>>,
   Assert<Assignable<Schema.ProductReturnResponse, Client.ProductReturn>>,
   Assert<Assignable<Schema.PaymentResponse, Client.CustomerPayment>>,
   Assert<Assignable<Schema.SellerApplicationResponse, Client.SellerApplication>>,
@@ -30,6 +31,7 @@ export type RequestContracts = [
   Assert<Assignable<Client.SellerApplicationRequest, Schema.SellerApplicationRequest>>,
   Assert<Assignable<Client.SellerApplicationReviewRequest, Schema.SellerApplicationReviewRequest>>,
   Assert<Assignable<{ status: Client.OrderFulfillmentStatus }, Schema.AdminOrderStatusRequest>>,
+  Assert<Assignable<{ status: Client.OrderFulfillmentStatus }, Schema.SellerOrderStatusRequest>>,
   Assert<Assignable<{ reason: string }, Schema.AdminOrderRefundRequest>>,
 ]
 

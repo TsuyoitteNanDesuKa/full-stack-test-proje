@@ -2,6 +2,7 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+import type { AdminOrderFulfillmentResponse } from './AdminOrderFulfillmentResponse';
 import type { AdminOrderStatusEventResponse } from './AdminOrderStatusEventResponse';
 import type { DeliveryMethod } from './DeliveryMethod';
 import type { OrderAddressSnapshot } from './OrderAddressSnapshot';
@@ -13,6 +14,7 @@ export type AdminOrderResponse = {
     created_at: string;
     delivery_fee: string;
     delivery_method: (DeliveryMethod | null);
+    fulfillments: Array<AdminOrderFulfillmentResponse>;
     history: Array<AdminOrderStatusEventResponse>;
     id: number;
     item_subtotal: string;

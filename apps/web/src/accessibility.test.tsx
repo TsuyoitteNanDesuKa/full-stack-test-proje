@@ -62,6 +62,7 @@ const order: CustomerOrder = {
   delivery_method: 'standard',
   delivery_fee: '49.90',
   created_at: '2026-11-04T20:00:00Z',
+  fulfillments: [],
   history: [{
     action: 'created',
     from_status: null,

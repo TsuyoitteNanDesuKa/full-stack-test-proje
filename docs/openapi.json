@@ -140,6 +140,90 @@
         "title": "AddressResponse",
         "type": "object"
       },
+      "AdminOrderFulfillmentEventResponse": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor_subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Subject"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "from_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "to_status": {
+            "$ref": "#/components/schemas/OrderStatus"
+          }
+        },
+        "required": [
+          "action",
+          "from_status",
+          "to_status",
+          "created_at",
+          "actor_subject"
+        ],
+        "title": "AdminOrderFulfillmentEventResponse",
+        "type": "object"
+      },
+      "AdminOrderFulfillmentResponse": {
+        "properties": {
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/AdminOrderFulfillmentEventResponse"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OrderItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OrderStatus"
+          },
+          "store_name": {
+            "title": "Store Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "store_name",
+          "status",
+          "items",
+          "history"
+        ],
+        "title": "AdminOrderFulfillmentResponse",
+        "type": "object"
+      },
       "AdminOrderRefundRequest": {
         "properties": {
           "reason": {
@@ -175,6 +259,13 @@
                 "type": "null"
               }
             ]
+          },
+          "fulfillments": {
+            "items": {
+              "$ref": "#/components/schemas/AdminOrderFulfillmentResponse"
+            },
+            "title": "Fulfillments",
+            "type": "array"
           },
           "history": {
             "items": {
@@ -247,6 +338,7 @@
           "delivery_fee",
           "created_at",
           "items",
+          "fulfillments",
           "history",
           "owner_subject",
           "payment_status"
@@ -752,6 +844,78 @@
         "title": "OrderCreateRequest",
         "type": "object"
       },
+      "OrderFulfillmentEventResponse": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "from_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "to_status": {
+            "$ref": "#/components/schemas/OrderStatus"
+          }
+        },
+        "required": [
+          "action",
+          "from_status",
+          "to_status",
+          "created_at"
+        ],
+        "title": "OrderFulfillmentEventResponse",
+        "type": "object"
+      },
+      "OrderFulfillmentResponse": {
+        "properties": {
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/OrderFulfillmentEventResponse"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OrderItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OrderStatus"
+          },
+          "store_name": {
+            "title": "Store Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "store_name",
+          "status",
+          "items",
+          "history"
+        ],
+        "title": "OrderFulfillmentResponse",
+        "type": "object"
+      },
       "OrderFulfillmentStatus": {
         "enum": [
           "processing",
@@ -827,6 +991,13 @@
               }
             ]
           },
+          "fulfillments": {
+            "items": {
+              "$ref": "#/components/schemas/OrderFulfillmentResponse"
+            },
+            "title": "Fulfillments",
+            "type": "array"
+          },
           "history": {
             "items": {
               "$ref": "#/components/schemas/OrderStatusEventResponse"
@@ -884,6 +1055,7 @@
           "delivery_fee",
           "created_at",
           "items",
+          "fulfillments",
           "history"
         ],
         "title": "OrderResponse",
@@ -1506,6 +1678,84 @@
         ],
         "title": "SellerApplicationStatus",
         "type": "string"
+      },
+      "SellerOrderResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/OrderFulfillmentEventResponse"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OrderItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "order_id": {
+            "title": "Order Id",
+            "type": "integer"
+          },
+          "shipping_address": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderAddressSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/OrderStatus"
+          },
+          "store_name": {
+            "title": "Store Name",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "order_id",
+          "store_name",
+          "status",
+          "created_at",
+          "updated_at",
+          "shipping_address",
+          "items",
+          "history"
+        ],
+        "title": "SellerOrderResponse",
+        "type": "object"
+      },
+      "SellerOrderStatusRequest": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/OrderFulfillmentStatus"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "SellerOrderStatusRequest",
+        "type": "object"
       },
       "ValidationError": {
         "properties": {
@@ -3204,6 +3454,175 @@
         "summary": "Review Application",
         "tags": [
           "seller applications"
+        ]
+      }
+    },
+    "/api/v1/seller/orders": {
+      "get": {
+        "operationId": "list_seller_orders_api_v1_seller_orders_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SellerOrderResponse"
+                  },
+                  "title": "Response List Seller Orders Api V1 Seller Orders Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Seller Orders",
+        "tags": [
+          "seller orders"
+        ]
+      }
+    },
+    "/api/v1/seller/orders/{fulfillment_id}": {
+      "get": {
+        "operationId": "get_seller_order_api_v1_seller_orders__fulfillment_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "fulfillment_id",
+            "required": true,
+            "schema": {
+              "title": "Fulfillment Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SellerOrderResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Seller Order",
+        "tags": [
+          "seller orders"
+        ]
+      }
+    },
+    "/api/v1/seller/orders/{fulfillment_id}/status": {
+      "patch": {
+        "operationId": "update_seller_order_status_api_v1_seller_orders__fulfillment_id__status_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "fulfillment_id",
+            "required": true,
+            "schema": {
+              "title": "Fulfillment Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SellerOrderStatusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SellerOrderResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Seller Order Status",
+        "tags": [
+          "seller orders"
         ]
       }
     }

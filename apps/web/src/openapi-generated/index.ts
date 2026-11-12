@@ -5,6 +5,8 @@
 
 export type { AddressRequest } from './models/AddressRequest';
 export type { AddressResponse } from './models/AddressResponse';
+export type { AdminOrderFulfillmentEventResponse } from './models/AdminOrderFulfillmentEventResponse';
+export type { AdminOrderFulfillmentResponse } from './models/AdminOrderFulfillmentResponse';
 export type { AdminOrderRefundRequest } from './models/AdminOrderRefundRequest';
 export type { AdminOrderResponse } from './models/AdminOrderResponse';
 export type { AdminOrderStatusEventResponse } from './models/AdminOrderStatusEventResponse';
@@ -21,6 +23,8 @@ export type { HTTPValidationError } from './models/HTTPValidationError';
 export type { MockPaymentResultRequest } from './models/MockPaymentResultRequest';
 export type { OrderAddressSnapshot } from './models/OrderAddressSnapshot';
 export type { OrderCreateRequest } from './models/OrderCreateRequest';
+export type { OrderFulfillmentEventResponse } from './models/OrderFulfillmentEventResponse';
+export type { OrderFulfillmentResponse } from './models/OrderFulfillmentResponse';
 export type { OrderFulfillmentStatus } from './models/OrderFulfillmentStatus';
 export type { OrderItemResponse } from './models/OrderItemResponse';
 export type { OrderResponse } from './models/OrderResponse';
@@ -41,4 +45,6 @@ export type { SellerApplicationRequest } from './models/SellerApplicationRequest
 export type { SellerApplicationResponse } from './models/SellerApplicationResponse';
 export type { SellerApplicationReviewRequest } from './models/SellerApplicationReviewRequest';
 export type { SellerApplicationStatus } from './models/SellerApplicationStatus';
+export type { SellerOrderResponse } from './models/SellerOrderResponse';
+export type { SellerOrderStatusRequest } from './models/SellerOrderStatusRequest';
 export type { ValidationError } from './models/ValidationError';

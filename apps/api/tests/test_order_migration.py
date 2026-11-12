@@ -26,6 +26,26 @@ def test_order_and_payment_migrations_create_tables_and_downgrade(
         with engine.begin() as connection:
             connection.execute(
                 text(
+                    "INSERT INTO products "
+                    "(id, name, name_key, category, description, price, stock, seller_subject) "
+                    "VALUES (1, 'Seller product', 'seller product', 'Care', "
+                    "'Migration snapshot', 12.50, 5, 'migration-seller')"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO seller_applications "
+                    "(id, owner_subject, applicant_type, legal_name, store_name, store_name_key, "
+                    "contact_phone, city, district, primary_category, business_description, "
+                    "status, created_at, updated_at) VALUES "
+                    "(1, 'migration-seller', 'individual', 'Migration Seller', "
+                    "'Migration Store', 'migration store', '05551234567', 'Istanbul', "
+                    "'Kadikoy', 'Care', 'Migration app', 'approved', CURRENT_TIMESTAMP, "
+                    "CURRENT_TIMESTAMP)"
+                )
+            )
+            connection.execute(
+                text(
                     "INSERT INTO orders "
                     "(owner_subject, idempotency_key, status, total_amount, created_at) "
                     "VALUES ('migration-buyer', 'migration-key', 'pending_payment', "
@@ -36,7 +56,14 @@ def test_order_and_payment_migrations_create_tables_and_downgrade(
                 text(
                     "INSERT INTO order_items "
                     "(order_id, product_id, product_name, unit_price, quantity, line_total) "
-                    "VALUES (1, NULL, 'Snapshot product', 12.50, 2, 25.00)"
+                    "VALUES (1, 1, 'Snapshot product', 12.50, 2, 25.00)"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO order_items "
+                    "(order_id, product_id, product_name, unit_price, quantity, line_total) "
+                    "VALUES (1, NULL, 'Platform product', 5.00, 1, 5.00)"
                 )
             )
             connection.execute(
@@ -67,7 +94,7 @@ def test_order_and_payment_migrations_create_tables_and_downgrade(
             )
             assert (
                 connection.scalar(text("SELECT version_num FROM alembic_version"))
-                == "0011_addresses_delivery_snapshot"
+                == "0012_order_fulfillments"
             )
             table_names = set(
                 connection.scalars(
@@ -76,6 +103,44 @@ def test_order_and_payment_migrations_create_tables_and_downgrade(
             )
             assert "product_returns" in table_names
             assert "customer_addresses" in table_names
+            assert "order_fulfillments" in table_names
+            assert "order_fulfillment_events" in table_names
+            seller_fulfillment_id = connection.scalar(
+                text("SELECT fulfillment_id FROM order_items WHERE id = 1")
+            )
+            assert seller_fulfillment_id is not None
+            assert (
+                connection.scalar(
+                    text("SELECT store_name FROM order_fulfillments WHERE id = :id"),
+                    {"id": seller_fulfillment_id},
+                )
+                == "Migration Store"
+            )
+            assert (
+                connection.scalar(
+                    text("SELECT seller_subject FROM order_fulfillments WHERE id = :id"),
+                    {"id": seller_fulfillment_id},
+                )
+                == "migration-seller"
+            )
+            platform_fulfillment_id = connection.scalar(
+                text("SELECT fulfillment_id FROM order_items WHERE id = 2")
+            )
+            assert platform_fulfillment_id is not None
+            assert (
+                connection.scalar(
+                    text("SELECT store_name FROM order_fulfillments WHERE id = :id"),
+                    {"id": platform_fulfillment_id},
+                )
+                == "Liva"
+            )
+            assert (
+                connection.scalar(
+                    text("SELECT status FROM order_fulfillments WHERE id = :id"),
+                    {"id": seller_fulfillment_id},
+                )
+                == "pending_payment"
+            )
             order_columns = {
                 column["name"]
                 for column in connection.execute(text("PRAGMA table_info(orders)")).mappings()
@@ -103,11 +168,18 @@ def test_order_and_payment_migrations_create_tables_and_downgrade(
             )
             assert "customer_addresses" not in tables
             assert "product_returns" in tables
+            assert "order_fulfillments" not in tables
+            assert "order_fulfillment_events" not in tables
             order_columns = {
                 column["name"]
                 for column in connection.execute(text("PRAGMA table_info(orders)")).mappings()
             }
             assert "delivery_fee" not in order_columns
+            item_columns = {
+                column["name"]
+                for column in connection.execute(text("PRAGMA table_info(order_items)")).mappings()
+            }
+            assert "fulfillment_id" not in item_columns
 
         command.downgrade(alembic_config, "0009_order_lifecycle")
         with engine.connect() as connection:

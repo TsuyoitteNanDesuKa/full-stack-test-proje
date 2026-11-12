@@ -76,6 +76,8 @@ const calls: [string, () => Promise<unknown>][] = [
   ['payment', () => api.createPayment(token, 1, 'key')],
   ['order', () => api.getMyOrder(token, 1)],
   ['admin orders', () => api.getAdminOrders(token)],
+  ['seller orders', () => api.getSellerOrders(token)],
+  ['seller status', () => api.updateSellerOrderStatus(token, 1, 'processing')],
   ['admin status', () => api.updateAdminOrderStatus(token, 1, 'processing')],
   ['admin refund', () => api.refundAdminOrder(token, 1, 'Reason')],
   ['my seller application', () => api.getMySellerApplication(token)],

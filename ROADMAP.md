@@ -439,11 +439,11 @@ Canlıya çıkış, gerçek ödeme sağlayıcısı, kargo/taşıyıcı veya KYC/
 12. **QA-024 — E2E mimarisi ve standartlaştırma (tamamlandı):** ortak scenario fixture'ı/API seed, retry başına benzersiz kimlik ve Keycloak login için ince POM; deterministik E2E 4/4, gerçek Keycloak E2E 10/10 geçti.
 13. **QA-025 — Bağımlılık güvenlik kapıları (tamamlandı):** lockfile bazlı npm/pip-audit kapıları, rapor artefaktları ve zafiyet bulgusunda CI başarısızlığı.
 14. **REQ-016 — Satıcı onayı ve marketplace yetkileri (tamamlandı):** Admin onayı + Keycloak `seller` rolü + `approved` başvurunun birlikte aranması; ürün sahibi ve mevcut buyer yetkileri korunur. Gerçek KYC yoktur.
-15. **REQ-017 — Marketplace satıcı sipariş operasyonları:** Satıcı yalnızca kendi satışlarını görebilir ve sipariş hazırlama durumlarını manuel yönetebilir; satıcılar arası veri/işlem sınırları ve admin gözetimi test edilir. Taşıyıcı entegrasyonu yoktur.
+15. **REQ-017 — Marketplace satıcı sipariş operasyonları (tamamlandı):** Çok satıcılı sepet tek buyer sipariş/ödeme üretir; satıcı başına fulfillment durumu ve kalem izolasyonu sağlanır. Yerel Keycloak E2E 11/11, web 227/227 ve etkilenen API testleri 32/32 geçti. Taşıyıcı entegrasyonu yoktur.
 16. **REQ-018 — Alıcının sipariş iptali:** Alıcı kendi uygun siparişini iptal edebilir; durum yetkisi, mock ödeme/iade kaydı, stok iadesi ve tekrarlı istek güvenliği tanımlanıp doğrulanır. Gerçek para hareketi yoktur.
 17. **QA-026 — Performans başlangıç çizgisi (en son):** sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor; release/live ortamı gerektirmez.
 
-REQ-013–REQ-016 ve QA-016–QA-025 tamamlanmıştır. REQ-017–REQ-018'in ayrıntılı kabul kriterleri ve test planları geliştirme öncesinde `docs/requirements.md` içinde tanımlanır; QA-026 bu iki işlevsel gereksinim tamamlandıktan sonra başlatılır.
+REQ-013–REQ-017 ve QA-016–QA-025 tamamlanmıştır. REQ-018'in ayrıntılı kabul kriterleri ve test planı `docs/requirements.md` içinde tanımlıdır; QA-026 bu işlevsel gereksinim tamamlandıktan sonra başlatılır.
 
 #### QA-024 — E2E mimarisi ve standartlaştırma (tamamlandı)
 
@@ -615,8 +615,9 @@ REQ-013–REQ-016 ve QA-016–QA-025 tamamlanmıştır. REQ-017–REQ-018'in ayr
 
 ### Öncelik 20 — REQ-017: Marketplace satıcı sipariş operasyonları
 
+- **Durum:** Tamamlandı. Yerel Keycloak E2E 11/11, REQ-017 çok satıcılı senaryosu 1/1, frontend 227/227 ve etkilenen API testleri 32/32 geçti. Buyer checkout tek sipariş/ödeme, satıcı başına ayrı fulfillment olarak modellendi.
 - **Amaç:** Satıcının yalnızca kendi satışlarını görüp manuel sipariş operasyonlarını yönetebildiği birden fazla satıcılı marketplace akışını kurmak.
-- **Kapsam:** Sipariş/satıcı kalemlerinin ilişkilendirilmesi ve görünümü, satıcıya ait siparişlerin listelenmesi/detayı ve satıcı operasyon durumlarının yönetimi; admin gözetimi korunur. Satıcılar arası veri izolasyonu ve çok satıcılı sepet/sipariş davranışı gereksinim aşamasında karara bağlanır.
+- **Kapsam:** Tek buyer order/payment içinde satıcı bazlı fulfillment, kalem ve mağaza snapshot'ı; seller'ın kendi fulfillment'ını manuel ilerletmesi; admin gözetimi ve buyer'ın fulfillment görünümü korunur.
 - **Kapsam dışı:** Gerçek kargo/taşıyıcı API'si, kargo etiketi veya takip entegrasyonu. Teslimat durumları uygulama içinde manuel/test amaçlı yönetilir.
 - **Test odağı:** Satıcı sahipliği, sipariş/kalem sınırları, yetkisiz çapraz satıcı erişimi, geçerli durum geçişleri, admin görünümü ve buyer sipariş geçmişi regresyonu.
 

@@ -221,7 +221,7 @@ class OrderStatusEvent(Base):
         CheckConstraint(
             "action IN ('created', 'payment_succeeded', 'payment_failed', "
             "'payment_cancelled', 'payment_expired', 'admin_status_changed', "
-            "'admin_refund', 'legacy_import')",
+            "'admin_refund', 'legacy_import', 'fulfillment_status_changed')",
             name="ck_order_status_events_action",
         ),
     )
@@ -237,6 +237,68 @@ class OrderStatusEvent(Base):
     from_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     to_status: Mapped[str] = mapped_column(String(32), nullable=False)
     reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class OrderFulfillment(Base):
+    __tablename__ = "order_fulfillments"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending_payment', 'paid', 'processing', 'shipped', "
+            "'delivered', 'cancelled')",
+            name="ck_order_fulfillments_status",
+        ),
+        Index(
+            "uq_order_fulfillments_order_seller",
+            "order_id",
+            "seller_subject",
+            unique=True,
+            sqlite_where=text("seller_subject IS NOT NULL"),
+            postgresql_where=text("seller_subject IS NOT NULL"),
+        ),
+        Index(
+            "uq_order_fulfillments_order_platform",
+            "order_id",
+            unique=True,
+            sqlite_where=text("seller_subject IS NULL"),
+            postgresql_where=text("seller_subject IS NULL"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(
+        ForeignKey("orders.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    seller_subject: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    store_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class OrderFulfillmentEvent(Base):
+    __tablename__ = "order_fulfillment_events"
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('created', 'payment_succeeded', 'payment_failed', 'payment_cancelled', "
+            "'payment_expired', 'seller_status_changed', 'admin_status_changed', "
+            "'admin_refund', 'legacy_import')",
+            name="ck_order_fulfillment_events_action",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    fulfillment_id: Mapped[int] = mapped_column(
+        ForeignKey("order_fulfillments.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    actor_subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    from_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(32), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
@@ -261,6 +323,11 @@ class OrderItem(Base):
     order_id: Mapped[int] = mapped_column(
         ForeignKey("orders.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
+    )
+    fulfillment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("order_fulfillments.id", ondelete="SET NULL"),
+        nullable=True,
         index=True,
     )
     product_id: Mapped[int | None] = mapped_column(

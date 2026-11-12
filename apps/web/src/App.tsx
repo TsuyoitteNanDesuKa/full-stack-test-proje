@@ -29,6 +29,7 @@ import AddressBookPanel from './AddressBookPanel'
 import OrderHistoryPanel from './OrderHistoryPanel'
 import ProductCreatePage from './ProductCreatePage'
 import SellerApplicationPanel from './SellerApplicationPanel'
+import SellerOrdersPanel from './SellerOrdersPanel'
 
 function BrandMark() {
   return (
@@ -568,7 +569,10 @@ function HomePage({
           <AdminOrdersPanel token={token} />
         </>
       ) : (
-        <SellerApplicationPanel token={token} />
+        <>
+          <SellerApplicationPanel token={token} />
+          {roles.includes('seller') && <SellerOrdersPanel token={token} />}
+        </>
       )}
       <section aria-labelledby="products-heading" className="products-section">
         <div className="products-heading-row">

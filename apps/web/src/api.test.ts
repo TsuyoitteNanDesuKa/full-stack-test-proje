@@ -20,6 +20,7 @@ import {
   getMySellerApplication,
   getProducts,
   getSellerApplications,
+  getSellerOrders,
   reviewSellerApplication,
   refundAdminOrder,
   submitMySellerApplication,
@@ -27,6 +28,7 @@ import {
   updateAddress,
   deleteAddress,
   updateAdminOrderStatus,
+  updateSellerOrderStatus,
   updateProduct,
   updateMySellerApplication,
   withdrawMySellerApplication,
@@ -460,6 +462,41 @@ describe('storefront API client', () => {
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ reason: 'Alıcı talebi' }),
+      }),
+    )
+  })
+
+  it('loads seller fulfillment orders and advances one fulfillment status', async () => {
+    const order = {
+      id: 21,
+      order_id: 44,
+      store_name: 'Sample Store',
+      status: 'paid',
+      created_at: '2026-11-04T20:00:00Z',
+      updated_at: '2026-11-04T20:00:00Z',
+      shipping_address: null,
+      items: [],
+      history: [],
+    }
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse([order]))
+      .mockResolvedValueOnce(jsonResponse({ ...order, status: 'processing' }))
+
+    await expect(getSellerOrders('seller-token')).resolves.toEqual([order])
+    await expect(
+      updateSellerOrderStatus('seller-token', 21, 'processing'),
+    ).resolves.toMatchObject({ status: 'processing' })
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      '/api/v1/seller/orders?limit=50&offset=0',
+      expect.any(Object),
+    )
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/seller/orders/21/status',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'processing' }),
       }),
     )
   })

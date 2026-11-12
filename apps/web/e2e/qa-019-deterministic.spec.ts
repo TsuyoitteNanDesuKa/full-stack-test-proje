@@ -108,7 +108,10 @@ test.describe('QA-019 deterministic buyer checkout @smoke', () => {
 
     await page.goto('/')
     await page.getByRole('button', { name: 'Siparişlerim' }).click()
-    await expect(page.getByText('Ödendi', { exact: true })).toBeVisible()
+    const orderRow = page.locator('.order-history-item').filter({
+      hasText: `Sipariş #${order.id}`,
+    })
+    await expect(orderRow.locator('.order-history-summary').first()).toContainText('Ödendi')
     await expect(page.getByText('Ödeme alındı')).toBeVisible()
   })
 })

@@ -275,6 +275,29 @@ export default function OrderHistoryPanel({
                       ))}
                     </ol>
                   )}
+                  {order.fulfillments.length > 0 && (
+                    <section
+                      aria-label={`Sipariş ${order.id} satıcı paketleri`}
+                      className="order-fulfillment-list"
+                    >
+                      <h4>Satıcı paketleri</h4>
+                      {order.fulfillments.map((fulfillment) => (
+                        <article key={fulfillment.id}>
+                          <div className="order-history-summary">
+                            <strong>{fulfillment.store_name}</strong>
+                            <span>{orderStatusLabel(fulfillment.status)}</span>
+                          </div>
+                          <ul>
+                            {fulfillment.items.map((item) => (
+                              <li key={item.id}>
+                                {item.product_name} · {item.quantity} adet
+                              </li>
+                            ))}
+                          </ul>
+                        </article>
+                      ))}
+                    </section>
+                  )}
                   <ul aria-label={`Sipariş ${order.id} kalemleri`}>
                     {order.items.map((item) => {
                       const remainingQuantity = item.quantity - returnedQuantity(order, item.id)

@@ -9,6 +9,7 @@ import type {
   CustomerAddress,
   CustomerOrder,
   Product,
+  SellerOrder,
 } from './api'
 import { deliveryPricing } from './api'
 import { createTestProduct, productRequest } from './test/testData'
@@ -83,6 +84,7 @@ function setupApi(options: {
   addresses?: CustomerAddress[]
   addressFailure?: Response | Error
   orders?: CustomerOrder[]
+  sellerOrders?: SellerOrder[]
   sellerApplications?: AdminSellerApplication[]
   homeError?: Response
   deleteError?: Response
@@ -267,6 +269,7 @@ function setupApi(options: {
         ).toFixed(2),
         created_at: new Date().toISOString(),
         items,
+        fulfillments: [],
         history: [],
       }
       ordersByIdempotencyKey.set(key, order)
@@ -338,6 +341,9 @@ function setupApi(options: {
     }
     if (path === '/api/v1/seller-applications/me') {
       return jsonResponse(sellerApplication)
+    }
+    if (path.startsWith('/api/v1/seller/orders?')) {
+      return jsonResponse(options.sellerOrders ?? [])
     }
     if (path === '/api/v1/seller-applications' && init?.method === 'POST') {
       sellerApplication = {
@@ -1380,6 +1386,7 @@ describe('Keycloak authentication and storefront', () => {
     await user.click(await screen.findByRole('button', { name: '+ Ürün ekle' }))
     expect(await screen.findByLabelText('Ürün adı')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Ürün listesine dön' }))
+    expect(await screen.findByRole('region', { name: 'Siparişlerim' })).toBeInTheDocument()
     expect(
       await screen.findByRole('button', { name: `Düzenle ${ownedProduct.name}` }),
     ).toBeInTheDocument()

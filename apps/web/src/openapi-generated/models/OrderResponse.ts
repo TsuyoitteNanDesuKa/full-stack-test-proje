@@ -4,6 +4,7 @@
 /* eslint-disable */
 import type { DeliveryMethod } from './DeliveryMethod';
 import type { OrderAddressSnapshot } from './OrderAddressSnapshot';
+import type { OrderFulfillmentResponse } from './OrderFulfillmentResponse';
 import type { OrderItemResponse } from './OrderItemResponse';
 import type { OrderStatus } from './OrderStatus';
 import type { OrderStatusEventResponse } from './OrderStatusEventResponse';
@@ -12,6 +13,7 @@ export type OrderResponse = {
     created_at: string;
     delivery_fee: string;
     delivery_method: (DeliveryMethod | null);
+    fulfillments: Array<OrderFulfillmentResponse>;
     history: Array<OrderStatusEventResponse>;
     id: number;
     item_subtotal: string;

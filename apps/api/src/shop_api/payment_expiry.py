@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from shop_api.models import CustomerOrder, OrderItem, Payment, Product
+from shop_api.order_fulfillment import set_order_fulfillments_status
 from shop_api.order_lifecycle import record_order_status_event
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,13 @@ def expire_due_payments(db: Session, now: datetime | None = None) -> int:
             previous_status = order.status
             order.status = "cancelled"
             restore_order_stock(db, order.id)
+            set_order_fulfillments_status(
+                db,
+                order_id=order.id,
+                target_status="cancelled",
+                action="payment_expired",
+                created_at=expiration_time,
+            )
             record_order_status_event(
                 db,
                 order_id=order.id,

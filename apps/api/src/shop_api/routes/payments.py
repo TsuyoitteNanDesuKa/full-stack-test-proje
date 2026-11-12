@@ -15,6 +15,7 @@ from shop_api.config import Settings
 from shop_api.database import get_db
 from shop_api.dependencies import get_current_user
 from shop_api.models import CustomerOrder, Payment, PaymentWebhookEvent
+from shop_api.order_fulfillment import set_order_fulfillments_status
 from shop_api.order_lifecycle import record_order_status_event
 from shop_api.payment_expiry import (
     StockRestorationError,
@@ -267,6 +268,13 @@ def _apply_webhook(
             if order is not None and order.status == OrderStatus.PENDING_PAYMENT:
                 previous_status = order.status
                 order.status = OrderStatus.PAID
+                set_order_fulfillments_status(
+                    db,
+                    order_id=order.id,
+                    target_status=OrderStatus.PAID.value,
+                    action="payment_succeeded",
+                    created_at=now,
+                )
                 record_order_status_event(
                     db,
                     order_id=order.id,
@@ -296,6 +304,17 @@ def _apply_webhook(
                         status_code=status.HTTP_409_CONFLICT,
                         detail="Stok sınırı nedeniyle sipariş kapatılamadı.",
                     ) from error
+                set_order_fulfillments_status(
+                    db,
+                    order_id=order.id,
+                    target_status=OrderStatus.CANCELLED.value,
+                    action=(
+                        "payment_failed"
+                        if event.status == PaymentResult.FAILED
+                        else "payment_cancelled"
+                    ),
+                    created_at=now,
+                )
                 record_order_status_event(
                     db,
                     order_id=order.id,

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import AdminOrdersPanel from './AdminOrdersPanel'
@@ -44,6 +44,26 @@ const sampleOrder: AdminOrder = {
       line_total: '25.00',
     },
   ],
+  fulfillments: [{
+    id: 33,
+    store_name: 'Sample Store',
+    status: 'paid',
+    items: [{
+      id: 31,
+      product_id: 12,
+      product_name: 'Sample product',
+      unit_price: '12.50',
+      quantity: 2,
+      line_total: '25.00',
+    }],
+    history: [{
+      action: 'payment_succeeded',
+      from_status: 'pending_payment',
+      to_status: 'paid',
+      created_at: '2026-11-04T20:01:00Z',
+      actor_subject: null,
+    }],
+  }],
   history: [
     {
       action: 'payment_succeeded',
@@ -78,7 +98,11 @@ describe('AdminOrdersPanel', () => {
 
     render(<AdminOrdersPanel token="admin-token" />)
 
-    await screen.findByText(/Sample product · 2 adet/)
+    expect(await screen.findByText('Sample Store')).toBeInTheDocument()
+    const packages = screen.getByRole('region', { name: 'Sipariş 21 satıcı paketleri' })
+    expect(within(packages).getByText('Sample product · 2 adet')).toBeInTheDocument()
+    expect(packages).toHaveTextContent('Sample Store')
+    expect(screen.getByText('İşlemi yapan: Sistem')).toBeInTheDocument()
     expect(screen.getByText('Teslimat adresi')).toBeInTheDocument()
     expect(screen.getByText(/Standart teslimat:/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Hazırlanıyor aşamasına geçir' }))
