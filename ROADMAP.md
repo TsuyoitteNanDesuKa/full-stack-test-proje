@@ -441,11 +441,11 @@ Canlıya çıkış, gerçek ödeme sağlayıcısı, kargo/taşıyıcı veya KYC/
 14. **REQ-016 — Satıcı onayı ve marketplace yetkileri (tamamlandı):** Admin onayı + Keycloak `seller` rolü + `approved` başvurunun birlikte aranması; ürün sahibi ve mevcut buyer yetkileri korunur. Gerçek KYC yoktur.
 15. **REQ-017 — Marketplace satıcı sipariş operasyonları (tamamlandı):** Çok satıcılı sepet tek buyer sipariş/ödeme üretir; satıcı başına fulfillment durumu ve kalem izolasyonu sağlanır. Yerel Keycloak E2E 11/11, web 227/227 ve etkilenen API testleri 32/32 geçti. Taşıyıcı entegrasyonu yoktur.
 16. **REQ-018 — Alıcının sipariş iptali (tamamlandı):** Alıcı kendi uygun siparişini iptal edebilir; mock ödeme/iade, stok ve PostgreSQL üzerinde tekrar/yarış güvenliği uygulanır. Gerçek para hareketi yoktur.
-17. **Düzeltme — Satıcı gönderimi sonrası alıcı iadesi (Keycloak E2E bekleniyor):** Seller fulfillment geçişlerinin oluşturduğu sipariş olayları da mevcut 30 günlük iade kuralında API ve UI tarafından kabul edilir.
+17. **Düzeltme — Satıcı gönderimi sonrası alıcı iadesi (tamamlandı):** Seller fulfillment geçişlerinin oluşturduğu sipariş olayları da mevcut 30 günlük iade kuralında API ve UI tarafından kabul edilir.
 18. **Düzeltme — Ödeme expiry hata izolasyonu (tamamlandı):** Stok sınırı nedeniyle kapatılamayan bir sipariş, diğer siparişlerin expiry işlemini veya ilgisiz ödeme isteklerini engellemez; hatalı sipariş ve hatası görünür kalır.
 19. **QA-026 — Performans başlangıç çizgisi (en son):** sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor; release/live ortamı gerektirmez. Sipariş listelemesindeki sayfalama ve sorgu maliyeti bu aşamada değerlendirilir.
 
-REQ-013–REQ-018 ve QA-016–QA-025 tamamlanmıştır. QA-026 öncesinde yukarıdaki iki işlevsel düzeltme uygulanıp doğrulanır.
+REQ-013–REQ-018, QA-016–QA-025 ve performans öncesi iki işlevsel düzeltme tamamlanmıştır; sırada QA-026 vardır.
 
 #### QA-024 — E2E mimarisi ve standartlaştırma (tamamlandı)
 
@@ -633,7 +633,7 @@ REQ-013–REQ-018 ve QA-016–QA-025 tamamlanmıştır. QA-026 öncesinde yukar�
 
 ### Öncelik 22 — Satıcı gönderimi sonrası alıcı iadesi
 
-- **Durum:** Geliştirme tamamlandı; gerçek Keycloak seller → buyer iade E2E doğrulaması bekleniyor. Backend regresyonu 310/310, PostgreSQL 20/20, frontend 241/241 ve deterministik smoke 5/5 geçti.
+- **Durum:** Tamamlandı. Gerçek Keycloak seller → buyer iade E2E 1/1, backend regresyonu 310/310, PostgreSQL 20/20, frontend 241/241 ve deterministik smoke 5/5 geçti.
 - **Kapsam:** Parent siparişi satıcı fulfillment geçişiyle `shipped`/`delivered` olduğunda, mevcut son durum olayından başlayan 30 günlük iade politikası API ve buyer arayüzünde çalışır. Admin geçişleri ve çok satıcılı parent durum kuralı korunur.
 - **Test:** Seller → gönderim/teslim → buyer iade, geçerli ve süresi dolmuş olaylar; API, UI ve ilgili regresyonlar.
 
