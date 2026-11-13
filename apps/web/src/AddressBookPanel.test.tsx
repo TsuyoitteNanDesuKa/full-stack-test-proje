@@ -159,4 +159,27 @@ describe('AddressBookPanel', () => {
     expect(screen.getByRole('heading', { name: 'Yeni adres ekle' })).toBeInTheDocument()
     expect(onSaved).toHaveBeenCalledOnce()
   })
+
+  it('lets the buyer make another address the default and set its postal code', async () => {
+    const user = userEvent.setup()
+    render(
+      <AddressBookPanel
+        addresses={[{ ...savedAddress, is_default: false }]}
+        isLoading={false}
+        loadError=""
+        onRetry={vi.fn()}
+        onSaved={onSaved}
+        token="buyer-token"
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Varsayılan yap' }))
+    expect(screen.getByLabelText('Varsayılan teslimat adresim yap')).toBeChecked()
+    await user.type(screen.getByLabelText('Posta kodu (isteğe bağlı)'), '34710')
+    await user.click(screen.getByRole('button', { name: 'Değişiklikleri kaydet' }))
+    await waitFor(() => expect(updateAddress).toHaveBeenCalledWith(
+      'buyer-token',
+      savedAddress.id,
+      expect.objectContaining({ is_default: true, postal_code: '34710' }),
+    ))
+  })
 })

@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import OrderHistoryPanel from './OrderHistoryPanel'
-import { createPayment, createProductReturn, getMyOrders } from './api'
+import { ApiError, createPayment, createProductReturn, getMyOrders } from './api'
 import type { CustomerOrder, CustomerPayment, ProductReturn } from './api'
 
 vi.mock('./api', async (importOriginal) => ({
@@ -91,6 +91,39 @@ describe('OrderHistoryPanel', () => {
     expect(screen.getByText('Ada Buyer · +905551234567')).toBeInTheDocument()
     expect(screen.getByText(/Ürün ara toplamı:/)).toBeInTheDocument()
     expect(getMyOrders).toHaveBeenCalledWith('buyer-token')
+  })
+
+  it('shows each seller package and its own items separately from the order summary', async () => {
+    vi.mocked(getMyOrders).mockResolvedValue([{
+      ...sampleOrder,
+      status: 'paid',
+      fulfillments: [{
+        id: 1,
+        store_name: 'İlk mağaza',
+        status: 'shipped',
+        items: sampleOrder.items,
+        history: [],
+      }, {
+        id: 2,
+        store_name: 'İkinci mağaza',
+        status: 'processing',
+        items: [{ ...sampleOrder.items[0], id: 32, product_name: 'Sabun' }],
+        history: [],
+      }],
+    }])
+    render(<OrderHistoryPanel latestOrder={null} refreshVersion={0} token="buyer-token" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Siparişlerim' }))
+
+    const packages = await screen.findByRole('region', { name: 'Sipariş 21 satıcı paketleri' })
+    const [first, second] = within(packages).getAllByRole('article')
+    expect(first).toHaveTextContent('İlk mağaza')
+    expect(first).toHaveTextContent('Kargoya verildi')
+    expect(first).toHaveTextContent('Liva krem · 2 adet')
+    expect(first).not.toHaveTextContent('Sabun')
+    expect(second).toHaveTextContent('İkinci mağaza')
+    expect(second).toHaveTextContent('Hazırlanıyor')
+    expect(second).toHaveTextContent('Sabun · 2 adet')
+    expect(second).not.toHaveTextContent('Liva krem')
   })
 
   it('shows an empty state and latest order confirmation', async () => {
@@ -309,5 +342,35 @@ describe('OrderHistoryPanel', () => {
     expect(vi.mocked(createProductReturn).mock.calls[0][3]).toBe(
       vi.mocked(createProductReturn).mock.calls[1][3],
     )
+  })
+
+  it('validates the return quantity, shows an API rejection, and permits cancellation', async () => {
+    vi.mocked(getMyOrders).mockResolvedValue([{
+      ...sampleOrder,
+      status: 'delivered',
+      history: [{
+        action: 'admin_status_changed',
+        from_status: 'shipped',
+        to_status: 'delivered',
+        reason: null,
+        created_at: new Date().toISOString(),
+      }],
+    }])
+    vi.mocked(createProductReturn).mockRejectedValueOnce(new ApiError('İade süresi doldu.', 409))
+    render(<OrderHistoryPanel latestOrder={null} refreshVersion={0} token="buyer-token" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Siparişlerim' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'İade et Liva krem' }))
+    fireEvent.change(screen.getByLabelText('İade miktarı (en fazla 2)'), { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText('İade nedeni'), { target: { value: 'Hasarlı ürün' } })
+    fireEvent.click(screen.getByRole('button', { name: 'İade talebini gönder' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('İade miktarı')
+    expect(createProductReturn).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText('İade miktarı (en fazla 2)'), { target: { value: '1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'İade talebini gönder' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('İade süresi doldu.')
+    fireEvent.click(screen.getByRole('button', { name: 'İptal' }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'İade et Liva krem' })).toBeInTheDocument()
   })
 })

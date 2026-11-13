@@ -176,4 +176,28 @@ describe('AdminOrdersPanel', () => {
     expect(reason).toHaveValue('  Alıcı talebi  ')
     expect(screen.getByRole('heading', { name: 'Sipariş #21' })).toBeInTheDocument()
   })
+
+  it('displays fulfillment audit actors and hides refund actions for shipped orders', async () => {
+    vi.mocked(getAdminOrders).mockResolvedValue([{
+      ...sampleOrder,
+      status: 'shipped',
+      fulfillments: [{
+        ...sampleOrder.fulfillments[0],
+        status: 'shipped',
+        history: [{
+          action: 'seller_status_changed',
+          from_status: 'processing',
+          to_status: 'shipped',
+          actor_subject: 'seller-subject',
+          created_at: '2026-11-04T20:01:00Z',
+        }],
+      }],
+    }])
+    render(<AdminOrdersPanel token="admin-token" />)
+
+    expect(await screen.findByText('Satıcı paket durumunu güncelledi')).toBeInTheDocument()
+    expect(screen.getByText('İşlemi yapan: seller-subject')).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'İptal/iade nedeni' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Teslim edildi aşamasına geçir' })).toBeEnabled()
+  })
 })

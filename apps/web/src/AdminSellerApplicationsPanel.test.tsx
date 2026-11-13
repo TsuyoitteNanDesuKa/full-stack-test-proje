@@ -99,4 +99,25 @@ describe('AdminSellerApplicationsPanel', () => {
       action: 'approve',
     })
   })
+
+  it('reports refresh failures and permits rejecting with an applicant note', async () => {
+    vi.mocked(getSellerApplications)
+      .mockResolvedValueOnce([application])
+      .mockRejectedValueOnce(new Error('network error'))
+      .mockResolvedValueOnce([application])
+    vi.mocked(reviewSellerApplication).mockResolvedValue({ ...application, status: 'rejected' })
+    const user = userEvent.setup()
+    render(<AdminSellerApplicationsPanel token="admin-token" />)
+
+    await screen.findByText('Sample Store')
+    await user.click(screen.getByRole('button', { name: 'Yenile' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Satıcı başvuruları yüklenemedi.')
+    await user.click(screen.getByRole('button', { name: 'Yenile' }))
+    await user.type(await screen.findByLabelText('Başvuru sahibine not'), 'Eksik bilgiler')
+    await user.click(screen.getByRole('button', { name: 'Reddet' }))
+    await waitFor(() => expect(reviewSellerApplication).toHaveBeenCalledWith(
+      'admin-token', 21, { action: 'reject' },
+    ))
+    expect(await screen.findByText('Reddedildi')).toBeInTheDocument()
+  })
 })

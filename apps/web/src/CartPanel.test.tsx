@@ -161,6 +161,13 @@ describe('cart panel', () => {
     expect(props.onManageAddresses).toHaveBeenCalledOnce()
   })
 
+  it('lets the buyer change express delivery back to standard', async () => {
+    const user = userEvent.setup()
+    const { props } = renderCart(undefined, { deliveryMethod: 'express' })
+    await user.click(screen.getByRole('radio', { name: /Standart/ }))
+    expect(props.onSelectDeliveryMethod).toHaveBeenCalledWith('standard')
+  })
+
   it.each([
     { subtotal: '999.99', method: 'standard' as const, fee: '₺49,90', total: '₺1.049,89' },
     { subtotal: '1000.00', method: 'standard' as const, fee: 'Ücretsiz', total: '₺1.000,00' },

@@ -77,4 +77,26 @@ describe('SellerApplicationPanel', () => {
     expect(await screen.findByText('Başvurun geri çekildi.')).toBeInTheDocument()
     expect(withdrawMySellerApplication).toHaveBeenCalledTimes(2)
   })
+
+  it('saves a company draft with its representative and requires that field', async () => {
+    vi.mocked(updateMySellerApplication).mockResolvedValue({
+      ...draft,
+      applicant_type: 'company',
+      representative_name: 'Ada Buyer',
+    })
+    const user = userEvent.setup()
+    render(<SellerApplicationPanel token="buyer-token" />)
+    const type = await screen.findByLabelText('Başvuru türü')
+    await user.selectOptions(type, 'company')
+    const representative = screen.getByLabelText('Yetkili kişi')
+    expect(representative).toBeRequired()
+    await user.type(representative, 'Ada Buyer')
+    await user.click(screen.getByRole('button', { name: 'Taslağı kaydet' }))
+
+    expect(updateMySellerApplication).toHaveBeenCalledWith('buyer-token', expect.objectContaining({
+      applicant_type: 'company',
+      representative_name: 'Ada Buyer',
+    }))
+    expect(await screen.findByText('Başvuru taslağın kaydedildi.')).toBeInTheDocument()
+  })
 })
