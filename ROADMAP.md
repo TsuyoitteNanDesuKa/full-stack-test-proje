@@ -440,10 +440,10 @@ Canlıya çıkış, gerçek ödeme sağlayıcısı, kargo/taşıyıcı veya KYC/
 13. **QA-025 — Bağımlılık güvenlik kapıları (tamamlandı):** lockfile bazlı npm/pip-audit kapıları, rapor artefaktları ve zafiyet bulgusunda CI başarısızlığı.
 14. **REQ-016 — Satıcı onayı ve marketplace yetkileri (tamamlandı):** Admin onayı + Keycloak `seller` rolü + `approved` başvurunun birlikte aranması; ürün sahibi ve mevcut buyer yetkileri korunur. Gerçek KYC yoktur.
 15. **REQ-017 — Marketplace satıcı sipariş operasyonları (tamamlandı):** Çok satıcılı sepet tek buyer sipariş/ödeme üretir; satıcı başına fulfillment durumu ve kalem izolasyonu sağlanır. Yerel Keycloak E2E 11/11, web 227/227 ve etkilenen API testleri 32/32 geçti. Taşıyıcı entegrasyonu yoktur.
-16. **REQ-018 — Alıcının sipariş iptali:** Alıcı kendi uygun siparişini iptal edebilir; durum yetkisi, mock ödeme/iade kaydı, stok iadesi ve tekrarlı istek güvenliği tanımlanıp doğrulanır. Gerçek para hareketi yoktur.
+16. **REQ-018 — Alıcının sipariş iptali (tamamlandı):** Alıcı kendi uygun siparişini iptal edebilir; mock ödeme/iade, stok ve PostgreSQL üzerinde tekrar/yarış güvenliği uygulanır. Gerçek para hareketi yoktur.
 17. **QA-026 — Performans başlangıç çizgisi (en son):** sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor; release/live ortamı gerektirmez.
 
-REQ-013–REQ-017 ve QA-016–QA-025 tamamlanmıştır. REQ-018'in ayrıntılı kabul kriterleri ve test planı `docs/requirements.md` içinde tanımlıdır; QA-026 bu işlevsel gereksinim tamamlandıktan sonra başlatılır.
+REQ-013–REQ-018 ve QA-016–QA-025 tamamlanmıştır. REQ-018'in kabul kriterleri ve test planı `docs/requirements.md` içinde tanımlıdır; sırada QA-026 vardır.
 
 #### QA-024 — E2E mimarisi ve standartlaştırma (tamamlandı)
 
@@ -623,8 +623,9 @@ REQ-013–REQ-017 ve QA-016–QA-025 tamamlanmıştır. REQ-018'in ayrıntılı 
 
 ### Öncelik 21 — REQ-018: Alıcının sipariş iptali
 
+- **Durum:** Tamamlandı. İlgili API 55/55, PostgreSQL yarış 5/5, frontend 240/240 ve deterministik E2E 1/1; build/lint ve sözleşme kontrolleri başarılı.
 - **Amaç:** Alıcının kendisine ait ve iptale uygun siparişi uygulama üzerinden iptal edebilmesi.
-- **Kapsam:** İptale uygun sipariş durumları ve yarış koşulları gereksinim tasarımında belirlenir; başarılı iptal, mock ödeme/iade kaydı ve stok etkisiyle tutarlı ve idempotent olmalıdır. Admin iptali, ödeme zaman aşımı ve teslimat sonrası ürün iadesi akışlarıyla çakışma ele alınır.
+- **Kapsam:** `pending_payment`, `paid` ve `processing` siparişleri, hiçbir paket kargolanmamışsa bütün olarak iptal edilir; isteğe bağlı neden, mock ödeme/iade kaydı, stok iadesi ve audit atomik/idempotent olmalıdır. Admin iptali, ödeme zaman aşımı ve teslimat sonrası ürün iadesi akışlarıyla çakışma ele alınır.
 - **Kapsam dışı:** Gerçek para iadesi veya PSP entegrasyonu.
 - **Test odağı:** Sipariş sahipliği, uygun/uygunsuz durumlar, tekrarlı/eşzamanlı istek, transaction atomikliği ve stok/ödeme/audit regresyonları.
 

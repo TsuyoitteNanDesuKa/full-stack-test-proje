@@ -162,6 +162,17 @@ def update_seller_order_status(
     db: Annotated[Session, Depends(get_db)],
 ) -> SellerOrderResponse:
     _require_approved_seller(current_user, db)
+    order_id = db.scalar(
+        select(OrderFulfillment.order_id).where(
+            OrderFulfillment.id == fulfillment_id,
+            OrderFulfillment.seller_subject == current_user.subject,
+        )
+    )
+    if order_id is None:
+        raise HTTPException(status_code=404, detail="Sipariş bulunamadı.")
+    order = db.scalar(select(CustomerOrder).where(CustomerOrder.id == order_id).with_for_update())
+    if order is None:
+        raise RuntimeError("Order fulfillment references a missing order.")
     fulfillment = db.scalar(
         select(OrderFulfillment)
         .where(
@@ -172,11 +183,6 @@ def update_seller_order_status(
     )
     if fulfillment is None:
         raise HTTPException(status_code=404, detail="Sipariş bulunamadı.")
-    order = db.scalar(
-        select(CustomerOrder).where(CustomerOrder.id == fulfillment.order_id).with_for_update()
-    )
-    if order is None:
-        raise RuntimeError("Order fulfillment references a missing order.")
 
     target_status = payload.status
     if fulfillment.status == target_status:

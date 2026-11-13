@@ -22,6 +22,7 @@ export type { HomeResponse } from './models/HomeResponse';
 export type { HTTPValidationError } from './models/HTTPValidationError';
 export type { MockPaymentResultRequest } from './models/MockPaymentResultRequest';
 export type { OrderAddressSnapshot } from './models/OrderAddressSnapshot';
+export type { OrderCancellationRequest } from './models/OrderCancellationRequest';
 export type { OrderCreateRequest } from './models/OrderCreateRequest';
 export type { OrderFulfillmentEventResponse } from './models/OrderFulfillmentEventResponse';
 export type { OrderFulfillmentResponse } from './models/OrderFulfillmentResponse';

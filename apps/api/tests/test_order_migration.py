@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import text
@@ -94,7 +95,7 @@ def test_order_and_payment_migrations_create_tables_and_downgrade(
             )
             assert (
                 connection.scalar(text("SELECT version_num FROM alembic_version"))
-                == "0012_order_fulfillments"
+                == "0013_buyer_cancellation"
             )
             table_names = set(
                 connection.scalars(
@@ -158,7 +159,28 @@ def test_order_and_payment_migrations_create_tables_and_downgrade(
             connection.execute(
                 text("UPDATE payments SET status = 'partially_refunded' WHERE id = 1")
             )
+            connection.execute(
+                text(
+                    "INSERT INTO order_status_events "
+                    "(order_id, action, to_status, created_at) "
+                    "VALUES (1, 'buyer_cancelled', 'cancelled', CURRENT_TIMESTAMP)"
+                )
+            )
 
+        with pytest.raises(RuntimeError, match="buyer cancellation audit records"):
+            command.downgrade(alembic_config, "0012_order_fulfillments")
+        with engine.begin() as connection:
+            assert (
+                connection.scalar(
+                    text(
+                        "SELECT COUNT(*) FROM order_status_events WHERE action = 'buyer_cancelled'"
+                    )
+                )
+                == 1
+            )
+            connection.execute(
+                text("DELETE FROM order_status_events WHERE action = 'buyer_cancelled'")
+            )
         command.downgrade(alembic_config, "0010_product_returns")
         with engine.connect() as connection:
             tables = set(

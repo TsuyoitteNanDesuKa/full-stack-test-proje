@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CustomerOrder, CustomerPayment } from './api'
-import { ApiError, createPayment, createProductReturn, getMyOrders } from './api'
+import { ApiError, cancelMyOrder, createPayment, createProductReturn, getMyOrders } from './api'
 
 interface OrderHistoryPanelProps {
   token: string
@@ -48,6 +48,8 @@ function historyActionLabel(action: string): string {
       return 'Sipariş durumu güncellendi'
     case 'admin_refund':
       return 'Sipariş iptal edildi ve iade kaydı oluşturuldu'
+    case 'buyer_cancelled':
+      return 'Sipariş talebinle iptal edildi'
     case 'legacy_import':
       return 'Sipariş durumu kaydı içe aktarıldı'
     default:
@@ -96,6 +98,34 @@ export default function OrderHistoryPanel({
   const [returnNotice, setReturnNotice] = useState('')
   const [returnNoticeOrderId, setReturnNoticeOrderId] = useState<number | null>(null)
   const returnIdempotencyKeys = useRef<Record<string, string>>({})
+  const [cancelFormOrderId, setCancelFormOrderId] = useState<number | null>(null)
+  const [cancellationReason, setCancellationReason] = useState('')
+  const [cancellingOrderId, setCancellingOrderId] = useState<number | null>(null)
+  const [cancelError, setCancelError] = useState('')
+  const [cancelNotice, setCancelNotice] = useState<{ orderId: number; text: string } | null>(null)
+
+  async function submitCancellation(order: CustomerOrder) {
+    setCancellingOrderId(order.id)
+    setCancelError('')
+    try {
+      const updated = await cancelMyOrder(token, order.id, { reason: cancellationReason.trim() || null })
+      setOrders((current) => current.map((item) => item.id === order.id ? updated : item))
+      setCancelFormOrderId(null)
+      const cancellation = updated.history.findLast((event) => event.action === 'buyer_cancelled')
+      setCancelNotice({
+        orderId: order.id,
+        text: cancellation?.from_status === 'pending_payment'
+          ? 'Siparişin iptal edildi.'
+          : 'Siparişin iptal edildi ve yerel iade kaydı oluşturuldu. Gerçek para transferi yapılmadı.',
+      })
+    } catch (requestError) {
+      setCancelError(requestError instanceof ApiError
+        ? requestError.message
+        : 'Sipariş iptal edilemedi. Bağlantıyı kontrol edip tekrar dene.')
+    } finally {
+      setCancellingOrderId(null)
+    }
+  }
 
   async function startPayment(orderId: number) {
     setStartingPaymentOrderId(orderId)
@@ -195,7 +225,7 @@ export default function OrderHistoryPanel({
 
   return (
     <section className="order-history-section">
-      {latestOrder && (
+      {latestOrder && !orders.some((order) => order.id === latestOrder.id && order.status === 'cancelled') && (
         <p className="order-confirmation" role="status">
           Siparişin oluşturuldu: #{latestOrder.id}. Ödeme adımı bekleniyor.
         </p>
@@ -419,6 +449,40 @@ export default function OrderHistoryPanel({
                   <p>
                     Toplam: <strong>{formatCurrency(order.total_amount)}</strong>
                   </p>
+                  {['pending_payment', 'paid', 'processing'].includes(order.status) &&
+                    !order.fulfillments.some((item) => item.status === 'shipped' || item.status === 'delivered') && (
+                      <div className="order-return-action">
+                        {cancelFormOrderId === order.id ? (
+                          <div className="order-return-form">
+                            <label>
+                              İptal nedeni (isteğe bağlı)
+                              <textarea maxLength={500} value={cancellationReason}
+                                onChange={(event) => setCancellationReason(event.target.value)} />
+                            </label>
+                            <p>Ödenmiş siparişlerde yalnızca yerel iade kaydı oluşturulur; gerçek para transferi yapılmaz.</p>
+                            {cancelError && <p role="alert">{cancelError}</p>}
+                            <button className="checkout-button" type="button"
+                              disabled={cancellingOrderId !== null}
+                              onClick={() => void submitCancellation(order)}>
+                              {cancellingOrderId === order.id ? 'İptal ediliyor...' : 'Sipariş iptalini onayla'}
+                            </button>
+                            <button className="retry-button" type="button" disabled={cancellingOrderId !== null}
+                              onClick={() => { setCancelFormOrderId(null); setCancelError('') }}>
+                              Vazgeç
+                            </button>
+                          </div>
+                        ) : (
+                          <button className="retry-button" type="button" onClick={() => {
+                            setCancelFormOrderId(order.id)
+                            setCancellationReason('')
+                            setCancelError('')
+                          }}>
+                            Siparişi iptal et
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  {cancelNotice?.orderId === order.id && <p role="status">{cancelNotice.text}</p>}
                   {order.status === 'pending_payment' && (
                     <div className="order-payment-action">
                       <button

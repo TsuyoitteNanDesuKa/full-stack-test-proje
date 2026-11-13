@@ -178,6 +178,10 @@ export interface ProductReturnRequest {
   reason: string
 }
 
+export interface OrderCancellationRequest {
+  reason: string | null
+}
+
 export interface CustomerOrder {
   id: number
   status: OrderStatus
@@ -477,6 +481,18 @@ export function createProductReturn(
 export function getMyOrders(token: string): Promise<CustomerOrder[]> {
   return request<CustomerOrder[]>('/api/v1/orders', {
     headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function cancelMyOrder(
+  token: string,
+  orderId: number,
+  requestBody: OrderCancellationRequest,
+): Promise<CustomerOrder> {
+  return request<CustomerOrder>(`/api/v1/orders/${orderId}/cancel`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(requestBody),
   })
 }
 

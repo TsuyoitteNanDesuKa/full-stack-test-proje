@@ -305,6 +305,241 @@ def _send_signed_payment_event(
         return response.status_code, response.json().get("duplicate", False)
 
 
+def test_postgres_concurrent_buyer_cancellations_restore_stock_once(
+    postgres_client: TestClient, postgres_engine: Engine
+) -> None:
+    from test_admin_orders import create_order
+
+    subject = "postgres-cancel-buyer"
+    headers = _auth_headers(postgres_client, subject)
+    order_id, product_id, _ = create_order(postgres_client, headers, start_payment=True)
+    barrier = Barrier(2)
+
+    def cancel() -> int:
+        with _client_for_engine(postgres_engine) as client:
+            request_headers = _auth_headers(client, subject)
+            barrier.wait(timeout=10)
+            return client.post(
+                f"/api/v1/orders/{order_id}/cancel", json={}, headers=request_headers
+            ).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(lambda _: cancel(), range(2)))
+    assert responses == [200, 200]
+    with Session(postgres_engine) as db:
+        assert db.get(Product, product_id).stock == 5
+        assert db.scalar(select(Payment).where(Payment.order_id == order_id)).status == "refunded"
+        assert (
+            db.scalar(
+                select(func.count())
+                .select_from(OrderStatusEvent)
+                .where(
+                    OrderStatusEvent.order_id == order_id,
+                    OrderStatusEvent.action == "buyer_cancelled",
+                )
+            )
+            == 1
+        )
+
+
+def test_postgres_buyer_cancel_races_payment_success(
+    postgres_client: TestClient, postgres_engine: Engine
+) -> None:
+    from test_admin_orders import create_order
+
+    subject = "postgres-cancel-payment"
+    headers = _auth_headers(postgres_client, subject)
+    order_id, product_id, _ = create_order(postgres_client, headers, start_payment=False)
+    payment_response = postgres_client.post(
+        f"/api/v1/orders/{order_id}/payments",
+        headers={**headers, "Idempotency-Key": "cancel-payment-race"},
+    )
+    assert payment_response.status_code == 201
+    payment = payment_response.json()
+    barrier = Barrier(2)
+
+    def cancel() -> int:
+        with _client_for_engine(postgres_engine) as client:
+            request_headers = _auth_headers(client, subject)
+            barrier.wait(timeout=10)
+            return client.post(
+                f"/api/v1/orders/{order_id}/cancel", json={}, headers=request_headers
+            ).status_code
+
+    def succeed() -> int:
+        barrier.wait(timeout=10)
+        return _send_signed_payment_event(
+            postgres_engine,
+            event_id="cancel-payment-race-success",
+            payment_reference=payment["provider_reference"],
+            status="succeeded",
+            amount=payment["amount"],
+        )[0]
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        cancel_future = pool.submit(cancel)
+        payment_future = pool.submit(succeed)
+        assert cancel_future.result(timeout=20) == 200
+        assert payment_future.result(timeout=20) == 200
+    with Session(postgres_engine) as db:
+        assert db.get(Product, product_id).stock == 5
+        assert db.get(CustomerOrder, order_id).status == "cancelled"
+        assert db.scalar(select(Payment).where(Payment.order_id == order_id)).status in {
+            "cancelled",
+            "refunded",
+        }
+
+
+def test_postgres_buyer_cancel_races_seller_shipment(
+    postgres_client: TestClient, postgres_engine: Engine
+) -> None:
+    from test_seller_orders import create_paid_multi_seller_order
+
+    order, product_one, product_two = create_paid_multi_seller_order(
+        postgres_client, postgres_engine
+    )
+    seller = _auth_headers(postgres_client, "fulfillment-seller-one", ["buyer", "seller"])
+    fulfillment_id = postgres_client.get("/api/v1/seller/orders", headers=seller).json()[0]["id"]
+    assert (
+        postgres_client.patch(
+            f"/api/v1/seller/orders/{fulfillment_id}/status",
+            headers=seller,
+            json={"status": "processing"},
+        ).status_code
+        == 200
+    )
+    barrier = Barrier(2)
+
+    def cancel() -> int:
+        with _client_for_engine(postgres_engine) as client:
+            headers = _auth_headers(client, "fulfillment-buyer")
+            barrier.wait(timeout=10)
+            return client.post(
+                f"/api/v1/orders/{order['id']}/cancel", headers=headers, json={}
+            ).status_code
+
+    def ship() -> int:
+        with _client_for_engine(postgres_engine) as client:
+            headers = _auth_headers(client, "fulfillment-seller-one", ["buyer", "seller"])
+            barrier.wait(timeout=10)
+            return client.patch(
+                f"/api/v1/seller/orders/{fulfillment_id}/status",
+                headers=headers,
+                json={"status": "shipped"},
+            ).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        cancel_future = pool.submit(cancel)
+        ship_future = pool.submit(ship)
+        cancelled, shipped = cancel_future.result(timeout=20), ship_future.result(timeout=20)
+    assert (cancelled, shipped) in {(200, 409), (409, 200)}
+    with Session(postgres_engine) as db:
+        payment = db.scalar(select(Payment).where(Payment.order_id == order["id"]))
+        assert payment.status == ("refunded" if cancelled == 200 else "succeeded")
+        for product in (product_one, product_two):
+            assert db.get(Product, product["id"]).stock == product["stock"] - (cancelled != 200)
+
+
+def test_postgres_buyer_cancel_races_payment_creation(
+    postgres_client: TestClient, postgres_engine: Engine
+) -> None:
+    from test_admin_orders import create_order
+
+    subject = "postgres-cancel-create-payment"
+    headers = _auth_headers(postgres_client, subject)
+    order_id, product_id, _ = create_order(postgres_client, headers, start_payment=False)
+    barrier = Barrier(2)
+
+    def cancel() -> int:
+        with _client_for_engine(postgres_engine) as client:
+            request_headers = _auth_headers(client, subject)
+            barrier.wait(timeout=10)
+            return client.post(
+                f"/api/v1/orders/{order_id}/cancel", json={}, headers=request_headers
+            ).status_code
+
+    def create_payment() -> int:
+        with _client_for_engine(postgres_engine) as client:
+            request_headers = {
+                **_auth_headers(client, subject),
+                "Idempotency-Key": "cancel-create-payment",
+            }
+            barrier.wait(timeout=10)
+            return client.post(
+                f"/api/v1/orders/{order_id}/payments", headers=request_headers
+            ).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        cancel_future = pool.submit(cancel)
+        payment_future = pool.submit(create_payment)
+        assert cancel_future.result(timeout=20) == 200
+        assert payment_future.result(timeout=20) in {201, 409}
+    with Session(postgres_engine) as db:
+        assert db.get(Product, product_id).stock == 5
+        assert db.get(CustomerOrder, order_id).status == "cancelled"
+        payment = db.scalar(select(Payment).where(Payment.order_id == order_id))
+        assert payment is None or payment.status == "cancelled"
+
+
+def test_postgres_buyer_cancel_races_product_return(
+    postgres_client: TestClient, postgres_engine: Engine
+) -> None:
+    from test_admin_orders import create_order
+
+    subject = "postgres-cancel-return"
+    headers = _auth_headers(postgres_client, subject)
+    order_id, product_id, _ = create_order(postgres_client, headers, start_payment=True)
+    admin = _auth_headers(postgres_client, "postgres-return-admin", ["admin"])
+    for next_status in ("processing", "shipped"):
+        assert (
+            postgres_client.patch(
+                f"/api/v1/admin/orders/{order_id}/status",
+                headers=admin,
+                json={"status": next_status},
+            ).status_code
+            == 200
+        )
+    order = postgres_client.get(f"/api/v1/orders/{order_id}", headers=headers).json()
+    barrier = Barrier(2)
+
+    def cancel() -> int:
+        with _client_for_engine(postgres_engine) as client:
+            request_headers = _auth_headers(client, subject)
+            barrier.wait(timeout=10)
+            return client.post(
+                f"/api/v1/orders/{order_id}/cancel", json={}, headers=request_headers
+            ).status_code
+
+    def product_return() -> int:
+        with _client_for_engine(postgres_engine) as client:
+            request_headers = {
+                **_auth_headers(client, subject),
+                "Idempotency-Key": "cancel-return-race",
+            }
+            barrier.wait(timeout=10)
+            return client.post(
+                f"/api/v1/orders/{order_id}/returns",
+                headers=request_headers,
+                json={
+                    "order_item_id": order["items"][0]["id"],
+                    "quantity": 1,
+                    "reason": "Damaged product",
+                },
+            ).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        cancel_future = pool.submit(cancel)
+        return_future = pool.submit(product_return)
+        assert cancel_future.result(timeout=20) == 409
+        assert return_future.result(timeout=20) == 201
+    with Session(postgres_engine) as db:
+        assert db.get(Product, product_id).stock == 4
+        assert db.get(CustomerOrder, order_id).status == "shipped"
+        assert db.scalar(select(Payment).where(Payment.order_id == order_id)).status == (
+            "partially_refunded"
+        )
+
+
 def test_postgres_cart_api_persists_and_enforces_stock(postgres_client: TestClient) -> None:
     product_id = _create_product(postgres_client, stock=3)
     headers = _auth_headers(postgres_client, "postgres-cart-buyer")

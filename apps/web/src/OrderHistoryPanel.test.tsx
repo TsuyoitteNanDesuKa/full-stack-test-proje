@@ -1,12 +1,13 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import OrderHistoryPanel from './OrderHistoryPanel'
-import { ApiError, createPayment, createProductReturn, getMyOrders } from './api'
+import { ApiError, cancelMyOrder, createPayment, createProductReturn, getMyOrders } from './api'
 import type { CustomerOrder, CustomerPayment, ProductReturn } from './api'
 
 vi.mock('./api', async (importOriginal) => ({
   ...await importOriginal<typeof import('./api')>(),
   createPayment: vi.fn(),
+  cancelMyOrder: vi.fn(),
   createProductReturn: vi.fn(),
   getMyOrders: vi.fn(),
 }))
@@ -201,6 +202,47 @@ describe('OrderHistoryPanel', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Ödeme başlatılamadı.')
     expect(screen.getByRole('heading', { name: 'Sipariş #21' })).toBeInTheDocument()
+  })
+
+  it('confirms cancellation with an optional reason and updates the order', async () => {
+    const paid = { ...sampleOrder, status: 'paid' as const }
+    vi.mocked(getMyOrders).mockResolvedValue([paid])
+    vi.mocked(cancelMyOrder).mockResolvedValue({
+      ...paid,
+      status: 'cancelled',
+      history: [...paid.history, {
+        action: 'buyer_cancelled', from_status: 'paid', to_status: 'cancelled',
+        reason: 'Vazgeçtim', created_at: '2026-11-04T20:01:00Z',
+      }],
+    })
+    render(<OrderHistoryPanel latestOrder={null} refreshVersion={0} token="buyer-token" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Siparişlerim' }))
+    await screen.findByText('Ödendi')
+    fireEvent.click(screen.getByRole('button', { name: 'Siparişi iptal et' }))
+    fireEvent.change(screen.getByLabelText('İptal nedeni (isteğe bağlı)'), {
+      target: { value: ' Vazgeçtim ' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Sipariş iptalini onayla' }))
+    expect(await screen.findByText('Sipariş talebinle iptal edildi')).toBeInTheDocument()
+    expect(cancelMyOrder).toHaveBeenCalledWith('buyer-token', 21, { reason: 'Vazgeçtim' })
+    expect(screen.getByText(/Gerçek para transferi yapılmadı/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Siparişi iptal et' })).not.toBeInTheDocument()
+  })
+
+  it('shows cancellation errors and hides the action if any package is shipped', async () => {
+    vi.mocked(getMyOrders).mockResolvedValue([sampleOrder, {
+      ...sampleOrder, id: 22, status: 'paid',
+      fulfillments: [{ id: 1, store_name: 'Seller', status: 'shipped', items: [], history: [] }],
+    }])
+    vi.mocked(cancelMyOrder).mockRejectedValueOnce(new ApiError('Durum değişti.', 409))
+    render(<OrderHistoryPanel latestOrder={null} refreshVersion={0} token="buyer-token" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Siparişlerim' }))
+    await screen.findByRole('heading', { name: 'Sipariş #22' })
+    expect(screen.getAllByRole('button', { name: 'Siparişi iptal et' })).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Siparişi iptal et' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sipariş iptalini onayla' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Durum değişti.')
+    expect(cancelMyOrder).toHaveBeenCalledWith('buyer-token', 21, { reason: null })
   })
 
   it('submits partial and remaining item returns and updates the visible history', async () => {

@@ -27,6 +27,7 @@ export type RequestContracts = [
   Assert<Assignable<Client.CartUpdateItemRequest, Schema.CartUpdateItemRequest>>,
   Assert<Assignable<Client.AddressRequest, Schema.AddressRequest>>,
   Assert<Assignable<Client.OrderCreateRequest, Schema.OrderCreateRequest>>,
+  Assert<Assignable<Client.OrderCancellationRequest, Schema.OrderCancellationRequest>>,
   Assert<Assignable<Client.ProductReturnRequest, Schema.ProductReturnRequest>>,
   Assert<Assignable<Client.SellerApplicationRequest, Schema.SellerApplicationRequest>>,
   Assert<Assignable<Client.SellerApplicationReviewRequest, Schema.SellerApplicationReviewRequest>>,

@@ -37,6 +37,7 @@ from shop_api.schemas import (
     AdminOrderStatusRequest,
     DeliveryMethod,
     OrderAddressSnapshot,
+    OrderCancellationRequest,
     OrderCreateRequest,
     OrderFulfillmentResponse,
     OrderItemResponse,
@@ -439,6 +440,108 @@ def get_my_order(
     return _order_response(db, _get_owned_order(db, current_user.subject, order_id))
 
 
+@router.post("/{order_id}/cancel", response_model=OrderResponse)
+def cancel_my_order(
+    order_id: int,
+    payload: OrderCancellationRequest,
+    current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> OrderResponse:
+    _require_buyer(current_user)
+    _get_owned_order(db, current_user.subject, order_id)
+
+    # Payment callbacks lock payment before order; retry if payment was created in between.
+    while True:
+        payment = db.scalar(select(Payment).where(Payment.order_id == order_id).with_for_update())
+        order = db.scalar(
+            select(CustomerOrder)
+            .where(
+                CustomerOrder.id == order_id, CustomerOrder.owner_subject == current_user.subject
+            )
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if order is None:
+            raise HTTPException(status_code=404, detail="Sipariş bulunamadı.")
+        if (
+            payment is not None
+            or db.scalar(select(Payment.id).where(Payment.order_id == order_id)) is None
+        ):
+            break
+        db.rollback()
+
+    if order.status == OrderStatus.CANCELLED:
+        cancelled_by_buyer = db.scalar(
+            select(OrderStatusEvent.id).where(
+                OrderStatusEvent.order_id == order.id,
+                OrderStatusEvent.action == "buyer_cancelled",
+            )
+        )
+        if cancelled_by_buyer is not None:
+            return _order_response(db, order)
+        raise HTTPException(status_code=409, detail="Sipariş zaten iptal edilmiş.")
+
+    if order.status not in {OrderStatus.PENDING_PAYMENT, OrderStatus.PAID, OrderStatus.PROCESSING}:
+        raise HTTPException(status_code=409, detail="Sipariş bu aşamada iptal edilemez.")
+    if order.status == OrderStatus.PENDING_PAYMENT:
+        if payment is not None and payment.status != PaymentStatus.PENDING:
+            raise HTTPException(status_code=409, detail="Ödeme durumu iptale uygun değil.")
+    elif payment is None or payment.status != PaymentStatus.SUCCEEDED:
+        raise HTTPException(status_code=409, detail="Ödeme durumu iptale uygun değil.")
+
+    advanced = db.scalar(
+        select(OrderFulfillment.id)
+        .where(
+            OrderFulfillment.order_id == order.id,
+            OrderFulfillment.status.in_({OrderStatus.SHIPPED.value, OrderStatus.DELIVERED.value}),
+        )
+        .limit(1)
+    )
+    if advanced is not None:
+        raise HTTPException(
+            status_code=409, detail="Kargoya verilen paket nedeniyle sipariş iptal edilemez."
+        )
+
+    now = datetime.now(UTC)
+    previous_status = order.status
+    order.status = OrderStatus.CANCELLED
+    if payment is not None:
+        payment.status = (
+            PaymentStatus.CANCELLED
+            if previous_status == OrderStatus.PENDING_PAYMENT
+            else PaymentStatus.REFUNDED
+        )
+        payment.updated_at = now
+    try:
+        restore_order_stock(db, order.id)
+    except StockRestorationError as error:
+        db.rollback()
+        raise HTTPException(
+            status_code=409, detail="Stok sınırı nedeniyle sipariş iptal edilemedi."
+        ) from error
+    set_order_fulfillments_status(
+        db,
+        order_id=order.id,
+        target_status=OrderStatus.CANCELLED.value,
+        action="buyer_cancelled",
+        actor_subject=current_user.subject,
+        created_at=now,
+    )
+    record_order_status_event(
+        db,
+        order_id=order.id,
+        action="buyer_cancelled",
+        from_status=previous_status,
+        to_status=order.status,
+        actor_subject=current_user.subject,
+        reason=payload.reason,
+        created_at=now,
+    )
+    db.commit()
+    db.refresh(order)
+    return _order_response(db, order)
+
+
 @router.post(
     "/{order_id}/returns",
     response_model=ProductReturnResponse,
@@ -459,6 +562,15 @@ def create_product_return(
             detail="Idempotency-Key geçersiz biçimde.",
         )
 
+    owned_id = db.scalar(
+        select(CustomerOrder.id).where(
+            CustomerOrder.id == order_id,
+            CustomerOrder.owner_subject == current_user.subject,
+        )
+    )
+    if owned_id is None:
+        raise HTTPException(status_code=404, detail="Sipariş bulunamadı.")
+    payment = db.scalar(select(Payment).where(Payment.order_id == order_id).with_for_update())
     order = db.scalar(
         select(CustomerOrder)
         .where(
@@ -537,7 +649,6 @@ def create_product_return(
             detail="İade talebi, kargo/teslim tarihinden itibaren 30 gün içinde yapılmalıdır.",
         )
 
-    payment = db.scalar(select(Payment).where(Payment.order_id == order.id).with_for_update())
     if payment is None or payment.status not in {
         PaymentStatus.SUCCEEDED,
         PaymentStatus.PARTIALLY_REFUNDED,

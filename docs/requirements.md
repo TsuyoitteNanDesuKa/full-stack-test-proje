@@ -716,9 +716,24 @@ Gerçek ödeme/PSP, kargo/taşıyıcı ve KYC/KYB entegrasyonları öğrenme pro
 16. **REQ-018 — Alıcının sipariş iptali:** Alıcının kendi uygun siparişini iptali; mock ödeme/iade, stok, transaction ve idempotency kuralları.
 17. **QA-026 — Performans başlangıç çizgisi (en son):** Sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor.
 
-REQ-013–015 ve QA-016–QA-025 tamamlanmıştır. REQ-016–REQ-018'in ayrıntılı kabul kriterleri ve test planları geliştirme öncesinde bu belgede tanımlanacak; QA-026 bu gereksinimlerden sonra başlatılacaktır.
+REQ-013–017 ve QA-016–QA-025 tamamlanmıştır. REQ-018'in kabul kriterleri aşağıdadır; QA-026 bu gereksinimden sonra başlatılacaktır.
 
 Kapsam dışı: gerçek PSP/para transferi, KYC/KYB ve gerçek kargo sağlayıcısı. E-posta/parola yaşam döngüsü özellikleri bu yol haritasında yer almıyor.
+
+## REQ-018 — Alıcının sipariş iptali
+
+- **Öncelik:** P1
+- **Durum:** Tamamlandı. İlgili API testleri 55/55, PostgreSQL yarış testleri 5/5, frontend 240/240 ve deterministik tarayıcı senaryosu 1/1 geçti; build/lint ve sözleşme kontrolleri başarılı.
+- **Kullanıcı hikâyesi:** Alıcı olarak kargoya verilmemiş siparişimin tamamını iptal edip sonucu sipariş geçmişimde görmek istiyorum.
+- **Kapsam:** Yalnızca sipariş sahibi buyer, `pending_payment`, `paid` veya `processing` durumundaki tüm siparişi iptal edebilir. Herhangi bir satıcı paketi `shipped`/`delivered` ise, parent durumu daha geride olsa bile iptal reddedilir. Kısmi paket iptali bu dilimde yoktur.
+- **Ödeme ve stok:** Ödeme yoksa kayıt oluşturulmaz; bekleyen ödeme `cancelled`, başarılı ödeme `refunded` olur. İptal ve stok iadesi, tüm paketlerin iptali ve audit kayıtları tek transaction'dır; ödeme ve iade kayıtları mocktur, gerçek para hareketi yapılmaz.
+- **Tekrar ve yarışlar:** Alıcının başarılı iptalini tekrar göndermesi, farklı nedenle bile aynı mevcut sonucu döndürür; stok ve audit tekrarlanmaz. Başka sebeple önceden iptal edilmiş sipariş için `409` döner. PostgreSQL üzerinde ödeme callback/expiry, ödeme oluşturma ve admin/satıcı durum değişimleriyle yarışlarda satır kilitleri ve güncel durum kontrolü kullanılır. SQLite'ın `FOR UPDATE` desteği yoktur; eşzamanlılık garantisi PostgreSQL üzerinde doğrulanır.
+- **Audit:** İsteğe bağlı, en fazla 500 karakterlik neden normalize edilerek `buyer_cancelled` sipariş olayına kaydedilir; paketlerde aynı aksiyon görünür. Aktör kimliği yalnızca admin yanıtındadır.
+- **API:** `POST /api/v1/orders/{order_id}/cancel`, JSON `{ "reason": null }` veya metin; güncel buyer siparişi döndürür. Başka kullanıcı için `404`, yetkisiz rol için `403`, uygunsuz durum/stok sınırı için `409`, geçersiz istek için `422`.
+- **Arayüz:** Uygun siparişte onay ve isteğe bağlı neden alanı gösterilir; sonuç ve hatalar görünür, ödenmiş siparişte yerel iade açıklanır. Sunucu son karar merciidir.
+- **Migration:** Audit olay kısıtları genişletilir; iptal audit kayıtları mevcutken downgrade bunları silmek veya yanlış sınıflandırmak yerine açıkça reddedilir.
+- **Test planı:** API rol/sahiplik, ödeme yok/bekleyen/başarılı, processing, paket sevki, tekrar, geç gelen ödeme ve stok taşması; PostgreSQL eşzamanlı iptal, ödeme başarısı/oluşturma, seller sevki ve ürün iadesi; migration upgrade/downgrade; component/API sözleşmesi ve gerçek API ile tarayıcı iptal senaryosu.
+- **Çıkış ölçütü:** İlgili testler ve kalite kapıları başarılı olmalı; gerçek PSP ve taşıyıcı entegrasyonu kapsam dışıdır.
 
 ## REQ-017 — Marketplace satıcı sipariş operasyonları
 

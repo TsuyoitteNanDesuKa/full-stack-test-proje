@@ -34,6 +34,7 @@ function fulfillmentEventLabel(action: string): string {
     case 'admin_status_changed':
       return 'Yönetici paket durumunu güncelledi'
     case 'admin_refund':
+    case 'buyer_cancelled':
       return 'Paket iptal edildi'
     case 'legacy_import':
       return 'Önceki paket kaydı'

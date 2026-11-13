@@ -72,6 +72,7 @@ const calls: [string, () => Promise<unknown>][] = [
   ['update address', () => api.updateAddress(token, 1, address)],
   ['delete address', () => api.deleteAddress(token, 1)],
   ['return', () => api.createProductReturn(token, 1, { order_item_id: 1, quantity: 1, reason: 'Reason' }, 'key')],
+  ['cancel order', () => api.cancelMyOrder(token, 1, { reason: null })],
   ['orders', () => api.getMyOrders(token)],
   ['payment', () => api.createPayment(token, 1, 'key')],
   ['order', () => api.getMyOrder(token, 1)],

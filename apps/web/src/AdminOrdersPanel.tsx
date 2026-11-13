@@ -27,6 +27,7 @@ const eventLabels: Record<string, string> = {
   payment_expired: 'Ödeme süresi doldu',
   admin_status_changed: 'Sipariş durumu güncellendi',
   admin_refund: 'Yerel iade kaydı oluşturuldu',
+  buyer_cancelled: 'Alıcı siparişi iptal etti',
   legacy_import: 'Önceki sipariş kaydı',
   seller_status_changed: 'Satıcı paket durumunu güncelledi',
   fulfillment_status_changed: 'Paket durumu güncellendi',

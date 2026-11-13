@@ -221,7 +221,7 @@ class OrderStatusEvent(Base):
         CheckConstraint(
             "action IN ('created', 'payment_succeeded', 'payment_failed', "
             "'payment_cancelled', 'payment_expired', 'admin_status_changed', "
-            "'admin_refund', 'legacy_import', 'fulfillment_status_changed')",
+            "'admin_refund', 'legacy_import', 'fulfillment_status_changed', 'buyer_cancelled')",
             name="ck_order_status_events_action",
         ),
     )
@@ -284,7 +284,7 @@ class OrderFulfillmentEvent(Base):
         CheckConstraint(
             "action IN ('created', 'payment_succeeded', 'payment_failed', 'payment_cancelled', "
             "'payment_expired', 'seller_status_changed', 'admin_status_changed', "
-            "'admin_refund', 'legacy_import')",
+            "'admin_refund', 'legacy_import', 'buyer_cancelled')",
             name="ck_order_fulfillment_events_action",
         ),
     )

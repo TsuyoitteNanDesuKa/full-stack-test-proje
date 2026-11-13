@@ -403,6 +403,15 @@ class ProductReturnRequest(BaseModel):
         return normalized
 
 
+class OrderCancellationRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=500, strict=True)
+
+    @field_validator("reason")
+    @classmethod
+    def normalize_reason(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
+
 class ProductReturnResponse(BaseModel):
     id: int
     order_item_id: int
