@@ -45,46 +45,59 @@ def restore_order_stock(db: Session, order_id: int) -> None:
         products_by_id[product_id].stock += quantity
 
 
-def expire_due_payments(db: Session, now: datetime | None = None) -> int:
+def expire_due_payments(
+    db: Session, now: datetime | None = None, *, payment_id: int | None = None
+) -> int:
     expiration_time = now or datetime.now(UTC)
-    payments = db.scalars(
+    statement = (
         select(Payment)
         .where(
             Payment.status == "pending",
             Payment.expires_at <= expiration_time,
         )
         .order_by(Payment.id)
-        .with_for_update(skip_locked=True)
-    ).all()
+    )
+    if payment_id is not None:
+        statement = statement.where(Payment.id == payment_id)
+    payments = db.scalars(statement.with_for_update(skip_locked=payment_id is None)).all()
     expired_count = 0
     for payment in payments:
-        order = db.scalar(
-            select(CustomerOrder).where(CustomerOrder.id == payment.order_id).with_for_update()
-        )
-        if order is None or payment.status != "pending":
-            continue
-        payment.status = "expired"
-        payment.updated_at = expiration_time
-        if order.status == "pending_payment":
-            previous_status = order.status
-            order.status = "cancelled"
-            restore_order_stock(db, order.id)
-            set_order_fulfillments_status(
-                db,
-                order_id=order.id,
-                target_status="cancelled",
-                action="payment_expired",
-                created_at=expiration_time,
-            )
-            record_order_status_event(
-                db,
-                order_id=order.id,
-                action="payment_expired",
-                from_status=previous_status,
-                to_status=order.status,
-                created_at=expiration_time,
-            )
-        expired_count += 1
+        current_payment_id = payment.id
+        try:
+            with db.begin_nested():
+                order = db.scalar(
+                    select(CustomerOrder)
+                    .where(CustomerOrder.id == payment.order_id)
+                    .with_for_update()
+                )
+                if order is None or payment.status != "pending":
+                    continue
+                payment.status = "expired"
+                payment.updated_at = expiration_time
+                if order.status == "pending_payment":
+                    previous_status = order.status
+                    order.status = "cancelled"
+                    restore_order_stock(db, order.id)
+                    set_order_fulfillments_status(
+                        db,
+                        order_id=order.id,
+                        target_status="cancelled",
+                        action="payment_expired",
+                        created_at=expiration_time,
+                    )
+                    record_order_status_event(
+                        db,
+                        order_id=order.id,
+                        action="payment_expired",
+                        from_status=previous_status,
+                        to_status=order.status,
+                        created_at=expiration_time,
+                    )
+            expired_count += 1
+        except StockRestorationError:
+            if payment_id is not None:
+                raise
+            logger.warning("Payment %s expiry failed: stock limit exceeded.", current_payment_id)
 
     if expired_count:
         db.commit()

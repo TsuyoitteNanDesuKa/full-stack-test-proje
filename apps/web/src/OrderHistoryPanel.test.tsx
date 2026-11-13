@@ -323,6 +323,32 @@ describe('OrderHistoryPanel', () => {
     )
   })
 
+  it('offers returns after seller fulfillment and hides them after the return window', async () => {
+    const sellerOrder: CustomerOrder = {
+      ...sampleOrder,
+      status: 'delivered',
+      history: [{
+        action: 'fulfillment_status_changed',
+        from_status: 'shipped',
+        to_status: 'delivered',
+        reason: null,
+        created_at: new Date().toISOString(),
+      }],
+    }
+    vi.mocked(getMyOrders)
+      .mockResolvedValueOnce([sellerOrder])
+      .mockResolvedValueOnce([{
+        ...sellerOrder,
+        history: [{ ...sellerOrder.history[0], created_at: new Date(Date.now() - 31 * 86400000).toISOString() }],
+      }])
+    render(<OrderHistoryPanel latestOrder={null} refreshVersion={0} token="buyer-token" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Siparişlerim' }))
+    expect(await screen.findByRole('button', { name: 'İade et Liva krem' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Yenile' }))
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'İade et Liva krem' }))
+      .not.toBeInTheDocument())
+  })
+
   it('allows retrying a failed order-history request', async () => {
     vi.mocked(getMyOrders)
       .mockRejectedValueOnce(new Error('Network unavailable'))

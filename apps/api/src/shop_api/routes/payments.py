@@ -46,9 +46,11 @@ def _provider(request: Request) -> PaymentProvider:
     return request.app.state.payment_provider
 
 
-def _expire_due_payments(db: Session, now: datetime | None = None) -> int:
+def _expire_due_payments(db: Session, payment_id: int | None, now: datetime | None = None) -> int:
+    if payment_id is None:
+        return 0
     try:
-        return expire_due_payments(db, now)
+        return expire_due_payments(db, now, payment_id=payment_id)
     except StockRestorationError as error:
         db.rollback()
         raise HTTPException(
@@ -127,7 +129,13 @@ def create_payment(
     _require_buyer(current_user)
     if not IDEMPOTENCY_KEY_PATTERN.fullmatch(idempotency_key):
         raise HTTPException(status_code=422, detail="Idempotency-Key geçersiz biçimde.")
-    _expire_due_payments(db)
+    payment_id = db.scalar(
+        select(Payment.id).where(
+            Payment.order_id == order_id,
+            Payment.owner_subject == current_user.subject,
+        )
+    )
+    _expire_due_payments(db, payment_id)
 
     existing = db.scalar(
         select(Payment).where(
@@ -200,7 +208,6 @@ def get_payment(
     db: Annotated[Session, Depends(get_db)],
 ) -> PaymentResponse:
     _require_buyer(current_user)
-    _expire_due_payments(db)
     payment = db.scalar(
         select(Payment).where(
             Payment.id == payment_id,
@@ -210,6 +217,8 @@ def get_payment(
     )
     if payment is None:
         raise HTTPException(status_code=404, detail="Ödeme bulunamadı.")
+    _expire_due_payments(db, payment.id)
+    db.refresh(payment)
     return _payment_response(payment, _provider(request))
 
 
@@ -219,7 +228,13 @@ def _apply_webhook(
     event: PaymentWebhookRequest,
     payload_sha256: str,
 ) -> PaymentWebhookResponse:
-    _expire_due_payments(db)
+    payment_id = db.scalar(
+        select(Payment.id).where(
+            Payment.provider == provider.name,
+            Payment.provider_reference == event.payment_reference,
+        )
+    )
+    _expire_due_payments(db, payment_id)
     payment = db.scalar(
         select(Payment)
         .where(
@@ -258,7 +273,8 @@ def _apply_webhook(
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=UTC)
         if expires_at <= now:
-            _expire_due_payments(db, now)
+            _expire_due_payments(db, payment.id, now)
+            db.refresh(payment)
         elif event.status == PaymentResult.SUCCEEDED:
             payment.status = PaymentStatus.SUCCEEDED
             payment.updated_at = now
@@ -380,7 +396,6 @@ def mock_checkout_page(
     provider = _provider(request)
     if not isinstance(provider, MockPaymentProvider):
         raise HTTPException(status_code=404, detail="Ödeme sayfası bulunamadı.")
-    _expire_due_payments(db)
     payment = db.get(Payment, payment_id)
     if (
         payment is None
@@ -388,6 +403,8 @@ def mock_checkout_page(
         or not provider.verify_checkout_token(payment.id, payment.provider_reference, token)
     ):
         raise HTTPException(status_code=404, detail="Ödeme sayfası bulunamadı.")
+    _expire_due_payments(db, payment.id)
+    db.refresh(payment)
     if payment.status != PaymentStatus.PENDING:
         return HTMLResponse(
             "<!doctype html><html lang='tr'><meta charset='utf-8'>"
@@ -434,13 +451,21 @@ def complete_mock_checkout(
     provider = _provider(request)
     if not isinstance(provider, MockPaymentProvider):
         raise HTTPException(status_code=404, detail="Ödeme sayfası bulunamadı.")
-    _expire_due_payments(db)
-    payment = db.scalar(select(Payment).where(Payment.id == payment_id).with_for_update())
+    payment = db.get(Payment, payment_id)
     if (
         payment is None
         or payment.provider != provider.name
         or not provider.verify_checkout_token(payment.id, payment.provider_reference, token)
     ):
+        raise HTTPException(status_code=404, detail="Ödeme sayfası bulunamadı.")
+    _expire_due_payments(db, payment.id)
+    payment = db.scalar(
+        select(Payment)
+        .where(Payment.id == payment_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if payment is None:
         raise HTTPException(status_code=404, detail="Ödeme sayfası bulunamadı.")
     payload = {
         "event_id": f"mock-{payment.id}-{result.status.value}",

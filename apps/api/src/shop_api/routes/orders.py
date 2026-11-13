@@ -28,7 +28,11 @@ from shop_api.order_fulfillment import (
     create_order_fulfillments,
     set_order_fulfillments_status,
 )
-from shop_api.order_lifecycle import order_status_history, record_order_status_event
+from shop_api.order_lifecycle import (
+    RETURN_ELIGIBILITY_ACTIONS,
+    order_status_history,
+    record_order_status_event,
+)
 from shop_api.payment_expiry import StockRestorationError, restore_order_stock
 from shop_api.schemas import (
     AdminOrderFulfillmentResponse,
@@ -630,7 +634,7 @@ def create_product_return(
         select(OrderStatusEvent)
         .where(
             OrderStatusEvent.order_id == order.id,
-            OrderStatusEvent.action == "admin_status_changed",
+            OrderStatusEvent.action.in_(RETURN_ELIGIBILITY_ACTIONS),
             OrderStatusEvent.to_status == order.status,
         )
         .order_by(OrderStatusEvent.id.desc())

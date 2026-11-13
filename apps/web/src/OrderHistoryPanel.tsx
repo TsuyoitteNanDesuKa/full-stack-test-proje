@@ -45,6 +45,7 @@ function historyActionLabel(action: string): string {
     case 'payment_expired':
       return 'Ödeme süresi doldu'
     case 'admin_status_changed':
+    case 'fulfillment_status_changed':
       return 'Sipariş durumu güncellendi'
     case 'admin_refund':
       return 'Sipariş iptal edildi ve iade kaydı oluşturuldu'
@@ -60,7 +61,9 @@ function historyActionLabel(action: string): string {
 function canReturnOrder(order: CustomerOrder): boolean {
   if (order.status !== 'shipped' && order.status !== 'delivered') return false
   const transition = [...order.history].reverse().find(
-    (event) => event.action === 'admin_status_changed' && event.to_status === order.status,
+    (event) =>
+      (event.action === 'admin_status_changed' || event.action === 'fulfillment_status_changed') &&
+      event.to_status === order.status,
   )
   if (!transition) return false
   const elapsed = Date.now() - new Date(transition.created_at).getTime()

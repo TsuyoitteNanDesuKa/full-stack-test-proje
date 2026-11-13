@@ -229,6 +229,17 @@ test.describe('REQ-017 seller fulfillment workflow @keycloak', () => {
         await expect(buyerPackages.getByText(storeA)).toBeVisible()
         await expect(buyerPackages.getByText(storeB)).toBeVisible()
         await expect(buyerPackages.getByText('Teslim edildi', { exact: true })).toHaveCount(2)
+        const buyerOrder = buyerPage.locator('.order-history-item')
+          .filter({ hasText: `Sipariş #${order.id}` })
+        await buyerOrder.getByRole('button', { name: `İade et ${productA.name}` }).click()
+        await buyerOrder.getByLabel('İade nedeni').fill('Ürün beklediğim gibi değil')
+        const returnResponse = buyerPage.waitForResponse((response) =>
+          response.url().endsWith(`/api/v1/orders/${order.id}/returns`) &&
+          response.request().method() === 'POST',
+        )
+        await buyerOrder.getByRole('button', { name: 'İade talebini gönder' }).click()
+        expect((await returnResponse).status()).toBe(201)
+        await expect(buyerOrder.getByText(/İade talebin otomatik onaylandı/)).toBeVisible()
 
         await adminPage.getByRole('button', { name: 'Mağazaya dön' }).click()
         const adminOrders = adminPage.getByRole('region', { name: 'Sipariş yönetimi' })

@@ -7,6 +7,7 @@ from factories import product_payload
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from test_seller_orders import create_paid_multi_seller_order
 
 from shop_api.models import (
     OrderItem,
@@ -283,6 +284,59 @@ def test_return_rejects_orders_that_are_not_shipped_or_delivered(
     response = submit_return(client, order_id, item_id)
 
     assert response.status_code == 409
+
+
+@pytest.mark.parametrize("final_status", ["shipped", "delivered"])
+def test_seller_fulfillment_transition_allows_buyer_return(
+    client: TestClient, engine, final_status: str
+) -> None:
+    order, product_one, _ = create_paid_multi_seller_order(client, engine)
+    for seller in ("fulfillment-seller-one", "fulfillment-seller-two"):
+        headers = auth_headers(client, seller, ["buyer", "seller"])
+        fulfillment_id = client.get("/api/v1/seller/orders", headers=headers).json()[0]["id"]
+        statuses = ("processing", "shipped", "delivered")
+        for target in statuses:
+            response = client.patch(
+                f"/api/v1/seller/orders/{fulfillment_id}/status",
+                headers=headers,
+                json={"status": target},
+            )
+            assert response.status_code == 200
+            if target == final_status:
+                break
+
+    buyer = auth_headers(client, "fulfillment-buyer")
+    current = client.get(f"/api/v1/orders/{order['id']}", headers=buyer).json()
+    assert current["status"] == final_status
+    assert current["history"][-1]["action"] == "fulfillment_status_changed"
+    item = next(item for item in current["items"] if item["product_id"] == product_one["id"])
+    result = submit_return(
+        client, order["id"], item["id"], subject="fulfillment-buyer", key="seller-return"
+    )
+    assert result.status_code == 201
+    with Session(engine) as session:
+        assert session.get(Product, product_one["id"]).stock == product_one["stock"]
+        assert session.scalar(select(Payment).where(Payment.order_id == order["id"])).status == (
+            "partially_refunded"
+        )
+
+    with Session(engine) as session:
+        transition = session.scalar(
+            select(OrderStatusEvent).where(
+                OrderStatusEvent.order_id == order["id"],
+                OrderStatusEvent.action == "fulfillment_status_changed",
+                OrderStatusEvent.to_status == final_status,
+            )
+        )
+        transition.created_at = datetime.now(UTC) - timedelta(days=31)
+        session.commit()
+    other_item = next(candidate for candidate in current["items"] if candidate["id"] != item["id"])
+    assert (
+        submit_return(
+            client, order["id"], other_item["id"], subject="fulfillment-buyer", key="seller-expired"
+        ).status_code
+        == 409
+    )
 
 
 def test_return_window_accepts_exact_boundary_and_rejects_expired_or_future_events(

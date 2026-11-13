@@ -1074,6 +1074,52 @@ def test_postgres_concurrent_expiry_restores_inventory_once(
         assert len(items) == 1
 
 
+def test_postgres_concurrent_expiry_isolates_stock_failure(
+    postgres_engine: Engine,
+    postgres_client: TestClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from test_payments import create_order, start_payment
+
+    blocked_headers = _auth_headers(postgres_client, "postgres-expiry-blocked")
+    healthy_headers = _auth_headers(postgres_client, "postgres-expiry-healthy")
+    blocked_order, blocked_product = create_order(postgres_client, blocked_headers)
+    healthy_order, healthy_product = create_order(postgres_client, healthy_headers)
+    blocked = start_payment(postgres_client, blocked_headers, blocked_order).json()
+    healthy = start_payment(postgres_client, healthy_headers, healthy_order).json()
+    with Session(postgres_engine) as session:
+        for payment_id in (blocked["id"], healthy["id"]):
+            session.get(Payment, payment_id).expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        session.get(Product, blocked_product).stock = 999999
+        session.commit()
+
+    barrier = Barrier(2)
+
+    def run_expiry() -> int:
+        with Session(postgres_engine) as session:
+            barrier.wait(timeout=10)
+            return expire_due_payments(session)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(run_expiry) for _ in range(2)]
+        assert sum(future.result(timeout=20) for future in futures) == 1
+    assert f"Payment {blocked['id']} expiry failed" in caplog.text
+    with Session(postgres_engine) as session:
+        assert session.get(Payment, blocked["id"]).status == "pending"
+        assert session.get(CustomerOrder, blocked_order).status == "pending_payment"
+        assert session.get(Product, blocked_product).stock == 999999
+        assert session.get(Payment, healthy["id"]).status == "expired"
+        assert session.get(CustomerOrder, healthy_order).status == "cancelled"
+        assert session.get(Product, healthy_product).stock == 5
+        session.get(Product, blocked_product).stock = 3
+        session.commit()
+    with Session(postgres_engine) as session:
+        assert expire_due_payments(session) == 1
+    with Session(postgres_engine) as session:
+        assert session.get(Payment, blocked["id"]).status == "expired"
+        assert session.get(Product, blocked_product).stock == 5
+
+
 def test_postgres_address_defaults_checkout_snapshot_and_payment_total(
     postgres_engine: Engine,
     postgres_client: TestClient,

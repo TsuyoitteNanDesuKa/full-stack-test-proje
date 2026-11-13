@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from shop_api.models import OrderStatusEvent
 from shop_api.schemas import AdminOrderStatusEventResponse, OrderStatusEventResponse
 
+RETURN_ELIGIBILITY_ACTIONS = ("admin_status_changed", "fulfillment_status_changed")
+
 
 def record_order_status_event(
     db: Session,

@@ -349,6 +349,77 @@ def test_expiry_stock_capacity_failure_rolls_back_and_returns_conflict(
         assert product is not None and product.stock == 999999
 
 
+def test_expiry_failure_isolated_from_other_payments_and_retried(
+    client: TestClient, engine, caplog
+) -> None:
+    blocked_headers = auth_headers(client, "expiry-isolation-blocked")
+    healthy_headers = auth_headers(client, "expiry-isolation-healthy")
+    active_headers = auth_headers(client, "expiry-isolation-active")
+    new_headers = auth_headers(client, "expiry-isolation-new")
+    blocked_order, blocked_product = create_order(client, blocked_headers)
+    healthy_order, healthy_product = create_order(client, healthy_headers)
+    active_order, _ = create_order(client, active_headers)
+    new_order, _ = create_order(client, new_headers)
+    blocked = start_payment(client, blocked_headers, blocked_order).json()
+    healthy = start_payment(client, healthy_headers, healthy_order).json()
+    active = start_payment(client, active_headers, active_order).json()
+    with Session(engine) as session:
+        for payment_id in (blocked["id"], healthy["id"]):
+            session.get(Payment, payment_id).expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        session.get(Product, blocked_product).stock = 999999
+        session.commit()
+
+    with Session(engine) as session:
+        assert expire_due_payments(session) == 1
+    assert f"Payment {blocked['id']} expiry failed" in caplog.text
+    with Session(engine) as session:
+        assert session.get(Payment, blocked["id"]).status == "pending"
+        assert session.get(CustomerOrder, blocked_order).status == "pending_payment"
+        assert session.get(Product, blocked_product).stock == 999999
+        assert session.get(Payment, healthy["id"]).status == "expired"
+        assert session.get(CustomerOrder, healthy_order).status == "cancelled"
+        assert session.get(Product, healthy_product).stock == 5
+
+    assert (
+        client.get(
+            f"/api/v1/orders/{active_order}/payments/{active['id']}", headers=active_headers
+        ).status_code
+        == 200
+    )
+    assert (
+        send_webhook(client, active, event_id="isolated-success", result="succeeded").status_code
+        == 200
+    )
+    assert start_payment(client, new_headers, new_order).status_code == 201
+    assert (
+        client.get(
+            f"/api/v1/orders/{blocked_order}/payments/{blocked['id']}", headers=blocked_headers
+        ).status_code
+        == 409
+    )
+    assert (
+        send_webhook(client, blocked, event_id="blocked-success", result="succeeded").status_code
+        == 409
+    )
+    assert client.get(blocked["checkout_url"]).status_code == 409
+    assert client.post(blocked["checkout_url"], json={"status": "succeeded"}).status_code == 409
+    assert (
+        client.get(
+            f"/api/v1/orders/{blocked_order}/payments/{blocked['id']}", headers=active_headers
+        ).status_code
+        == 404
+    )
+
+    with Session(engine) as session:
+        session.get(Product, blocked_product).stock = 3
+        session.commit()
+    with Session(engine) as session:
+        assert expire_due_payments(session) == 1
+    with Session(engine) as session:
+        assert session.get(Payment, blocked["id"]).status == "expired"
+        assert session.get(Product, blocked_product).stock == 5
+
+
 def test_expiry_skips_deleted_products_and_keeps_snapshot(client: TestClient, engine) -> None:
     headers = auth_headers(client, "payment-deleted-product-buyer")
     order_id, product_id = create_order(client, headers)
