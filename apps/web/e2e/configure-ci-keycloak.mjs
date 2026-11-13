@@ -69,27 +69,29 @@ const serviceAccount = await requestJson(
   200,
   'Read Keycloak API service account',
 )
-const manageUsersRole = await requestJson(
-  `${adminApi}/clients/${realmManagement.id}/roles/manage-users`,
-  { headers },
-  200,
-  'Read Keycloak manage-users role',
+const requiredRoleNames = ['view-realm', 'view-users', 'manage-users']
+const requiredRoles = await Promise.all(
+  requiredRoleNames.map((name) =>
+    requestJson(
+      `${adminApi}/clients/${realmManagement.id}/roles/${name}`,
+      { headers },
+      200,
+      `Read Keycloak ${name} role`,
+    ),
+  ),
 )
 await requestJson(
   `${adminApi}/users/${serviceAccount.id}/role-mappings/clients/${realmManagement.id}`,
-  { method: 'POST', headers, body: JSON.stringify([manageUsersRole]) },
+  { method: 'POST', headers, body: JSON.stringify(requiredRoles) },
   204,
   'Grant temporary Keycloak seller-provisioning permission',
 )
-const assignedRoles = await requestJson(
-  `${adminApi}/users/${serviceAccount.id}/role-mappings/clients/${realmManagement.id}`,
-  { headers },
-  200,
-  'Verify temporary Keycloak seller-provisioning permission',
+await requestJson(
+  `${adminApi}/clients/${apiClient.id}/scope-mappings/clients/${realmManagement.id}`,
+  { method: 'POST', headers, body: JSON.stringify(requiredRoles) },
+  204,
+  'Grant temporary Keycloak seller-provisioning client scopes',
 )
-if (!assignedRoles.some((role) => role.name === 'manage-users')) {
-  throw new Error('The Keycloak service account lacks manage-users permission.')
-}
 
 const secret = await requestJson(
   `${adminApi}/clients/${apiClient.id}/client-secret`,
@@ -102,4 +104,31 @@ if (typeof secret?.value !== 'string' || secret.value.length === 0) {
 }
 
 process.stdout.write(`::add-mask::${secret.value}\n`)
+const serviceToken = await requestJson(
+  `${issuer.replace(/\/+$/, '')}/protocol/openid-connect/token`,
+  {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: 'shop-api-admin',
+      client_secret: secret.value,
+    }),
+  },
+  200,
+  'Keycloak seller-provisioner authentication',
+)
+if (typeof serviceToken?.access_token !== 'string' || !serviceToken.access_token) {
+  throw new Error('The Keycloak seller provisioner returned no access token.')
+}
+const sellerRole = await requestJson(
+  `${adminApi}/roles/seller`,
+  { headers: { authorization: `Bearer ${serviceToken.access_token}` } },
+  200,
+  'Verify seller-provisioner access to the seller role',
+)
+if (typeof sellerRole?.id !== 'string' || sellerRole.name !== 'seller') {
+  throw new Error('The Keycloak seller provisioner returned an invalid seller role.')
+}
+
 await appendFile(githubEnvironment, `SHOP_KEYCLOAK_ADMIN_CLIENT_SECRET=${secret.value}\n`)
