@@ -645,8 +645,8 @@ REQ-013–REQ-018, QA-016–QA-025 ve performans öncesi iki işlevsel düzeltme
 
 ### Öncelik 24 — QA-026: Performans başlangıç çizgisi
 
-- **Durum:** Devam ediyor; performans öncesi iki işlevsel düzeltme tamamlandı. Henüz üç tekrarlı baseline ölçümü yapılmadı ve aşağıdaki sayılar üretim kapasitesi veya garanti edilmiş SLA değildir.
-- **İlerleme:** API için yedi k6 varyantı, izole PostgreSQL/test JWKS seed'i ve adım bazlı rapor üretimi eklendi; kullanım [performans notlarında](./performance/README.md). Kısa kurulum doğrulamasında iş kontrolleri geçti; 100 ve 1.000 siparişli örneklerde p95 hedefi aşıldı. Bu kısa, az örnekli koşular baseline değildir; üç tekrarlı ölçüm ve diğer QA-026 analizleri henüz tamamlanmadı.
+- **Durum:** Devam ediyor; performans öncesi iki işlevsel düzeltme ve üç tekrarlı API baseline ölçümü tamamlandı. Diğer QA-026 analizleri sürüyor; ölçümler üretim kapasitesi veya garanti edilmiş SLA değildir.
+- **İlerleme:** Yedi API varyantının her biri üç izole koşuda ölçüldü; sonuçlar [baseline raporunda](./docs/performance-baseline-2026-11-14.md), çalıştırma adımları [performans notlarında](./performance/README.md). Üç koşunun p95 ortancası 100 siparişte 4,58 sn, 1.000 siparişte 44,23 sn oldu; 500 ms hedefi bu profillerin tüm koşularında aşıldı. Seller listesi ve 10 siparişli profil de en az bir koşuda hedefi aştı. SQL sorgu maliyeti ve frontend analizleri henüz yapılmadı.
 - **Amaç:** Katalog ve sipariş akışlarının yerel, karşılaştırılabilir başlangıç çizgisini oluşturmak; darboğazları kanıtla önceliklendirmek. Release veya canlı ortam gerekmez.
 - **Sınırlar:** Yalnız izole test ortamı ve sentetik veri kullanılır. Gerçek ödeme, kargo, KYC/KYB ve üretim yük testi kapsam dışıdır. İlk çalışma PR kalite kapısı değildir; sonuçlar farklı makine/runner'lar arasında doğrudan karşılaştırılmaz.
 
@@ -688,7 +688,7 @@ Eşikler **önerilen öğrenme hedefleridir**: üç koşunun her birinde ve ilgi
 **Çıktılar ve tamamlanma ölçütü**
 
 - [ ] Ortam, izolasyon, veri profilleri ve çalıştırma/temizlik adımları belgelenmiş; test canlı veya kalıcı veriye erişmiyor.
-- [ ] Katalog varyantları, üç buyer geçmiş profili, seller listesi ve satın alma senaryosu için üçer koşunun ham/özet sonuçları, gerçekleşen yük ve önerilen eşiklerin açık geçti/kaldı durumu kaydedilmiş.
+- [x] Katalog varyantları, üç buyer geçmiş profili, seller listesi ve satın alma senaryosu için üçer koşunun ham/özet sonuçları, gerçekleşen yük ve önerilen eşiklerin açık geçti/kaldı durumu kaydedildi. Ham arşiv ölçüm oturumunun çalışma alanındadır.
 - [ ] PostgreSQL sorgu maliyeti ve sayfalama değerlendirmesi, frontend laboratuvar ölçümü, darboğazlar ve sınırlamalar raporlanmış.
 - [ ] Tekrar çalıştırma ve önce/sonra karşılaştırma yöntemi belgelenmiş; başarısız hedefler ve önerilen takip işleri görünür. Ölçüm tamamlanması, performans hedeflerinin tamamının karşılandığı anlamına gelmez.
 
