@@ -645,9 +645,52 @@ REQ-013–REQ-018, QA-016–QA-025 ve performans öncesi iki işlevsel düzeltme
 
 ### Öncelik 24 — QA-026: Performans başlangıç çizgisi
 
-- İki işlevsel düzeltmenin çıkış ölçütleri tamamlandıktan sonra başlanır.
-- Sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor tanımlanır; release/canlı ortam gerektirmez.
-- Sipariş listelerinde sayfalama ihtiyacı ve sorgu maliyeti ölçüm kapsamında değerlendirilir.
+- **Durum:** Devam ediyor; performans öncesi iki işlevsel düzeltme tamamlandı. Henüz üç tekrarlı baseline ölçümü yapılmadı ve aşağıdaki sayılar üretim kapasitesi veya garanti edilmiş SLA değildir.
+- **İlerleme:** API için yedi k6 varyantı, izole PostgreSQL/test JWKS seed'i ve adım bazlı rapor üretimi eklendi; kullanım [performans notlarında](./performance/README.md). Kısa kurulum doğrulamasında iş kontrolleri geçti; 100 ve 1.000 siparişli örneklerde p95 hedefi aşıldı. Bu kısa, az örnekli koşular baseline değildir; üç tekrarlı ölçüm ve diğer QA-026 analizleri henüz tamamlanmadı.
+- **Amaç:** Katalog ve sipariş akışlarının yerel, karşılaştırılabilir başlangıç çizgisini oluşturmak; darboğazları kanıtla önceliklendirmek. Release veya canlı ortam gerekmez.
+- **Sınırlar:** Yalnız izole test ortamı ve sentetik veri kullanılır. Gerçek ödeme, kargo, KYC/KYB ve üretim yük testi kapsam dışıdır. İlk çalışma PR kalite kapısı değildir; sonuçlar farklı makine/runner'lar arasında doğrudan karşılaştırılmaz.
+
+**1. Ölçüm ortamı ve veri**
+
+- FastAPI'yi reload kapalı, sabit worker sayısıyla; ayrı test PostgreSQL veritabanını migration uygulanmış biçimde çalıştır. Uygulama, PostgreSQL ve yük üreticisinin konumunu/kaynak sınırlarını, işletim sistemini, CPU/RAM, sürümleri, commit'i ve ilgili yapılandırmayı rapora yaz. Paylaşılan veya kalıcı geliştirme veritabanına yük uygulama.
+- Tekrarlanabilir, kimliksiz sentetik veri hazırla: başlangıç için 1.000 ürün, ayrı buyer/seller hesapları ve buyer başına 10, 100 ve 1.000 siparişli ayrı veri profilleri; sipariş başına ortalama kalem ve geçmiş olay sayısını sabitleyip raporla. Seller ölçümü için onaylı seller ve ona ait siparişler de hazırlanır. Her koşu öncesi aynı başlangıç durumuna dön; hazırlık ve temizlik ölçüme dahil edilmez.
+- Test kimliği/JWKS veya izole Keycloak ile gerçek API doğrulamasını koru; hangi yöntemin kullanıldığını kaydet. Giriş/token üretimi yük dışında tutulursa sonuç Keycloak giriş performansı olarak yorumlanmaz. Secret, token ve kişisel veri rapora yazılmaz.
+
+**2. Senaryolar ve yük profili**
+
+| Senaryo | Ölçüm kapsamı |
+|---|---|
+| Katalog | `GET /api/v1/products`: varsayılan sayfa ve arama/filtre/sıralama; sayfa boyutu ve sorgu parametreleri sabitlenir. |
+| Buyer sipariş geçmişi | `GET /api/v1/orders`: 10, 100 ve 1.000 siparişli buyer profilleri ayrı ölçülür. Endpoint şu anda sayfalanmaz; yanıt boyutu ve sorgu sayısı da kaydedilir. |
+| Seller siparişleri | `GET /api/v1/seller/orders`: onaylı seller için sabit `limit`/`offset`; buyer verisiyle karıştırılmaz. |
+| Satın alma | Buyer'ın sepet okuma/ekleme → checkout → mock ödeme akışı. Her sanal kullanıcıya izole hesap, yeterli stok ve benzersiz idempotency anahtarı verilir; durum/iş sonucu doğrulanır. |
+
+- k6 ile önce kısa doğrulama, ardından her senaryoyu ayrı koş: 1 dakika içinde 1'den 10 sanal kullanıcıya çık, 3 dakika 10 kullanıcıda kal, 30 saniyede sıfıra in. Kullanıcılar arasında 1 saniye düşünme süresi kullan; sabit VU profili sabit istek/saniye garantisi değildir. Isınma/ramp sonuçlarını sabit yük ölçümünden ayrı tut; satın alma için her iterasyon yeni sepet ve anahtar kullanır, stok tüm fazlar boyunca yeterli tutulur.
+- Her veri profili için aynı ortam ve veriyle en az üç bağımsız koşu yap; tek koşu veya toplam ortalamaya dayanma. Timeout, başarısız istek ve doğrulanmayan iş sonucu gizlenmez; tamamlanan istek sayısı ve gerçekleşen throughput da raporlanır. Hiç istek/başarılı örnek üretmeyen veya yük profilini tamamlayamayan koşu geçerli baseline değildir.
+- Checkout ve mock ödeme ölçümü katalogdan ayrı yorumlanır; gerçek PSP gecikmesi, gerçek kullanıcı davranışı ve dağıtık trafik bu sonuçta temsil edilmez.
+
+**3. Metrikler ve ilk hedefler**
+
+| Metrik | Başlangıç için önerilen ölçüt |
+|---|---|
+| API yanıt süresi | Sabit yük bölümünde katalog, buyer ve seller liste senaryolarının her biri için başarılı isteklerde p95 ≤ 500 ms; checkout ve mock ödeme adımlarının her biri için p95 ≤ 1.000 ms. |
+| Doğruluk ve hata | Her senaryoda beklenmeyen HTTP yanıtı, timeout veya başarısız iş kontrolü oranı < %1; ayrıca durum kodu dağılımı ve iş kontrolü başarı oranı gösterilir. |
+| Tanı | Her senaryoda istek sayısı, throughput, p50/p95/p99, yanıt boyutu; API/PostgreSQL CPU ve bellek gözlemleri. Sipariş listesinde profil başına SQL sorgu sayısı ve ilgili PostgreSQL `EXPLAIN (ANALYZE, BUFFERS)` çıktısı. |
+
+Eşikler **önerilen öğrenme hedefleridir**: üç koşunun her birinde ve ilgili her veri profilinde değerlendirilir; ilk sonuç görülmeden başarılmış sayılmaz. Başarısız eşik raporda başarısız kalır; ortam kararsızlığı gözlenirse gerekçesiyle yeniden koşulur, eşik sessizce gevşetilmez. Üç koşunun bireysel sonuçları ve ortancası gösterilir; koşular arası değişkenlik yorumlanır.
+
+**4. Analiz ve takip**
+
+- Buyer geçmişinde sipariş sayısı arttıkça gecikme, yanıt boyutu ve sorgu sayısı büyümesini; admin/seller listelerinde mevcut sayfalama ile sorgu maliyetini incele. N+1, indeks veya sayfalama ihtiyacını ölçüm/planla doğrula. İyileştirme gerekiyorsa API sözleşmesi ve UI etkisiyle ayrı bir iş olarak planla; önce/sonra aynı profilde karşılaştır.
+- Frontend için ayrı, tekrarlanabilir bir Chromium incelemesi yap: production build, sabit viewport/ağ/CPU profili ve temiz tarayıcı koşullarıyla giriş ve katalog ekranında LCP, CLS ve yüklenen JS boyutunu kaydet. Alan verisi olmadığından sonuçlar laboratuvar ölçümüdür; API yük testi veya gerçek kullanıcı deneyimiyle karıştırılmaz. İlk ölçüm sonrası anlamlı hedefler belirlenir.
+- İlk baseline yerelde veya elle tetiklenen izole ortamda üretilir; CI'ya otomatik eşik kapısı ancak ortam kararlılığı ve tekrarlanabilirlik kanıtlandıktan sonra ayrı kararla eklenir.
+
+**Çıktılar ve tamamlanma ölçütü**
+
+- [ ] Ortam, izolasyon, veri profilleri ve çalıştırma/temizlik adımları belgelenmiş; test canlı veya kalıcı veriye erişmiyor.
+- [ ] Katalog varyantları, üç buyer geçmiş profili, seller listesi ve satın alma senaryosu için üçer koşunun ham/özet sonuçları, gerçekleşen yük ve önerilen eşiklerin açık geçti/kaldı durumu kaydedilmiş.
+- [ ] PostgreSQL sorgu maliyeti ve sayfalama değerlendirmesi, frontend laboratuvar ölçümü, darboğazlar ve sınırlamalar raporlanmış.
+- [ ] Tekrar çalıştırma ve önce/sonra karşılaştırma yöntemi belgelenmiş; başarısız hedefler ve önerilen takip işleri görünür. Ölçüm tamamlanması, performans hedeflerinin tamamının karşılandığı anlamına gelmez.
 
 ### Her incremental dilim için ortak Definition of Done
 
