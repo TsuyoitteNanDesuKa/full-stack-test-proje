@@ -80,6 +80,6 @@ Yaklaşık 15–18 saniyede bir alınan örneklerden, 60–240. saniye aralığ�
 ## Yorum ve sınırlar
 
 - p95 hedefinde bir koşunun bile başarısız olması, üç koşunun tamamı için hedefin karşılanmadığı anlamına gelir; ortanca tek başına geçme kararı değildir.
-- Buyer sipariş geçmişi profillerinde yanıt boyutu, p95 ve gerçekleşen throughput birlikte incelenmelidir. Kök neden ve sayfalama/indeks kararı için SQL sorgu sayısı ve PostgreSQL `EXPLAIN (ANALYZE, BUFFERS)` ayrıca ölçülmelidir.
+- Buyer sipariş geçmişi profillerinde yanıt boyutu, p95 ve gerçekleşen throughput birlikte incelenmelidir. Sonraki [SQL analizinde](./performance-sql-analysis-2026-11-14.md) sorgu sayıları ve PostgreSQL planları ölçüldü; N+1 ve sayfalama takip işleri belirlendi.
 - Keycloak giriş performansı, gerçek ödeme/kargo ve gerçek kullanıcı ağı bu testte yoktur. Paylaşılan makinedeki diğer işler ve Docker kaynakları sonucu etkileyebilir; başka makine/runner ile sayıları doğrudan karşılaştırmayın.
 - Ham k6 JSONL, k6 özeti, işlenmiş JSON ve kaynak örnekleri ölçüm oturumunun çalışma alanında arşivlenmiştir; repo içinde değildir. Token içeren geçici fixture ve test sunucuları koşu sonrası temizlenmiştir.
