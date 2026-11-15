@@ -147,6 +147,9 @@ def test_partial_and_full_returns_are_idempotent_and_update_payment_and_stock(
     assert buyer_order["status"] == "delivered"
     assert buyer_order["returns"] == [first.json()]
     assert all("actor_subject" not in event for event in buyer_order["history"])
+    assert client.get("/api/v1/orders", headers=auth_headers(client, "return-buyer")).json() == [
+        buyer_order
+    ]
     assert (
         client.get(
             f"/api/v1/admin/orders/{order_id}",
@@ -176,6 +179,9 @@ def test_partial_and_full_returns_are_idempotent_and_update_payment_and_stock(
     ).json()
     assert admin_order["payment_status"] == "partially_refunded"
     assert len(admin_order["returns"]) == 2
+    assert client.get(
+        "/api/v1/admin/orders", headers=auth_headers(client, "return-buyer-admin", ["admin"])
+    ).json() == [admin_order]
     with Session(engine) as session:
         product = session.get(Product, product_id)
         assert product is not None and product.stock == 5

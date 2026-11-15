@@ -16,7 +16,6 @@ from shop_api.models import (
     CustomerAddress,
     CustomerOrder,
     OrderFulfillment,
-    OrderFulfillmentEvent,
     OrderItem,
     OrderStatusEvent,
     Payment,
@@ -33,6 +32,7 @@ from shop_api.order_lifecycle import (
     order_status_history,
     record_order_status_event,
 )
+from shop_api.order_loading import FulfillmentData, OrderData, load_order_data
 from shop_api.payment_expiry import StockRestorationError, restore_order_stock
 from shop_api.schemas import (
     AdminOrderFulfillmentResponse,
@@ -74,53 +74,23 @@ def _order_response(
     order: CustomerOrder,
     *,
     admin: bool = False,
+    order_data: OrderData | None = None,
+    fulfillment_data: dict[int, FulfillmentData] | None = None,
 ) -> OrderResponse | AdminOrderResponse:
-    items = db.scalars(
-        select(OrderItem).where(OrderItem.order_id == order.id).order_by(OrderItem.id)
-    ).all()
-    returns = db.scalars(
-        select(ProductReturn).where(ProductReturn.order_id == order.id).order_by(ProductReturn.id)
-    ).all()
-    fulfillments = db.scalars(
-        select(OrderFulfillment)
-        .where(OrderFulfillment.order_id == order.id)
-        .order_by(OrderFulfillment.id)
-    ).all()
-    fulfillment_ids = [fulfillment.id for fulfillment in fulfillments]
-    fulfillment_items = (
-        db.scalars(
-            select(OrderItem)
-            .where(OrderItem.fulfillment_id.in_(fulfillment_ids))
-            .order_by(OrderItem.id)
-        ).all()
-        if fulfillment_ids
-        else []
-    )
-    fulfillment_events = (
-        db.scalars(
-            select(OrderFulfillmentEvent)
-            .where(OrderFulfillmentEvent.fulfillment_id.in_(fulfillment_ids))
-            .order_by(OrderFulfillmentEvent.id)
-        ).all()
-        if fulfillment_ids
-        else []
-    )
-    items_by_fulfillment: dict[int, list[OrderItem]] = {}
-    for item in fulfillment_items:
-        if item.fulfillment_id is not None:
-            items_by_fulfillment.setdefault(item.fulfillment_id, []).append(item)
-    events_by_fulfillment: dict[int, list[OrderFulfillmentEvent]] = {}
-    for event in fulfillment_events:
-        events_by_fulfillment.setdefault(event.fulfillment_id, []).append(event)
+    if order_data is None or fulfillment_data is None:
+        orders_data, fulfillment_data = load_order_data(db, [order], include_payment=admin)
+        order_data = orders_data[order.id]
+    items = order_data.items
+    returns = order_data.returns
     fulfillment_responses = []
-    for fulfillment in fulfillments:
-        fulfillment_data = {
+    for fulfillment in order_data.fulfillments:
+        fulfillment_response_data = {
             "id": fulfillment.id,
             "store_name": fulfillment.store_name,
             "status": fulfillment.status,
             "items": [
                 OrderItemResponse.model_validate(item)
-                for item in items_by_fulfillment.get(fulfillment.id, [])
+                for item in fulfillment_data[fulfillment.id].items
             ],
             "history": [
                 {
@@ -130,13 +100,13 @@ def _order_response(
                     "created_at": event.created_at,
                     **({"actor_subject": event.actor_subject} if admin else {}),
                 }
-                for event in events_by_fulfillment.get(fulfillment.id, [])
+                for event in fulfillment_data[fulfillment.id].events
             ],
         }
         fulfillment_responses.append(
-            AdminOrderFulfillmentResponse(**fulfillment_data)
+            AdminOrderFulfillmentResponse(**fulfillment_response_data)
             if admin
-            else OrderFulfillmentResponse(**fulfillment_data)
+            else OrderFulfillmentResponse(**fulfillment_response_data)
         )
     items_by_id = {item.id: item for item in items}
     response_data = {
@@ -190,14 +160,13 @@ def _order_response(
             )
             for product_return in returns
         ],
-        "history": order_status_history(db, order.id, include_actor=admin),
+        "history": order_status_history(order_data.events, include_actor=admin),
     }
     if admin:
-        payment = db.scalar(select(Payment).where(Payment.order_id == order.id))
         return AdminOrderResponse(
             **response_data,
             owner_subject=order.owner_subject,
-            payment_status=payment.status if payment is not None else None,
+            payment_status=order_data.payment.status if order_data.payment is not None else None,
         )
     return OrderResponse(**response_data)
 
@@ -219,8 +188,16 @@ def _get_order_for_update(db: Session, order_id: int) -> CustomerOrder:
     return _get_order(db, order_id, for_update=True)
 
 
-def _admin_order_response(db: Session, order: CustomerOrder) -> AdminOrderResponse:
-    response = _order_response(db, order, admin=True)
+def _admin_order_response(
+    db: Session,
+    order: CustomerOrder,
+    *,
+    order_data: OrderData | None = None,
+    fulfillment_data: dict[int, FulfillmentData] | None = None,
+) -> AdminOrderResponse:
+    response = _order_response(
+        db, order, admin=True, order_data=order_data, fulfillment_data=fulfillment_data
+    )
     if not isinstance(response, AdminOrderResponse):
         raise RuntimeError("Admin order serialization failed.")
     return response
@@ -431,7 +408,13 @@ def list_my_orders(
         .where(CustomerOrder.owner_subject == current_user.subject)
         .order_by(CustomerOrder.created_at.desc(), CustomerOrder.id.desc())
     ).all()
-    return [_order_response(db, order) for order in orders]
+    orders_data, fulfillments_data = load_order_data(db, orders)
+    return [
+        _order_response(
+            db, order, order_data=orders_data[order.id], fulfillment_data=fulfillments_data
+        )
+        for order in orders
+    ]
 
 
 @router.get("/{order_id}", response_model=OrderResponse)
@@ -764,7 +747,13 @@ def list_orders_for_admin(
         .limit(limit)
         .offset(offset)
     ).all()
-    return [_admin_order_response(db, order) for order in orders]
+    orders_data, fulfillments_data = load_order_data(db, orders, include_payment=True)
+    return [
+        _admin_order_response(
+            db, order, order_data=orders_data[order.id], fulfillment_data=fulfillments_data
+        )
+        for order in orders
+    ]
 
 
 @admin_router.get("/{order_id}", response_model=AdminOrderResponse)

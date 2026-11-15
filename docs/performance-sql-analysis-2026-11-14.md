@@ -1,5 +1,7 @@
 # QA-026 — Sipariş listelerinde SQL analizi
 
+Bu rapordaki ilk ölçümler optimizasyon öncesine aittir. 15 Kasım 2026'da uygulanan iyileştirme ve karşılaştırma aşağıdadır.
+
 ## Ortam ve yöntem
 
 - 14 Kasım 2026'da Windows üzerinde, ayrı Docker container'ında PostgreSQL 17.11 ve migration uygulanmış `shop_perf_test` veritabanı kullanıldı. Ölçüm anındaki commit `8b2173ba1c69674f2746cec7c5d9553df4dfd7eb`; [yük baseline'ından](./performance-baseline-2026-11-14.md) bu commit'e API kaynakları, migration'lar ve seed değişmedi.
@@ -45,7 +47,29 @@ Buyer'ın 10 ve 100 siparişli profillerinde ana sorgu mevcut `ix_orders_owner_s
 
 - Planlar ve süreler sıcak cache, küçük veri, sıfır ödeme/iade ve tüm siparişlere sahip tek seller ile sınırlıdır. Derin offset'in daha fazla satır sıralattığı görülüyor; büyük/çeşitli verilerde indeks ya da cursor sayfalamasının etkisi henüz kanıtlanmadı.
 - Öncelik: buyer/admin için ilişkili verileri, seller için fulfillment kalem ve olaylarını toplu yükleme seçeneğini incelemek; sipariş sıralamasını, yetki sınırlarını ve yanıt sözleşmesini korumak. Buyer için sınırlı sayfalama ayrıca API ve UI uyumluluğu değerlendirilerek tasarlanmalı.
-- İyileştirme ayrı iş olarak uygulanmalı; aynı veri ve ortamda sorgu sayıları, planlar ve üç tekrarlı yük baseline'ı yeniden ölçülmeli. Bu analizde uygulama optimizasyonu yapılmadı.
+- İyileştirme sonrası üç tekrarlı yük baseline'ı yeniden ölçülmeli; aşağıdaki tekil tanı ölçümleri p95 hedefini doğrulamaz.
+
+## 15 Kasım 2026: toplu yükleme sonrası karşılaştırma
+
+Buyer ve admin listeleri siparişe ait kalemleri, iadeleri, fulfillment'ları ve geçmişi; admin ayrıca ödemeleri toplu okur. Fulfillment kalemleri ve olayları buyer, admin ve seller için toplu okunur. Parametre sınırları için sorgular en fazla 500 kimliklik gruplara ayrılır. Yanıt sözleşmesi ve mevcut filtre/sıralama değiştirilmedi; buyer sayfalaması hâlâ ayrı tasarım işidir.
+
+Aynı seed profiliyle yeni izole PostgreSQL container'ında önceki tanı aracı kullanıldı. Her satır için önceki tekrar ile sonraki **tek bir yüksüz, süreç içi** istek karşılaştırıldı; tüm profillerde dönen kayıt sayısı ve yanıt bayt sayısı eşleşti. Eşit bayt sayısı tek başına içerik eşitliği kanıtlamaz; detay/list yanıt karşılaştırmaları ve erişim testleri ayrıca çalıştırıldı.
+
+| Profil | Önce: sorgu | Sonra: sorgu | Sonra: tekil süre (ms) |
+|---|---:|---:|---:|
+| Buyer 10 | 61 | 7 | 25,0 |
+| Buyer 100 | 601 | 7 | 47,3 |
+| Buyer 1.000 | 6.001 | 13 | 406,0 |
+| Seller limit 10 / offset 0 | 23 | 5 | 87,9 |
+| Seller limit 50 / offset 0 | 103 | 5 | 39,7 |
+| Seller limit 100 / offset 0 | 203 | 5 | 38,1 |
+| Seller limit 50 / offset 1.000 | 103 | 5 | 30,7 |
+| Admin limit 10 / offset 0 | 71 | 8 | 45,9 |
+| Admin limit 50 / offset 0 | 351 | 8 | 43,2 |
+| Admin limit 100 / offset 0 | 701 | 8 | 53,0 |
+| Admin limit 50 / offset 1.000 | 351 | 8 | 39,9 |
+
+Süreler tek örnek, farklı geçici veritabanı ve farklı çalışma anlarıyla sınırlıdır. Ayrı [üç tekrarlı yük karşılaştırmasında](./performance-load-after-sql-2026-11-15.md) 1.000 sipariş profili iyileşmesine rağmen 500 ms p95 hedefini karşılamadı. Sonraki SQL/plan JSON çıktısı ölçüm oturumunun çalışma alanındaki `qa026-sql-after-optimization/sql-results.json` dosyasındadır; gerçek test token'ları temizlenmiştir.
 
 ## Kanıt ve tekrar çalıştırma
 

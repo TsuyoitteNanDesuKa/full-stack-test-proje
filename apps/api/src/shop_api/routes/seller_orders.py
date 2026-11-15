@@ -10,8 +10,6 @@ from shop_api.dependencies import get_current_user
 from shop_api.models import (
     CustomerOrder,
     OrderFulfillment,
-    OrderFulfillmentEvent,
-    OrderItem,
     SellerApplication,
 )
 from shop_api.order_fulfillment import (
@@ -19,6 +17,7 @@ from shop_api.order_fulfillment import (
     record_fulfillment_event,
     synchronize_parent_order_status,
 )
+from shop_api.order_loading import FulfillmentData, load_fulfillment_data
 from shop_api.schemas import (
     OrderAddressSnapshot,
     OrderItemResponse,
@@ -53,15 +52,11 @@ def _seller_order_response(
     db: Session,
     fulfillment: OrderFulfillment,
     order: CustomerOrder,
+    *,
+    data: FulfillmentData | None = None,
 ) -> SellerOrderResponse:
-    items = db.scalars(
-        select(OrderItem).where(OrderItem.fulfillment_id == fulfillment.id).order_by(OrderItem.id)
-    ).all()
-    events = db.scalars(
-        select(OrderFulfillmentEvent)
-        .where(OrderFulfillmentEvent.fulfillment_id == fulfillment.id)
-        .order_by(OrderFulfillmentEvent.id)
-    ).all()
+    if data is None:
+        data = load_fulfillment_data(db, [fulfillment])[fulfillment.id]
     return SellerOrderResponse(
         id=fulfillment.id,
         order_id=order.id,
@@ -87,7 +82,7 @@ def _seller_order_response(
             and order.shipping_address_line is not None
             else None
         ),
-        items=[OrderItemResponse.model_validate(item) for item in items],
+        items=[OrderItemResponse.model_validate(item) for item in data.items],
         history=[
             {
                 "action": event.action,
@@ -95,7 +90,7 @@ def _seller_order_response(
                 "to_status": event.to_status,
                 "created_at": event.created_at,
             }
-            for event in events
+            for event in data.events
         ],
     )
 
@@ -127,8 +122,14 @@ def list_seller_orders(
         if fulfillments
         else {}
     )
+    fulfillments_data = load_fulfillment_data(db, fulfillments)
     return [
-        _seller_order_response(db, fulfillment, orders_by_id[fulfillment.order_id])
+        _seller_order_response(
+            db,
+            fulfillment,
+            orders_by_id[fulfillment.order_id],
+            data=fulfillments_data[fulfillment.id],
+        )
         for fulfillment in fulfillments
     ]
 

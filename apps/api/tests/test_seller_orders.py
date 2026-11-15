@@ -1,15 +1,18 @@
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from conftest import create_checkout_request, create_test_token
 from factories import product_payload
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from shop_api.models import (
     CustomerOrder,
     OrderFulfillment,
     OrderFulfillmentEvent,
+    OrderItem,
+    OrderStatusEvent,
     SellerApplication,
 )
 from shop_api.schemas import store_name_key
@@ -170,6 +173,7 @@ def test_seller_fulfillments_are_isolated_and_order_status_is_aggregated(
         f"/api/v1/orders/{order['id']}",
         headers=buyer_headers,
     ).json()
+    assert client.get("/api/v1/orders", headers=buyer_headers).json() == [buyer_order]
     assert buyer_order["status"] == "paid"
     assert sorted(group["status"] for group in buyer_order["fulfillments"]) == [
         "paid",
@@ -202,6 +206,7 @@ def test_seller_fulfillments_are_isolated_and_order_status_is_aggregated(
         f"/api/v1/admin/orders/{order['id']}",
         headers=admin_headers,
     ).json()
+    assert client.get("/api/v1/admin/orders", headers=admin_headers).json() == [admin_order]
     assert len(admin_order["fulfillments"]) == 2
     assert any(
         event["actor_subject"] == "fulfillment-seller-one"
@@ -274,3 +279,138 @@ def test_admin_cannot_refund_when_any_seller_fulfillment_is_shipped(
                 select(OrderFulfillment).where(OrderFulfillment.order_id == order["id"])
             ).all()
         )
+
+
+def test_order_lists_batch_queries_and_preserve_details_across_batches(
+    client: TestClient,
+    engine,
+) -> None:
+    create_approved_seller(engine, "batch-seller", "Batch")
+    now = datetime.now(UTC)
+    with Session(engine) as session:
+        orders = [
+            CustomerOrder(
+                owner_subject="batch-buyer",
+                idempotency_key=f"batch-{index}",
+                status="paid",
+                total_amount=Decimal("10.00"),
+                created_at=now,
+            )
+            for index in range(501)
+        ]
+        session.add_all(orders)
+        session.flush()
+        fulfillments = [
+            OrderFulfillment(
+                order_id=order.id,
+                seller_subject="batch-seller",
+                store_name="Store Batch",
+                status="paid",
+                created_at=now,
+                updated_at=now,
+            )
+            for order in orders
+        ]
+        session.add_all(fulfillments)
+        session.flush()
+        session.add_all(
+            OrderItem(
+                order_id=order.id,
+                fulfillment_id=fulfillment.id,
+                product_name=f"Item {index}",
+                unit_price=Decimal("10.00"),
+                quantity=1,
+                line_total=Decimal("10.00"),
+            )
+            for index, (order, fulfillment) in enumerate(zip(orders, fulfillments, strict=True))
+        )
+        session.add_all(
+            OrderFulfillmentEvent(
+                fulfillment_id=fulfillment.id,
+                action="payment_succeeded",
+                from_status="pending_payment",
+                to_status="paid",
+                actor_subject="private-actor",
+                created_at=now,
+            )
+            for fulfillment in fulfillments
+        )
+        session.add_all(
+            OrderStatusEvent(
+                order_id=order.id,
+                action="payment_succeeded",
+                from_status="pending_payment",
+                to_status="paid",
+                actor_subject="private-actor",
+                created_at=now,
+            )
+            for order in orders
+        )
+        session.add(
+            CustomerOrder(
+                owner_subject="another-buyer",
+                idempotency_key="other-order",
+                status="paid",
+                total_amount=Decimal("10.00"),
+                created_at=now,
+            )
+        )
+        session.commit()
+
+    def list_with_count(path: str, headers: dict[str, str]) -> tuple[list, int]:
+        statements = []
+
+        def count_selects(_conn, _cursor, statement, _parameters, _context, _executemany):
+            if statement.lstrip().upper().startswith("SELECT"):
+                statements.append(statement)
+
+        event.listen(engine, "before_cursor_execute", count_selects)
+        try:
+            response = client.get(path, headers=headers)
+        finally:
+            event.remove(engine, "before_cursor_execute", count_selects)
+        assert response.status_code == 200
+        return response.json(), len(statements)
+
+    buyer = auth_headers(client, "batch-buyer")
+    buyer_list, buyer_queries = list_with_count("/api/v1/orders", buyer)
+    assert len(buyer_list) == 501
+    assert buyer_queries <= 13
+    assert [order["id"] for order in buyer_list] == sorted(
+        (order["id"] for order in buyer_list), reverse=True
+    )
+    for order in (buyer_list[0], buyer_list[500]):
+        assert order == client.get(f"/api/v1/orders/{order['id']}", headers=buyer).json()
+        assert order["items"] == order["fulfillments"][0]["items"]
+        assert "actor_subject" not in order["history"][0]
+        assert "actor_subject" not in order["fulfillments"][0]["history"][0]
+
+    admin = auth_headers(client, "batch-admin", ["admin"])
+    empty_relations = client.get("/api/v1/admin/orders?limit=1", headers=admin).json()[0]
+    assert empty_relations["owner_subject"] == "another-buyer"
+    assert empty_relations["fulfillments"] == empty_relations["items"] == []
+    assert empty_relations["history"] == empty_relations["returns"] == []
+    assert empty_relations["payment_status"] is None
+    admin_list, admin_queries = list_with_count("/api/v1/admin/orders?limit=100&offset=1", admin)
+    assert len(admin_list) == 100
+    assert admin_queries <= 8
+    assert (
+        admin_list[0]
+        == client.get(f"/api/v1/admin/orders/{admin_list[0]['id']}", headers=admin).json()
+    )
+    assert admin_list[0]["history"][0]["actor_subject"] == "private-actor"
+
+    seller = auth_headers(client, "batch-seller", ["seller"])
+    seller_list, seller_queries = list_with_count(
+        "/api/v1/seller/orders?limit=100&offset=1", seller
+    )
+    assert len(seller_list) == 100
+    assert seller_queries <= 5
+    assert (
+        seller_list[0]
+        == client.get(f"/api/v1/seller/orders/{seller_list[0]['id']}", headers=seller).json()
+    )
+    assert "actor_subject" not in seller_list[0]["history"][0]
+    assert client.get("/api/v1/orders", headers=auth_headers(client, "no-orders")).json() == []
+    assert client.get("/api/v1/seller/orders?offset=9999", headers=seller).json() == []
+    assert client.get("/api/v1/admin/orders?offset=9999", headers=admin).json() == []

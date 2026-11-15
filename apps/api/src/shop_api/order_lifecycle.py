@@ -1,6 +1,6 @@
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from shop_api.models import OrderStatusEvent
@@ -34,16 +34,10 @@ def record_order_status_event(
 
 
 def order_status_history(
-    db: Session,
-    order_id: int,
+    events: Sequence[OrderStatusEvent],
     *,
     include_actor: bool = False,
 ) -> list[OrderStatusEventResponse] | list[AdminOrderStatusEventResponse]:
-    events = db.scalars(
-        select(OrderStatusEvent)
-        .where(OrderStatusEvent.order_id == order_id)
-        .order_by(OrderStatusEvent.id)
-    ).all()
     if include_actor:
         return [
             AdminOrderStatusEventResponse(
