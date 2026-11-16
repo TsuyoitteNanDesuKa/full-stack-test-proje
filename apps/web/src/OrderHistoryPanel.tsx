@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CustomerOrder, CustomerPayment } from './api'
-import { ApiError, cancelMyOrder, createPayment, createProductReturn, getMyOrders } from './api'
+import { ApiError, cancelMyOrder, createPayment, createProductReturn, getMyOrdersPage } from './api'
+
+const ORDER_PAGE_SIZE = 20
 
 interface OrderHistoryPanelProps {
   token: string
@@ -83,6 +85,10 @@ export default function OrderHistoryPanel({
 }: OrderHistoryPanelProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [orders, setOrders] = useState<CustomerOrder[]>([])
+  const [cancelledOrderIds, setCancelledOrderIds] = useState<Set<number>>(() => new Set())
+  const [offset, setOffset] = useState(0)
+  const [hasMore, setHasMore] = useState(false)
+  const [pageContext, setPageContext] = useState({ token, refreshVersion })
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [retryCount, setRetryCount] = useState(0)
@@ -107,12 +113,21 @@ export default function OrderHistoryPanel({
   const [cancelError, setCancelError] = useState('')
   const [cancelNotice, setCancelNotice] = useState<{ orderId: number; text: string } | null>(null)
 
+  if (pageContext.token !== token || pageContext.refreshVersion !== refreshVersion) {
+    if (pageContext.token !== token) setCancelledOrderIds(new Set())
+    setPageContext({ token, refreshVersion })
+    setOffset(0)
+    if (isOpen) setIsLoading(true)
+    setError('')
+  }
+
   async function submitCancellation(order: CustomerOrder) {
     setCancellingOrderId(order.id)
     setCancelError('')
     try {
       const updated = await cancelMyOrder(token, order.id, { reason: cancellationReason.trim() || null })
       setOrders((current) => current.map((item) => item.id === order.id ? updated : item))
+      setCancelledOrderIds((current) => new Set(current).add(order.id))
       setCancelFormOrderId(null)
       const cancellation = updated.history.findLast((event) => event.action === 'buyer_cancelled')
       setCancelNotice({
@@ -210,12 +225,27 @@ export default function OrderHistoryPanel({
     if (!isOpen) return
 
     let active = true
-    getMyOrders(token)
+    getMyOrdersPage(token, ORDER_PAGE_SIZE, offset)
       .then((response) => {
-        if (active) setOrders(response)
+        if (active) {
+          setOrders(response.items)
+          setHasMore(response.has_more)
+          const cancelledIds = response.items.filter((order) => order.status === 'cancelled')
+          if (cancelledIds.length > 0) {
+            setCancelledOrderIds((current) => {
+              const next = new Set(current)
+              cancelledIds.forEach((order) => next.add(order.id))
+              return next
+            })
+          }
+        }
       })
       .catch(() => {
-        if (active) setError('Sipariş geçmişi yüklenemedi. Lütfen tekrar dene.')
+        if (active) {
+          setOrders([])
+          setHasMore(false)
+          setError('Sipariş geçmişi yüklenemedi. Lütfen tekrar dene.')
+        }
       })
       .finally(() => {
         if (active) setIsLoading(false)
@@ -224,11 +254,11 @@ export default function OrderHistoryPanel({
     return () => {
       active = false
     }
-  }, [isOpen, refreshVersion, retryCount, token])
+  }, [isOpen, offset, refreshVersion, retryCount, token])
 
   return (
     <section className="order-history-section">
-      {latestOrder && !orders.some((order) => order.id === latestOrder.id && order.status === 'cancelled') && (
+      {latestOrder && !cancelledOrderIds.has(latestOrder.id) && (
         <p className="order-confirmation" role="status">
           Siparişin oluşturuldu: #{latestOrder.id}. Ödeme adımı bekleniyor.
         </p>
@@ -257,6 +287,7 @@ export default function OrderHistoryPanel({
               onClick={() => {
                 setIsLoading(true)
                 setError('')
+                setOffset(0)
                 setRetryCount((count) => count + 1)
               }}
               type="button"
@@ -283,7 +314,9 @@ export default function OrderHistoryPanel({
           {isLoading ? (
             <p className="products-status" role="status">Siparişler yükleniyor...</p>
           ) : orders.length === 0 ? (
-            !error && <p className="products-status">Henüz siparişin yok.</p>
+            !error && <p className="products-status">
+              {offset === 0 ? 'Henüz siparişin yok.' : 'Bu sayfada sipariş yok.'}
+            </p>
           ) : (
             <ul aria-label="Sipariş geçmişi" className="order-history-list">
               {orders.map((order) => (
@@ -419,6 +452,35 @@ export default function OrderHistoryPanel({
                         </li>
                       ))}
                     </ul>
+                  )}
+                  {(offset > 0 || hasMore) && (
+                    <nav aria-label="Sipariş geçmişi sayfaları">
+                      <button
+                        className="retry-button"
+                        disabled={isLoading || offset === 0}
+                        onClick={() => {
+                          setIsLoading(true)
+                          setError('')
+                          setOffset((current) => Math.max(0, current - ORDER_PAGE_SIZE))
+                        }}
+                        type="button"
+                      >
+                        Önceki sayfa
+                      </button>
+                      <span> Sayfa {Math.floor(offset / ORDER_PAGE_SIZE) + 1} </span>
+                      <button
+                        className="retry-button"
+                        disabled={isLoading || !hasMore}
+                        onClick={() => {
+                          setIsLoading(true)
+                          setError('')
+                          setOffset((current) => current + ORDER_PAGE_SIZE)
+                        }}
+                        type="button"
+                      >
+                        Sonraki sayfa
+                      </button>
+                    </nav>
                   )}
                   {returnNotice && returnNoticeOrderId === order.id && (
                     <p className="order-return-notice" role="status">{returnNotice}</p>

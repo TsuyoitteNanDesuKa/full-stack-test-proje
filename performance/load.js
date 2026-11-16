@@ -4,7 +4,7 @@ import exec from 'k6/execution'
 import { Counter, Rate, Trend } from 'k6/metrics'
 
 const scenario = __ENV.PERF_SCENARIO
-const scenarios = ['catalog', 'catalog_search', 'orders_10', 'orders_100', 'orders_1000', 'seller', 'checkout']
+const scenarios = ['catalog', 'catalog_search', 'orders_10', 'orders_100', 'orders_1000', 'orders_page_1000', 'seller', 'checkout']
 if (!scenarios.includes(scenario)) {
   throw new Error(`PERF_SCENARIO must be one of: ${scenarios.join(', ')}`)
 }
@@ -100,6 +100,10 @@ export default function (run) {
     const query = scenario === 'catalog' ? '?limit=20&offset=0' : '?limit=20&offset=0&search=Perf&category=Perf&sort=price_asc'
     request(scenario, 'GET', `/api/v1/products${query}`, fixtures.catalog_token, null, 200,
       (data) => Array.isArray(data.products) && data.products.length === 20 && data.total === (scenario === 'catalog' ? 1000 : 500))
+  } else if (scenario === 'orders_page_1000') {
+    request(scenario, 'GET', '/api/v1/orders/page?limit=20&offset=0', fixtures.buyer_tokens['1000'], null, 200,
+      (data) => Array.isArray(data.items) && data.items.length === 20 &&
+        data.limit === 20 && data.offset === 0 && data.has_more === true)
   } else if (scenario.startsWith('orders_')) {
     const count = scenario.split('_')[1]
     request(scenario, 'GET', '/api/v1/orders', fixtures.buyer_tokens[count], null, 200,

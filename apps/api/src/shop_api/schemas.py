@@ -485,6 +485,13 @@ class OrderResponse(BaseModel):
     history: list[OrderStatusEventResponse]
 
 
+class OrderPageResponse(BaseModel):
+    items: list[OrderResponse]
+    limit: int
+    offset: int
+    has_more: bool
+
+
 class AdminOrderResponse(OrderResponse):
     owner_subject: str
     payment_status: PaymentStatus | None

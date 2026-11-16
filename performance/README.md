@@ -2,7 +2,7 @@
 
 Bu araçlar yalnız yerel, izole test içindir; canlı veya mevcut geliştirme veritabanına uygulanmaz. PostgreSQL 17, Python/uv ve k6 gerektirir. k6 `v2.4.0` ile doğrulanmıştır. Senaryolar normal API kimlik doğrulamasını geçici RS256/JWKS ile kullanır; Keycloak giriş performansı ölçülmez. Checkout yerel mock ödemedir.
 
-Ölçülecek varyantlar: `catalog`, `catalog_search`, `orders_10`, `orders_100`, `orders_1000`, `seller`, `checkout`. Seed: 1.000 ürün, 10/100/1.000 siparişli ayrı buyer, onaylı seller, sipariş başına iki kalem ve bir sipariş/bir fulfillment olayı. Checkout için ayrı buyer, adres ve ürünle 10 VU hazırlanır.
+Ölçülecek varyantlar: `catalog`, `catalog_search`, `orders_10`, `orders_100`, `orders_1000`, `orders_page_1000`, `seller`, `checkout`. `orders_page_1000`, 1.000 siparişli buyer'ın `limit=20&offset=0` ile ilk sayfasını ölçer ve 20 sonuç ile `has_more=true` doğrular; sınırsız `orders_1000` ile farklı yanıt kapsamıdır. Seed: 1.000 ürün, 10/100/1.000 siparişli ayrı buyer, onaylı seller, sipariş başına iki kalem ve bir sipariş/bir fulfillment olayı. Checkout için ayrı buyer, adres ve ürünle 10 VU hazırlanır.
 
 ## Tek koşu hazırlığı (Windows PowerShell)
 

@@ -45,6 +45,7 @@ from shop_api.schemas import (
     OrderCreateRequest,
     OrderFulfillmentResponse,
     OrderItemResponse,
+    OrderPageResponse,
     OrderResponse,
     OrderStatus,
     PaymentStatus,
@@ -415,6 +416,37 @@ def list_my_orders(
         )
         for order in orders
     ]
+
+
+@router.get("/page", response_model=OrderPageResponse)
+def list_my_orders_page(
+    current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0, le=2147483647)] = 0,
+) -> OrderPageResponse:
+    _require_buyer(current_user)
+    orders = db.scalars(
+        select(CustomerOrder)
+        .where(CustomerOrder.owner_subject == current_user.subject)
+        .order_by(CustomerOrder.created_at.desc(), CustomerOrder.id.desc())
+        .limit(limit + 1)
+        .offset(offset)
+    ).all()
+    has_more = len(orders) > limit
+    page = orders[:limit]
+    orders_data, fulfillments_data = load_order_data(db, page)
+    return OrderPageResponse(
+        items=[
+            _order_response(
+                db, order, order_data=orders_data[order.id], fulfillment_data=fulfillments_data
+            )
+            for order in page
+        ],
+        limit=limit,
+        offset=offset,
+        has_more=has_more,
+    )
 
 
 @router.get("/{order_id}", response_model=OrderResponse)

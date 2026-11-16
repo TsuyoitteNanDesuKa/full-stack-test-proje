@@ -24,19 +24,22 @@ def test_seed_refuses_nonisolated_database(tmp_path: Path) -> None:
 
 
 @pytest.mark.regression
-def test_report_counts_failed_responses_and_successful_latency(tmp_path: Path) -> None:
+@pytest.mark.parametrize("scenario", ["catalog", "orders_page_1000"])
+def test_report_counts_failed_responses_and_successful_latency(
+    tmp_path: Path, scenario: str
+) -> None:
     summary = tmp_path / "summary.json"
     raw = tmp_path / "raw.jsonl"
     output = tmp_path / "report.json"
     summary.write_text(json.dumps({"state": {"testRunDurationMs": 9000}}), encoding="utf-8")
     points = [
-        ("perf_status", 1, {"operation": "catalog", "status": "200"}),
-        ("perf_status", 1, {"operation": "catalog", "status": "500"}),
-        ("perf_failed", 0, {"operation": "catalog"}),
-        ("perf_failed", 1, {"operation": "catalog"}),
-        ("perf_latency", 100, {"operation": "catalog"}),
-        ("perf_response_bytes", 10, {"operation": "catalog"}),
-        ("perf_response_bytes", 20, {"operation": "catalog"}),
+        ("perf_status", 1, {"operation": scenario, "status": "200"}),
+        ("perf_status", 1, {"operation": scenario, "status": "500"}),
+        ("perf_failed", 0, {"operation": scenario}),
+        ("perf_failed", 1, {"operation": scenario}),
+        ("perf_latency", 100, {"operation": scenario}),
+        ("perf_response_bytes", 10, {"operation": scenario}),
+        ("perf_response_bytes", 20, {"operation": scenario}),
     ]
     raw.write_text(
         "\n".join(
@@ -56,7 +59,7 @@ def test_report_counts_failed_responses_and_successful_latency(tmp_path: Path) -
             "--output",
             str(output),
             "--scenario",
-            "catalog",
+            scenario,
             "--mode",
             "smoke",
         ],
@@ -68,5 +71,5 @@ def test_report_counts_failed_responses_and_successful_latency(tmp_path: Path) -
     assert result.returncode == 1
     assert report["valid"]
     assert report["error_rate"] == 0.5
-    assert report["operations"]["catalog"]["status_codes"] == {"200": 1, "500": 1}
-    assert report["operations"]["catalog"]["successful_latency_ms"]["p95"] == 100
+    assert report["operations"][scenario]["status_codes"] == {"200": 1, "500": 1}
+    assert report["operations"][scenario]["successful_latency_ms"]["p95"] == 100

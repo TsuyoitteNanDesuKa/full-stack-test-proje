@@ -606,6 +606,7 @@ Keycloak erişim/rol atama hatasında işlem başarı gibi raporlanmaz; başvuru
 
 - `POST /api/v1/orders` — buyer token ve `Idempotency-Key` başlığı; istek gövdesi yok; başarılı ilk istek `201`, aynı anahtarın tekrarı aynı siparişle `200`.
 - `GET /api/v1/orders` — yalnızca oturum sahibinin sipariş geçmişi.
+- `GET /api/v1/orders/page` — yalnızca oturum sahibinin sıralı sipariş geçmişi; `limit` varsayılan 20 ve 1–100 aralığında, `offset` varsayılan 0 ve 0–2147483647 aralığında. Yanıt `items`, `limit`, `offset`, `has_more` içerir. Eş zamanlı yeni siparişler offset tabanlı sayfaların sınırlarını değiştirebilir. Mevcut sınırsız liste endpoint'i uyumluluk için korunur.
 - `GET /api/v1/orders/{order_id}` — yalnızca oturum sahibinin sipariş ayrıntısı.
 - Yanıt sipariş kimliği/durumu/tarih/toplam ve her kalemin ürün adı, ürün kimliği (ürün silinmişse `null`), birim fiyat snapshot'ı, miktarı ve satır toplamını içerir.
 

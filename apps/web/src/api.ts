@@ -484,6 +484,19 @@ export function getMyOrders(token: string): Promise<CustomerOrder[]> {
   })
 }
 
+export interface CustomerOrderPage {
+  items: CustomerOrder[]
+  limit: number
+  offset: number
+  has_more: boolean
+}
+
+export function getMyOrdersPage(token: string, limit: number, offset: number): Promise<CustomerOrderPage> {
+  return request<CustomerOrderPage>(`/api/v1/orders/page?limit=${limit}&offset=${offset}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
 export function cancelMyOrder(
   token: string,
   orderId: number,

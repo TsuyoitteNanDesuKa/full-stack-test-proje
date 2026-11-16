@@ -16,6 +16,8 @@ vi.mock('./api', async (importOriginal) => ({
   createProductReturn: vi.fn(),
   getAdminOrders: vi.fn(),
   getMyOrders: vi.fn(),
+  getMyOrdersPage: vi.fn((token: string, limit: number, offset: number) =>
+    getMyOrders(token).then((items) => ({ items, limit, offset, has_more: false }))),
   refundAdminOrder: vi.fn(),
   updateAdminOrderStatus: vi.fn(),
 }))

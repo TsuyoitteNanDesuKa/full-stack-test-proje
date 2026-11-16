@@ -1,5 +1,7 @@
+from datetime import UTC, datetime
 from decimal import Decimal
 
+import pytest
 from conftest import create_checkout_request, create_test_token
 from factories import product_payload
 from fastapi.testclient import TestClient
@@ -183,6 +185,88 @@ def test_same_key_is_scoped_to_buyer_and_order_reads_are_private(
     assert client.get(f"/api/v1/orders/{order_id}", headers=first_headers).status_code == 200
     assert client.get(f"/api/v1/orders/{order_id}", headers=second_headers).status_code == 404
     assert client.get("/api/v1/orders", headers=second_headers).json() == []
+
+
+def test_order_page_is_owned_stable_and_only_loads_selected_orders(
+    client: TestClient, engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from shop_api.routes import orders as order_routes
+
+    timestamp = datetime(2026, 1, 1, tzinfo=UTC)
+    with Session(engine) as session:
+        orders = [
+            CustomerOrder(
+                owner_subject=owner,
+                idempotency_key=f"page-{index}",
+                status="pending_payment",
+                total_amount=Decimal("10.00"),
+                created_at=timestamp,
+            )
+            for index, owner in enumerate(["page-buyer", "other-buyer", "page-buyer", "page-buyer"])
+        ]
+        session.add_all(orders)
+        session.commit()
+        buyer_ids = [orders[index].id for index in (0, 2, 3)]
+
+    loaded_ids: list[list[int]] = []
+    original_load = order_routes.load_order_data
+
+    def track_load(db, selected, **kwargs):
+        loaded_ids.append([order.id for order in selected])
+        return original_load(db, selected, **kwargs)
+
+    monkeypatch.setattr(order_routes, "load_order_data", track_load)
+    headers = auth_headers(client, "page-buyer")
+    first = client.get("/api/v1/orders/page?limit=2", headers=headers)
+    assert first.status_code == 200
+    body = first.json()
+    assert [order["id"] for order in body["items"]] == buyer_ids[::-1][:2]
+    assert (body["limit"], body["offset"], body["has_more"]) == (2, 0, True)
+    assert loaded_ids == [buyer_ids[::-1][:2]]
+
+    second = client.get("/api/v1/orders/page?limit=2&offset=2", headers=headers).json()
+    assert [order["id"] for order in second["items"]] == buyer_ids[:1]
+    assert second["has_more"] is False
+    assert client.get("/api/v1/orders/page?offset=9", headers=headers).json()["items"] == []
+    assert [order["id"] for order in client.get("/api/v1/orders", headers=headers).json()] == (
+        buyer_ids[::-1]
+    )
+    assert client.get("/api/v1/orders/page", headers=auth_headers(client, "other-buyer")).json()[
+        "items"
+    ][0]["id"] not in buyer_ids
+
+
+@pytest.mark.parametrize("query", ["limit=0", "limit=101", "offset=-1", "offset=2147483648"])
+def test_order_page_rejects_invalid_bounds(client: TestClient, query: str) -> None:
+    assert client.get(
+        f"/api/v1/orders/page?{query}", headers=auth_headers(client, "page-buyer")
+    ).status_code == 422
+
+
+def test_order_page_requires_buyer(client: TestClient) -> None:
+    assert client.get("/api/v1/orders/page").status_code == 401
+    assert client.get(
+        "/api/v1/orders/page", headers=auth_headers(client, "page-seller", ["seller"])
+    ).status_code == 403
+
+
+def test_order_page_default_limits_results(client: TestClient, engine) -> None:
+    with Session(engine) as session:
+        session.add_all(
+            CustomerOrder(
+                owner_subject="large-buyer",
+                idempotency_key=f"order-{index}",
+                status="pending_payment",
+                total_amount=Decimal("10.00"),
+                created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            )
+            for index in range(21)
+        )
+        session.commit()
+    body = client.get("/api/v1/orders/page", headers=auth_headers(client, "large-buyer")).json()
+    assert len(body["items"]) == 20
+    assert body["has_more"] is True
+    assert body["offset"] == 0
 
 
 def test_checkout_rejects_empty_or_unavailable_carts_without_mutation(

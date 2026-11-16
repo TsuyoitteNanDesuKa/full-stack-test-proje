@@ -277,6 +277,17 @@ function setupApi(options: {
       cart = { items: [], subtotal: '0.00' }
       return jsonResponse(order, 201)
     }
+    if (path.startsWith('/api/v1/orders/page?')) {
+      const url = new URL(path, 'http://localhost')
+      const limit = Number(url.searchParams.get('limit'))
+      const offset = Number(url.searchParams.get('offset'))
+      return jsonResponse({
+        items: orders.slice(offset, offset + limit),
+        limit,
+        offset,
+        has_more: orders.length > offset + limit,
+      })
+    }
     if (path === '/api/v1/orders') return jsonResponse(orders)
     if (/^\/api\/v1\/orders\/\d+$/.test(path)) {
       const orderId = Number(path.split('/').at(-1))

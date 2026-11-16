@@ -9,6 +9,7 @@ SCENARIOS = {
     "orders_10": ["orders_10"],
     "orders_100": ["orders_100"],
     "orders_1000": ["orders_1000"],
+    "orders_page_1000": ["orders_page_1000"],
     "seller": ["seller"],
     "checkout": ["cart_read", "cart_add", "checkout", "payment_create", "payment_complete"],
 }

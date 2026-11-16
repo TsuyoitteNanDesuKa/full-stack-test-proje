@@ -661,7 +661,7 @@ REQ-013–REQ-018, QA-016–QA-025 ve performans öncesi iki işlevsel düzeltme
 | Senaryo | Ölçüm kapsamı |
 |---|---|
 | Katalog | `GET /api/v1/products`: varsayılan sayfa ve arama/filtre/sıralama; sayfa boyutu ve sorgu parametreleri sabitlenir. |
-| Buyer sipariş geçmişi | `GET /api/v1/orders`: 10, 100 ve 1.000 siparişli buyer profilleri ayrı ölçülür. Endpoint şu anda sayfalanmaz; yanıt boyutu ve sorgu sayısı da kaydedilir. |
+| Buyer sipariş geçmişi | `GET /api/v1/orders`: 10, 100 ve 1.000 siparişli buyer profilleri ayrı ölçülür; bu eski endpoint sayfalanmaz. `GET /api/v1/orders/page`: 1.000 siparişli buyer'ın 20 kayıtlık ilk sayfası ayrı ölçülür. Yanıt boyutu ve sorgu sayısı da kaydedilir. |
 | Seller siparişleri | `GET /api/v1/seller/orders`: onaylı seller için sabit `limit`/`offset`; buyer verisiyle karıştırılmaz. |
 | Satın alma | Buyer'ın sepet okuma/ekleme → checkout → mock ödeme akışı. Her sanal kullanıcıya izole hesap, yeterli stok ve benzersiz idempotency anahtarı verilir; durum/iş sonucu doğrulanır. |
 
@@ -692,6 +692,16 @@ Eşikler **önerilen öğrenme hedefleridir**: üç koşunun her birinde ve ilgi
 - [x] PostgreSQL sorgu sayıları, planlar, sayfalama gözlemleri ve sınırlamalar raporlandı.
 - [x] Frontend laboratuvar ölçümü, gözlemler ve sınırlamalar raporlandı.
 - [ ] Tekrar çalıştırma ve önce/sonra karşılaştırma yöntemi belgelenmiş; başarısız hedefler ve önerilen takip işleri görünür. Ölçüm tamamlanması, performans hedeflerinin tamamının karşılandığı anlamına gelmez.
+
+**Takip işi — Buyer sipariş geçmişini sayfalama**
+
+- **Durum:** Geliştirme sürüyor. QA-026 ölçümünde 1.000 siparişli buyer profilinin p95 ortancası 2,30 sn ve yanıtı yaklaşık 1 MB; 500 ms hedefi üç koşuda da aşıldı.
+- **Kapsam ve tasarım:** Mevcut `GET /api/v1/orders` sözleşmesi uyumluluk için korunur; UI yeni `GET /api/v1/orders/page` üzerinden sınırlandırılmış sayfaları kullanır. Varsayılan limit 20, azami 100; `offset` tabanlı sonraki/önceki geçişi ve `has_more` kullanılır. Yeni siparişlerin sayfalar arasında eklenmesi offset kaymasına neden olabilir; yenileme ilk sayfaya döner. Yetki, sipariş detayları ve `created_at DESC, id DESC` sırası korunmalı. Eski endpoint sınırsız kaldığı için bu endpoint'i kullanan diğer istemciler aynı performans riskini taşır.
+- **Backend ve sözleşme:** Yalnız oturum sahibinin kayıtlarını veritabanında sayfala; yalnız dönen sayfanın ilişkili verilerini yükle. Sınır/geçersiz parametreler, boş/son sayfa ve yanıtın sonraki sayfayı belirleme yöntemi için sözleşmeyi ve OpenAPI snapshot'ını güncelle.
+- **Frontend:** Sipariş geçmişinde erişilebilir sayfa geçişleri, yükleme/hata/boş durumları ve iptal/iade/ödeme veya yeni sipariş sonrasında güncel veriye dönüş davranışını uygula; eski siparişlere erişimi koru.
+- **Test:** Backend'de rol/sahiplik izolasyonu, sıralama eşitlikleri, sayfa sınırları ve sınırlı sorgu/yanıt; frontend'de sayfa gezintisi, son sayfa, hata/tekrar ve işlem sonrası yenileme; en az bir buyer Playwright akışında sayfa geçişi ve kritik mevcut sipariş işlemleri doğrulansın. Sözleşme, backend/frontend regresyonları ve ilgili PostgreSQL doğrulaması çalıştırılsın.
+- **Performans doğrulama:** 1.000 siparişli aynı izole profilde sayfa isteğinin sorgu sayısı, yanıt boyutu ve üç bağımsız yük koşusunu ölç; 500 ms p95 hedefini her koşuda ve hata oranını ayrı raporla. Eski tam-geçmiş ölçümüyle farklı yanıt kapsamını belirt; p95 değerlerini aynı iş yüküymüş gibi karşılaştırma.
+- **İlerleme:** Sayfalı backend sözleşmesi ve panelde sayfa geçişleri uygulandı; eski API korunuyor. [Üç tekrarlı ilk sayfa ölçümünde](./docs/performance-order-pagination-2026-11-16.md) p95 değerleri 73,2/54,8/28,2 ms, hata oranları %0; her koşuda 500 ms hedefi sağlandı. Bu, eski sınırsız listenin veya derin sayfaların hedefi sağladığını göstermez. PostgreSQL/Playwright işlevsel doğrulaması bekliyor; takip işi henüz tamamlanmış sayılmaz.
 
 ### Her incremental dilim için ortak Definition of Done
 

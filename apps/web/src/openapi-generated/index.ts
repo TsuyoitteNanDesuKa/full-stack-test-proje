@@ -28,6 +28,7 @@ export type { OrderFulfillmentEventResponse } from './models/OrderFulfillmentEve
 export type { OrderFulfillmentResponse } from './models/OrderFulfillmentResponse';
 export type { OrderFulfillmentStatus } from './models/OrderFulfillmentStatus';
 export type { OrderItemResponse } from './models/OrderItemResponse';
+export type { OrderPageResponse } from './models/OrderPageResponse';
 export type { OrderResponse } from './models/OrderResponse';
 export type { OrderStatus } from './models/OrderStatus';
 export type { OrderStatusEventResponse } from './models/OrderStatusEventResponse';

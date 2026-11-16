@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import OrderHistoryPanel from './OrderHistoryPanel'
-import { ApiError, cancelMyOrder, createPayment, createProductReturn, getMyOrders } from './api'
+import { ApiError, cancelMyOrder, createPayment, createProductReturn, getMyOrders, getMyOrdersPage } from './api'
 import type { CustomerOrder, CustomerPayment, ProductReturn } from './api'
 
 vi.mock('./api', async (importOriginal) => ({
@@ -10,6 +10,8 @@ vi.mock('./api', async (importOriginal) => ({
   cancelMyOrder: vi.fn(),
   createProductReturn: vi.fn(),
   getMyOrders: vi.fn(),
+  getMyOrdersPage: vi.fn((token: string, limit: number, offset: number) =>
+    getMyOrders(token).then((items) => ({ items, limit, offset, has_more: false }))),
 }))
 
 const sampleOrder: CustomerOrder = {
@@ -92,6 +94,81 @@ describe('OrderHistoryPanel', () => {
     expect(screen.getByText('Ada Buyer · +905551234567')).toBeInTheDocument()
     expect(screen.getByText(/Ürün ara toplamı:/)).toBeInTheDocument()
     expect(getMyOrders).toHaveBeenCalledWith('buyer-token')
+  })
+
+  it('navigates between pages and refreshes the first page', async () => {
+    vi.mocked(getMyOrdersPage)
+      .mockResolvedValueOnce({ items: [sampleOrder], limit: 20, offset: 0, has_more: true })
+      .mockResolvedValueOnce({ items: [{ ...sampleOrder, id: 20 }], limit: 20, offset: 20, has_more: false })
+      .mockResolvedValueOnce({ items: [sampleOrder], limit: 20, offset: 0, has_more: true })
+      .mockResolvedValueOnce({ items: [{ ...sampleOrder, id: 20 }], limit: 20, offset: 20, has_more: false })
+      .mockResolvedValueOnce({ items: [sampleOrder], limit: 20, offset: 0, has_more: true })
+    render(<OrderHistoryPanel latestOrder={null} refreshVersion={0} token="buyer-token" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Siparişlerim' }))
+    await screen.findByRole('heading', { name: 'Sipariş #21' })
+    expect(screen.getByRole('button', { name: 'Önceki sayfa' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Sonraki sayfa' }))
+    await screen.findByRole('heading', { name: 'Sipariş #20' })
+    expect(getMyOrdersPage).toHaveBeenLastCalledWith('buyer-token', 20, 20)
+    expect(screen.getByRole('button', { name: 'Sonraki sayfa' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Önceki sayfa' }))
+    await screen.findByRole('heading', { name: 'Sipariş #21' })
+    expect(getMyOrdersPage).toHaveBeenLastCalledWith('buyer-token', 20, 0)
+    fireEvent.click(screen.getByRole('button', { name: 'Sonraki sayfa' }))
+    await screen.findByRole('heading', { name: 'Sipariş #20' })
+    fireEvent.click(screen.getByRole('button', { name: 'Yenile' }))
+    await screen.findByRole('heading', { name: 'Sipariş #21' })
+    expect(getMyOrdersPage).toHaveBeenLastCalledWith('buyer-token', 20, 0)
+  })
+
+  it('retries a failed page without showing the previous page as the new one', async () => {
+    vi.mocked(getMyOrdersPage)
+      .mockResolvedValueOnce({ items: [sampleOrder], limit: 20, offset: 0, has_more: true })
+      .mockRejectedValueOnce(new Error('Network unavailable'))
+      .mockResolvedValueOnce({ items: [{ ...sampleOrder, id: 20 }], limit: 20, offset: 20, has_more: false })
+    render(<OrderHistoryPanel latestOrder={null} refreshVersion={0} token="buyer-token" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Siparişlerim' }))
+    await screen.findByRole('heading', { name: 'Sipariş #21' })
+    fireEvent.click(screen.getByRole('button', { name: 'Sonraki sayfa' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Sipariş geçmişi yüklenemedi.')
+    expect(screen.queryByRole('heading', { name: 'Sipariş #21' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Tekrar dene' }))
+    await screen.findByRole('heading', { name: 'Sipariş #20' })
+    expect(getMyOrdersPage).toHaveBeenLastCalledWith('buyer-token', 20, 20)
+  })
+
+  it('returns to the first page when a new order triggers a refresh', async () => {
+    vi.mocked(getMyOrdersPage)
+      .mockResolvedValueOnce({ items: [sampleOrder], limit: 20, offset: 0, has_more: true })
+      .mockResolvedValueOnce({ items: [{ ...sampleOrder, id: 20 }], limit: 20, offset: 20, has_more: false })
+      .mockResolvedValueOnce({ items: [sampleOrder], limit: 20, offset: 0, has_more: true })
+    const { rerender } = render(
+      <OrderHistoryPanel latestOrder={null} refreshVersion={0} token="buyer-token" />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Siparişlerim' }))
+    await screen.findByRole('heading', { name: 'Sipariş #21' })
+    fireEvent.click(screen.getByRole('button', { name: 'Sonraki sayfa' }))
+    await screen.findByRole('heading', { name: 'Sipariş #20' })
+    rerender(<OrderHistoryPanel latestOrder={sampleOrder} refreshVersion={1} token="buyer-token" />)
+    await screen.findByRole('heading', { name: 'Sipariş #21' })
+    expect(getMyOrdersPage).toHaveBeenLastCalledWith('buyer-token', 20, 0)
+    expect(getMyOrdersPage).toHaveBeenCalledTimes(3)
+  })
+
+  it('keeps a cancelled latest order confirmation hidden when changing pages', async () => {
+    vi.mocked(getMyOrdersPage)
+      .mockResolvedValueOnce({
+        items: [{ ...sampleOrder, status: 'cancelled' }], limit: 20, offset: 0, has_more: true,
+      })
+      .mockResolvedValueOnce({
+        items: [{ ...sampleOrder, id: 20 }], limit: 20, offset: 20, has_more: false,
+      })
+    render(<OrderHistoryPanel latestOrder={sampleOrder} refreshVersion={0} token="buyer-token" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Siparişlerim' }))
+    await screen.findByText('İptal edildi')
+    fireEvent.click(screen.getByRole('button', { name: 'Sonraki sayfa' }))
+    await screen.findByRole('heading', { name: 'Sipariş #20' })
+    expect(screen.queryByText(/Siparişin oluşturuldu: #21/)).not.toBeInTheDocument()
   })
 
   it('shows each seller package and its own items separately from the order summary', async () => {

@@ -74,6 +74,7 @@ const calls: [string, () => Promise<unknown>][] = [
   ['return', () => api.createProductReturn(token, 1, { order_item_id: 1, quantity: 1, reason: 'Reason' }, 'key')],
   ['cancel order', () => api.cancelMyOrder(token, 1, { reason: null })],
   ['orders', () => api.getMyOrders(token)],
+  ['order page', () => api.getMyOrdersPage(token, 20, 0)],
   ['payment', () => api.createPayment(token, 1, 'key')],
   ['order', () => api.getMyOrder(token, 1)],
   ['admin orders', () => api.getAdminOrders(token)],
