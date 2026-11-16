@@ -646,7 +646,7 @@ REQ-013–REQ-018, QA-016–QA-025 ve performans öncesi iki işlevsel düzeltme
 ### Öncelik 24 — QA-026: Performans başlangıç çizgisi
 
 - **Durum:** Devam ediyor; performans öncesi iki işlevsel düzeltme ve üç tekrarlı API baseline ölçümü tamamlandı. Diğer QA-026 analizleri sürüyor; ölçümler üretim kapasitesi veya garanti edilmiş SLA değildir.
-- **İlerleme:** Yedi API varyantının her biri üç izole koşuda ölçüldü; sonuçlar [baseline raporunda](./docs/performance-baseline-2026-11-14.md), çalıştırma adımları [performans notlarında](./performance/README.md). [SQL analizinde](./docs/performance-sql-analysis-2026-11-14.md) doğrulanan N+1 sorunları toplu yüklemeyle azaltıldı; 1.000 buyer siparişinde sorgu sayısı 6.001'den 13'e indi. [İyileştirme sonrası üç tekrarlı yük karşılaştırmasında](./docs/performance-load-after-sql-2026-11-15.md) buyer 10/100 ve seller profilleri her koşuda 500 ms hedefini geçti; buyer 1.000 profili üç koşuda da hedefi aştı (p95 ortancası 44,23 sn → 2,30 sn). Frontend analizi henüz yapılmadı.
+- **İlerleme:** Yedi API varyantının her biri üç izole koşuda ölçüldü; sonuçlar [baseline raporunda](./docs/performance-baseline-2026-11-14.md), çalıştırma adımları [performans notlarında](./performance/README.md). [SQL analizinde](./docs/performance-sql-analysis-2026-11-14.md) doğrulanan N+1 sorunları toplu yüklemeyle azaltıldı; 1.000 buyer siparişinde sorgu sayısı 6.001'den 13'e indi. [İyileştirme sonrası üç tekrarlı yük karşılaştırmasında](./docs/performance-load-after-sql-2026-11-15.md) buyer 10/100 ve seller profilleri her koşuda 500 ms hedefini geçti; buyer 1.000 profili üç koşuda da hedefi aştı (p95 ortancası 44,23 sn → 2,30 sn). [Frontend laboratuvarında](./docs/performance-frontend-lab-2026-11-16.md) giriş/katalog LCP ortancaları 2,78/2,90 sn, CLS ortancaları 0,01758/0,01802 olarak ölçüldü.
 - **Amaç:** Katalog ve sipariş akışlarının yerel, karşılaştırılabilir başlangıç çizgisini oluşturmak; darboğazları kanıtla önceliklendirmek. Release veya canlı ortam gerekmez.
 - **Sınırlar:** Yalnız izole test ortamı ve sentetik veri kullanılır. Gerçek ödeme, kargo, KYC/KYB ve üretim yük testi kapsam dışıdır. İlk çalışma PR kalite kapısı değildir; sonuçlar farklı makine/runner'lar arasında doğrudan karşılaştırılmaz.
 
@@ -690,7 +690,7 @@ Eşikler **önerilen öğrenme hedefleridir**: üç koşunun her birinde ve ilgi
 - [ ] Ortam, izolasyon, veri profilleri ve çalıştırma/temizlik adımları belgelenmiş; test canlı veya kalıcı veriye erişmiyor.
 - [x] Katalog varyantları, üç buyer geçmiş profili, seller listesi ve satın alma senaryosu için üçer koşunun ham/özet sonuçları, gerçekleşen yük ve önerilen eşiklerin açık geçti/kaldı durumu kaydedildi. Ham arşiv ölçüm oturumunun çalışma alanındadır.
 - [x] PostgreSQL sorgu sayıları, planlar, sayfalama gözlemleri ve sınırlamalar raporlandı.
-- [ ] Frontend laboratuvar ölçümü, darboğazlar ve sınırlamalar raporlanmış.
+- [x] Frontend laboratuvar ölçümü, gözlemler ve sınırlamalar raporlandı.
 - [ ] Tekrar çalıştırma ve önce/sonra karşılaştırma yöntemi belgelenmiş; başarısız hedefler ve önerilen takip işleri görünür. Ölçüm tamamlanması, performans hedeflerinin tamamının karşılandığı anlamına gelmez.
 
 ### Her incremental dilim için ortak Definition of Done
