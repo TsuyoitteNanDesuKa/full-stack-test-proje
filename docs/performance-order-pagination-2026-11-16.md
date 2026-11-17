@@ -24,7 +24,7 @@ Yüksüz, süreç içi ve SQLAlchemy ile araçlandırılmış ayrı bir tanı is
 
 [SQL optimizasyonu sonrası önceki ölçüm](./performance-load-after-sql-2026-11-15.md), aynı büyüklükte geçmişin **tamamını** döndüren eski `/api/v1/orders` uç noktasında p95 ortancasını 2.302,9 ms ve yanıtı 1.030.665 bayt bulmuştu. Yeni ölçüm yalnız ilk 20 siparişi döndürür; farklı yanıt kapsamları nedeniyle bu p95 değerleri aynı iş yükünün doğrudan önce/sonra karşılaştırması değildir. Eski sınırsız uç nokta uyumluluk için korunmuştur ve bu optimizasyon eski istemcilerin tam-geçmiş maliyetini çözmez.
 
-Bu çalışma ilk sayfayı ölçer; sonraki veya derin offset'ler, eş zamanlı yeni siparişler ve tüm geçmişi sayfalarla dolaşma süresi ölçülmedi. PostgreSQL/Playwright işlevsel doğrulaması ayrı takip işidir.
+Bu çalışma ilk sayfayı ölçer; sonraki veya derin offset'ler, eş zamanlı yeni siparişler ve tüm geçmişi sayfalarla dolaşma süresi ölçülmedi. PostgreSQL ve deterministik Playwright işlevsel doğrulamaları daha sonra ayrı yapıldı; sonuçlar [roadmap'tedir](../ROADMAP.md).
 
 ## Kaynak gözlemleri ve kanıt
 

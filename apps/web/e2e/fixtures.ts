@@ -80,12 +80,12 @@ class ScenarioApi {
     await requireStatus(response, 200, 'Adding a seeded cart item')
   }
 
-  async createOrder(addressId: number): Promise<{ id: number }> {
+  async createOrder(addressId: number, idempotencyKey = this.scenarioId): Promise<{ id: number }> {
     const response = await this.request.post(`${apiBaseUrl}/orders`, {
       data: { address_id: addressId, delivery_method: 'standard' },
       headers: {
         ...this.headers('buyer'),
-        'Idempotency-Key': this.scenarioId,
+        'Idempotency-Key': idempotencyKey,
       },
     })
     await requireStatus(response, 201, 'Creating a seeded order')

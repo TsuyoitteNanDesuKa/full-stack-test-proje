@@ -231,23 +231,32 @@ def test_order_page_is_owned_stable_and_only_loads_selected_orders(
     assert [order["id"] for order in client.get("/api/v1/orders", headers=headers).json()] == (
         buyer_ids[::-1]
     )
-    assert client.get("/api/v1/orders/page", headers=auth_headers(client, "other-buyer")).json()[
-        "items"
-    ][0]["id"] not in buyer_ids
+    assert (
+        client.get("/api/v1/orders/page", headers=auth_headers(client, "other-buyer")).json()[
+            "items"
+        ][0]["id"]
+        not in buyer_ids
+    )
 
 
 @pytest.mark.parametrize("query", ["limit=0", "limit=101", "offset=-1", "offset=2147483648"])
 def test_order_page_rejects_invalid_bounds(client: TestClient, query: str) -> None:
-    assert client.get(
-        f"/api/v1/orders/page?{query}", headers=auth_headers(client, "page-buyer")
-    ).status_code == 422
+    assert (
+        client.get(
+            f"/api/v1/orders/page?{query}", headers=auth_headers(client, "page-buyer")
+        ).status_code
+        == 422
+    )
 
 
 def test_order_page_requires_buyer(client: TestClient) -> None:
     assert client.get("/api/v1/orders/page").status_code == 401
-    assert client.get(
-        "/api/v1/orders/page", headers=auth_headers(client, "page-seller", ["seller"])
-    ).status_code == 403
+    assert (
+        client.get(
+            "/api/v1/orders/page", headers=auth_headers(client, "page-seller", ["seller"])
+        ).status_code
+        == 403
+    )
 
 
 def test_order_page_default_limits_results(client: TestClient, engine) -> None:

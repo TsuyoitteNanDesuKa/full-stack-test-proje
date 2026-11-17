@@ -17,7 +17,8 @@ function assertCallMatchesContract(path: string, init: RequestInit, paths: Paths
     return new RegExp(`^${pattern}$`).test(url.pathname)
   })
   const method = (init.method ?? 'GET').toLowerCase()
-  const operation = matches.map(([, methods]) => methods[method]).find(Boolean)
+  const matchedPath = matches.find(([template]) => template === url.pathname) ?? matches[0]
+  const operation = matchedPath?.[1][method]
   expect(operation, `${method.toUpperCase()} ${url.pathname} is absent from OpenAPI`).toBeDefined()
   if (!operation) return
 
@@ -110,5 +111,16 @@ describe('frontend calls against the OpenAPI contract', () => {
       method: 'POST', headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
       body: '{}',
     }, paths)).toThrow()
+  })
+
+  it('uses the literal page route before a matching order-id template', () => {
+    const overlappingPaths: Paths = {
+      '/api/v1/orders/{order_id}': { get: { parameters: [{ in: 'query', name: 'wrong' }] } },
+      '/api/v1/orders/page': { get: { parameters: [{ in: 'query', name: 'limit' }] } },
+    }
+    expect(() => assertCallMatchesContract('/api/v1/orders/page?limit=20', {}, overlappingPaths))
+      .not.toThrow()
+    expect(() => assertCallMatchesContract('/api/v1/orders/page?wrong=1', {}, overlappingPaths))
+      .toThrow()
   })
 })

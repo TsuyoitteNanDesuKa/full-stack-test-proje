@@ -453,35 +453,6 @@ export default function OrderHistoryPanel({
                       ))}
                     </ul>
                   )}
-                  {(offset > 0 || hasMore) && (
-                    <nav aria-label="Sipariş geçmişi sayfaları">
-                      <button
-                        className="retry-button"
-                        disabled={isLoading || offset === 0}
-                        onClick={() => {
-                          setIsLoading(true)
-                          setError('')
-                          setOffset((current) => Math.max(0, current - ORDER_PAGE_SIZE))
-                        }}
-                        type="button"
-                      >
-                        Önceki sayfa
-                      </button>
-                      <span> Sayfa {Math.floor(offset / ORDER_PAGE_SIZE) + 1} </span>
-                      <button
-                        className="retry-button"
-                        disabled={isLoading || !hasMore}
-                        onClick={() => {
-                          setIsLoading(true)
-                          setError('')
-                          setOffset((current) => current + ORDER_PAGE_SIZE)
-                        }}
-                        type="button"
-                      >
-                        Sonraki sayfa
-                      </button>
-                    </nav>
-                  )}
                   {returnNotice && returnNoticeOrderId === order.id && (
                     <p className="order-return-notice" role="status">{returnNotice}</p>
                   )}
@@ -583,6 +554,35 @@ export default function OrderHistoryPanel({
                 </li>
               ))}
             </ul>
+          )}
+          {(offset > 0 || hasMore) && (
+            <nav aria-label="Sipariş geçmişi sayfaları">
+              <button
+                className="retry-button"
+                disabled={isLoading || offset === 0}
+                onClick={() => {
+                  setIsLoading(true)
+                  setError('')
+                  setOffset((current) => Math.max(0, current - ORDER_PAGE_SIZE))
+                }}
+                type="button"
+              >
+                Önceki sayfa
+              </button>
+              <span> Sayfa {Math.floor(offset / ORDER_PAGE_SIZE) + 1} </span>
+              <button
+                className="retry-button"
+                disabled={isLoading || !hasMore}
+                onClick={() => {
+                  setIsLoading(true)
+                  setError('')
+                  setOffset((current) => current + ORDER_PAGE_SIZE)
+                }}
+                type="button"
+              >
+                Sonraki sayfa
+              </button>
+            </nav>
           )}
         </div>
       )}

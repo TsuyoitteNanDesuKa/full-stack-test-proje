@@ -601,6 +601,7 @@ Keycloak erişim/rol atama hatasında işlem başarı gibi raporlanmaz; başvuru
 8. Bir ürün sonradan güncellense veya silinse bile sipariş adı/fiyat/adet/toplam snapshot'ı korunur.
 9. Herhangi bir DB/transaction hatasında sipariş, kalemler, stok düşümü ve sepet temizliği birlikte rollback edilir.
 10. UI sepetten sipariş başlatır; onay/işlemde/hata/başarı durumlarını gösterir, başarıda sepeti günceller ve yeni siparişi görünür kılar. Ağ hatasında tekrar deneme aynı idempotency anahtarını kullanır.
+11. Buyer sipariş geçmişi varsayılan 20 kayıtlık sayfalarla `created_at DESC, id DESC` sırasındadır; yalnız kendi siparişleri görünür. İleri/geri, son/boş sayfa, hata/tekrar ve yenileme desteklenir; ödeme, iptal ve iade işlemleri sayfalarda çalışır. `limit`/`offset` sınırları doğrulanır; eski sınırsız liste API'si uyumluluk için korunur.
 
 ### API sözleşmesi
 
@@ -618,6 +619,7 @@ Keycloak erişim/rol atama hatasında işlem başarı gibi raporlanmaz; başvuru
 - **PostgreSQL entegrasyon:** Gerçek migration ve eşzamanlı aynı anahtar/aynı alıcı checkout; iki alıcının son stok için yarışması; yalnızca bir sipariş ve tutarlı stok/sepet sonucu.
 - **Component:** Checkout onayı/işlemde; başarı ve sipariş özeti; boş/uygun olmayan sepet; validation, API ve bağlantı hatası; yeniden denemede aynı anahtar.
 - **E2E:** Gerçek Keycloak buyer ürün ekleyip sipariş verir ve sipariş geçmişinde görür; sepet boşalır; başka buyer siparişi okuyamaz; stok yetersiz/ürün silme negatif yolu ve tekrar gönderim doğrulanır.
+- **Sayfalama izlenebilirliği:** `apps/api/tests/test_orders.py` SQLite yetki, sahiplik ve sayfa sınırlarını; `apps/api/tests/test_cart_postgres.py` PostgreSQL sıralama, sahiplik ve offset kaymasını; `apps/api/tests/test_response_contract.py` gerçek yanıtın OpenAPI şemasını; `apps/web/src/OrderHistoryPanel.test.tsx` gezinme ve hata durumlarını; `apps/web/e2e/order-pagination.spec.ts` izole SQLite/JWKS üzerinde gerçek tarayıcıyla sayfa geçişi ve ödeme/iptal/iade akışlarını doğrular. Bu E2E senaryosu gerçek Keycloak veya PostgreSQL kullanmaz.
 
 **Çıkış ölçütü:** Sipariş veya ilgili stok/sepet etkileri kısmi kalmaz; sipariş fiyatı istemci verisine dayanmaz; snapshot ve sahiplik korunur; SQLite regresyonu, PostgreSQL eşzamanlılık, UI ve Keycloak E2E kalite kapıları geçer.
 

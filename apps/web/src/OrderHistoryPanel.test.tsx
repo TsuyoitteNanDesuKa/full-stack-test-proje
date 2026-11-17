@@ -98,7 +98,9 @@ describe('OrderHistoryPanel', () => {
 
   it('navigates between pages and refreshes the first page', async () => {
     vi.mocked(getMyOrdersPage)
-      .mockResolvedValueOnce({ items: [sampleOrder], limit: 20, offset: 0, has_more: true })
+      .mockResolvedValueOnce({
+        items: [sampleOrder, { ...sampleOrder, id: 22 }], limit: 20, offset: 0, has_more: true,
+      })
       .mockResolvedValueOnce({ items: [{ ...sampleOrder, id: 20 }], limit: 20, offset: 20, has_more: false })
       .mockResolvedValueOnce({ items: [sampleOrder], limit: 20, offset: 0, has_more: true })
       .mockResolvedValueOnce({ items: [{ ...sampleOrder, id: 20 }], limit: 20, offset: 20, has_more: false })
@@ -106,6 +108,7 @@ describe('OrderHistoryPanel', () => {
     render(<OrderHistoryPanel latestOrder={null} refreshVersion={0} token="buyer-token" />)
     fireEvent.click(screen.getByRole('button', { name: 'Siparişlerim' }))
     await screen.findByRole('heading', { name: 'Sipariş #21' })
+    expect(screen.getAllByRole('navigation', { name: 'Sipariş geçmişi sayfaları' })).toHaveLength(1)
     expect(screen.getByRole('button', { name: 'Önceki sayfa' })).toBeDisabled()
     fireEvent.click(screen.getByRole('button', { name: 'Sonraki sayfa' }))
     await screen.findByRole('heading', { name: 'Sipariş #20' })
@@ -119,6 +122,21 @@ describe('OrderHistoryPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Yenile' }))
     await screen.findByRole('heading', { name: 'Sipariş #21' })
     expect(getMyOrdersPage).toHaveBeenLastCalledWith('buyer-token', 20, 0)
+  })
+
+  it('allows returning from an empty later page', async () => {
+    vi.mocked(getMyOrdersPage)
+      .mockResolvedValueOnce({ items: [sampleOrder], limit: 20, offset: 0, has_more: true })
+      .mockResolvedValueOnce({ items: [], limit: 20, offset: 20, has_more: false })
+      .mockResolvedValueOnce({ items: [sampleOrder], limit: 20, offset: 0, has_more: true })
+    render(<OrderHistoryPanel latestOrder={null} refreshVersion={0} token="buyer-token" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Siparişlerim' }))
+    await screen.findByRole('heading', { name: 'Sipariş #21' })
+    fireEvent.click(screen.getByRole('button', { name: 'Sonraki sayfa' }))
+    await screen.findByText('Bu sayfada sipariş yok.')
+    expect(screen.getByRole('button', { name: 'Sonraki sayfa' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Önceki sayfa' }))
+    await screen.findByRole('heading', { name: 'Sipariş #21' })
   })
 
   it('retries a failed page without showing the previous page as the new one', async () => {

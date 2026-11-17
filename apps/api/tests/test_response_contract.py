@@ -36,7 +36,10 @@ def response_schema(
     path: str,
     status_code: int,
 ) -> dict[str, Any]:
-    for template, path_item in contract["paths"].items():
+    paths = contract["paths"]
+    templates = sorted(paths, key=lambda template: template != path)
+    for template in templates:
+        path_item = paths[template]
         pattern = re.sub(r"\\\{[^}]+\\\}", r"[^/]+", re.escape(template))
         if not re.fullmatch(pattern, path):
             continue
@@ -161,6 +164,13 @@ def test_representative_api_responses_match_versioned_openapi_snapshot(
     order_list = client.get("/api/v1/orders", headers=buyer)
     assert order_list.status_code == 200
     assert_response_matches_contract(contract, "GET", "/api/v1/orders", order_list)
+    order_page = client.get("/api/v1/orders/page?limit=1&offset=0", headers=buyer)
+    assert order_page.status_code == 200
+    page = assert_response_matches_contract(contract, "GET", "/api/v1/orders/page", order_page)
+    assert [item["id"] for item in page["items"]] == [order["id"]]
+    invalid_page = client.get("/api/v1/orders/page?limit=0", headers=buyer)
+    assert invalid_page.status_code == 422
+    assert_response_matches_contract(contract, "GET", "/api/v1/orders/page", invalid_page)
     admin_orders = client.get("/api/v1/admin/orders", headers=admin)
     assert admin_orders.status_code == 200
     assert_response_matches_contract(contract, "GET", "/api/v1/admin/orders", admin_orders)
@@ -192,3 +202,15 @@ def test_response_contract_rejects_payloads_missing_required_fields() -> None:
 
     with pytest.raises(ValidationError):
         validator.validate({"sub": "buyer-subject"})
+
+
+def test_order_page_contract_rejects_missing_pagination_metadata() -> None:
+    contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
+    schema = response_schema(contract, "GET", "/api/v1/orders/page", 200)
+    registry = Registry().with_resource(
+        CONTRACT_URI,
+        Resource.from_contents(contract, default_specification=DRAFT202012),
+    )
+    validator = Draft202012Validator(_absolute_local_references(schema), registry=registry)
+    with pytest.raises(ValidationError):
+        validator.validate({"items": []})

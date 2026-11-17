@@ -201,6 +201,159 @@ def test_postgres_product_filters_match_search_and_price_boundaries(
     ]
 
 
+def test_postgres_order_page_orders_and_isolates_buyers(
+    postgres_client: TestClient, postgres_engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from shop_api.routes import orders as order_routes
+
+    timestamp = datetime(2026, 1, 1, tzinfo=UTC)
+    with Session(postgres_engine) as session:
+        orders = [
+            CustomerOrder(
+                owner_subject=owner,
+                idempotency_key=f"page-{index}",
+                status="pending_payment",
+                total_amount=Decimal("10.00"),
+                created_at=timestamp + timedelta(days=day),
+            )
+            for index, (owner, day) in enumerate(
+                [
+                    ("page-a", 1),
+                    ("page-b", 2),
+                    ("page-a", 2),
+                    ("page-a", 2),
+                    ("page-b", 0),
+                    ("page-a", 0),
+                ]
+            )
+        ]
+        session.add_all(orders)
+        session.flush()
+        for order in orders:
+            session.add(
+                OrderItem(
+                    order_id=order.id,
+                    product_name=f"snapshot-{order.id}",
+                    unit_price=Decimal("10.00"),
+                    quantity=1,
+                    line_total=Decimal("10.00"),
+                )
+            )
+        session.commit()
+        ids = [order.id for order in orders]
+
+    loaded_ids: list[list[int]] = []
+    original_load = order_routes.load_order_data
+
+    def track_load(db, selected, **kwargs):
+        loaded_ids.append([order.id for order in selected])
+        return original_load(db, selected, **kwargs)
+
+    monkeypatch.setattr(order_routes, "load_order_data", track_load)
+    buyer_a = _auth_headers(postgres_client, "page-a")
+    buyer_b = _auth_headers(postgres_client, "page-b")
+    expected_a = [ids[3], ids[2], ids[0], ids[5]]
+    for offset, expected, has_more in (
+        (0, expected_a[:2], True),
+        (2, expected_a[2:], False),
+        (4, [], False),
+    ):
+        response = postgres_client.get(
+            "/api/v1/orders/page", params={"limit": 2, "offset": offset}, headers=buyer_a
+        )
+        assert response.status_code == 200
+        page = response.json()
+        assert (page["limit"], page["offset"], page["has_more"]) == (2, offset, has_more)
+        assert [order["id"] for order in page["items"]] == expected
+        assert [order["items"][0]["product_name"] for order in page["items"]] == [
+            f"snapshot-{order_id}" for order_id in expected
+        ]
+    assert loaded_ids == [expected_a[:2], expected_a[2:], []]
+
+    response = postgres_client.get("/api/v1/orders/page?limit=1", headers=buyer_b)
+    assert response.status_code == 200
+    assert [order["id"] for order in response.json()["items"]] == [ids[1]]
+    assert response.json()["has_more"] is True
+    response = postgres_client.get("/api/v1/orders/page?limit=1&offset=1", headers=buyer_b)
+    assert response.status_code == 200
+    assert [order["id"] for order in response.json()["items"]] == [ids[4]]
+    assert response.json()["has_more"] is False
+    empty = postgres_client.get(
+        "/api/v1/orders/page", headers=_auth_headers(postgres_client, "page-empty")
+    )
+    assert empty.status_code == 200
+    assert empty.json() == {"items": [], "limit": 20, "offset": 0, "has_more": False}
+    largest = postgres_client.get("/api/v1/orders/page?limit=100", headers=buyer_a)
+    assert largest.status_code == 200
+    assert [order["id"] for order in largest.json()["items"]] == expected_a
+    assert largest.json()["has_more"] is False
+    far_page = postgres_client.get(
+        "/api/v1/orders/page?limit=100&offset=2147483647", headers=buyer_a
+    )
+    assert far_page.status_code == 200
+    assert far_page.json()["items"] == []
+    assert far_page.json()["has_more"] is False
+    for query in ("limit=0", "limit=101", "offset=-1", "offset=2147483648"):
+        response = postgres_client.get(f"/api/v1/orders/page?{query}", headers=buyer_a)
+        assert response.status_code == 422
+    assert postgres_client.get("/api/v1/orders/page").status_code == 401
+    assert (
+        postgres_client.get(
+            "/api/v1/orders/page", headers=_auth_headers(postgres_client, "page-seller", ["seller"])
+        ).status_code
+        == 403
+    )
+    legacy = postgres_client.get("/api/v1/orders", headers=buyer_a)
+    assert legacy.status_code == 200
+    assert [order["id"] for order in legacy.json()] == expected_a
+
+
+def test_postgres_order_page_offset_shifts_after_new_order(
+    postgres_client: TestClient, postgres_engine: Engine
+) -> None:
+    timestamp = datetime(2026, 1, 1, tzinfo=UTC)
+    with Session(postgres_engine) as session:
+        orders = [
+            CustomerOrder(
+                owner_subject="page-buyer",
+                idempotency_key=f"before-{index}",
+                status="pending_payment",
+                total_amount=Decimal("10.00"),
+                created_at=timestamp,
+            )
+            for index in range(3)
+        ]
+        session.add_all(orders)
+        session.commit()
+        ids = [order.id for order in orders]
+
+    headers = _auth_headers(postgres_client, "page-buyer")
+    first = postgres_client.get("/api/v1/orders/page?limit=2", headers=headers)
+    assert first.status_code == 200
+    assert [order["id"] for order in first.json()["items"]] == [ids[2], ids[1]]
+    assert first.json()["has_more"] is True
+
+    with Session(postgres_engine) as session:
+        newest = CustomerOrder(
+            owner_subject="page-buyer",
+            idempotency_key="newest",
+            status="pending_payment",
+            total_amount=Decimal("10.00"),
+            created_at=timestamp + timedelta(days=1),
+        )
+        session.add(newest)
+        session.commit()
+        newest_id = newest.id
+
+    second = postgres_client.get("/api/v1/orders/page?limit=2&offset=2", headers=headers)
+    assert second.status_code == 200
+    assert [order["id"] for order in second.json()["items"]] == [ids[1], ids[0]]
+    assert second.json()["has_more"] is False
+    refreshed = postgres_client.get("/api/v1/orders/page?limit=2", headers=headers)
+    assert refreshed.status_code == 200
+    assert [order["id"] for order in refreshed.json()["items"]] == [newest_id, ids[2]]
+
+
 def _add_item(
     engine: Engine,
     barrier: Barrier,
