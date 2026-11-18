@@ -73,14 +73,14 @@ Süreler tek örnek, farklı geçici veritabanı ve farklı çalışma anlarıyl
 
 ## Kanıt ve tekrar çalıştırma
 
-Ölçüm oturumunun `qa026-sql-analysis-evidence.zip` arşivinde tanı aracı ve iki çalışmanın SQL/plan JSON çıktıları bulunur; fixture, JWKS, token ve parola içermez. Arşiv repo dışındadır. Tekrar için [izole veritabanı hazırlığındaki](../performance/README.md) container, migration ve seed adımları uygulanır; mevcut veritabanı kullanılmaz. Seed'in ürettiği token içeren fixture'lar korunup işlem sonunda belgede anlatıldığı gibi temizlenir. API veya JWKS sunucusu başlatmak gerekmez.
+Tekrar kullanılabilir tanı aracı artık depodaki [`performance/measure-sql.py`](../performance/measure-sql.py) dosyasıdır. Tanı çıktılarının örnekleri ölçüm oturumunun `qa026-sql-analysis-evidence.zip` arşivindedir; fixture, JWKS, token ve parola içermez. Tekrar için [performans notlarındaki](../performance/README.md) izole PostgreSQL container'ı, migration ve seed adımları uygulanır; mevcut veritabanı kullanılmaz. Seed'in ürettiği token içeren fixture'lar korunup işlem sonunda belgede anlatıldığı gibi temizlenir. API veya JWKS sunucusu başlatmak gerekmez.
 
-Arşivi açtıktan sonra depo kökünde, aynı hazırlanmış salt okunur tanı verisi ve bağımlılıklarla:
+Depo kökünde, aynı hazırlanmış salt okunur tanı verisi ve bağımlılıklarla:
 
 ```powershell
 $env:SHOP_DATABASE_URL = "postgresql+psycopg://perf:local-perf-only@127.0.0.1:15432/shop_perf_test"
 $out = "<mevcut, boş çıktı dizini>"
-uv run --directory apps\api python "<arşivin açıldığı dizin>\measure-sql.py" --repo (Get-Location).Path --output $out
+uv run --directory apps\api python ..\..\performance\measure-sql.py --repo (Get-Location).Path --output $out
 ```
 
 Araç URL'yi yerel `15432` portu ve `shop_perf_test` adıyla sınırlar, ancak bu kontrol izolasyonu tek başına garanti etmez. Yalnız işlem için oluşturulan container kullanılmalı; iş bitince yalnız o container durdurulmalıdır. Araç API'nin test yardımcılarına ve geliştirme bağımlılıklarına ihtiyaç duyar.

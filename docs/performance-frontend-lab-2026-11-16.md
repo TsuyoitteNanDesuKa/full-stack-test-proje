@@ -31,24 +31,48 @@ LCP navigation başlangıcından itibaren Chromium `largest-contentful-paint` g�
 
 Her koşuda LCP adayı sayfanın `H1` öğesiydi. Altı koşuda da beklenen ekran görünür oldu, kaynak/istek hatası gözlenmedi. Katalogda 20 sentetik ürün ve gerçek API yanıtları kullanıldı. JS aktarımına test API yanıtları dahil değildir.
 
-## JS boyutu ve yorum
+## QA-027 seçici lazy loading tekrarı (18 Kasım 2026)
 
-Build'de tek JS dosyası oluştu: `index-DuNIFa-B.js`, **356.615 bayt** ham dosya boyutu; Node'un varsayılan gzip algoritmasıyla **100.006 bayt**. Gzip, dosyanın ayrıca hesaplanan boyutudur; sunucu bu koşularda gzip kullanmadığı için ölçülen ağ aktarımı değildir. Aktarılan 356.813 bayt, ham JS ve HTTP protokol başlıklarını içerir. İki ekranın da aynı JS paketini yüklediği gözlendi; uygulama panellerini ihtiyaç anında yükleme seçeneği ayrı bir iyileştirme adayıdır.
+Aynı laboratuvar profili ve üçer tekrar kullanılarak ilk optimizasyon adımı ölçüldü. Yalnız etkileşimle açılan adres defteri, ürün oluşturma ve yönetici satıcı başvuruları panelleri dinamik yüklenir; ilk sayfa render'ında görünen sepet, sipariş geçmişi ve rol panelleri ana pakette kalır. Bu seçim, tüm panelleri lazy yükleyen ilk denemede gözlenen 0,061–0,096 CLS artışını önlemek içindir.
+
+| Ekran | LCP tekrarları (ms) | LCP ortancası | CLS (tüm tekrarlar) | JS aktarımı |
+|---|---|---:|---:|---:|
+| Giriş | 2.812 / 2.808 / 2.788 | 2.808 ms | 0,01758 | 345.529 bayt |
+| Katalog | 2.892 / 2.920 / 2.916 | 2.916 ms | 0,01802 | 345.529 bayt |
+
+Build'in ana JS dosyası 345.331 bayt (Node gzip: 98.290 bayt); üç etkileşim paneli ayrı chunk'lardadır ve bu iki başlangıç senaryosunda istenmedi. Ölçüm anındaki HEAD `b39cff17b1c149a40aa4c33e5e7b346dba44ee58` idi; çalışma ağacı temiz değildi.
+
+Baseline'a göre ilk aktarım 11.284 bayt (%3,2) azaldı; CLS baseline düzeyinde kaldı. LCP ortancası girişte 28 ms, katalogda 20 ms daha yüksekti ve her iki ekran da 2.500 ms hedefini karşılamadı. Bu sonuç bir LCP iyileşmesi göstermiyor; JS gzip boyutu için belirlenen 90.005 bayt hedefi de karşılanmadı. Seçici lazy loading CLS regresyonunu önleyerek kabul edilebilir durumda, ancak QA-027 tamamlanmış sayılmaz; daha büyük bir ilk-yük iyileştirmesi ayrı ölçümle doğrulanmalıdır.
+
+## QA-027 etkileşim panelleri ve paralel ön yükleme (18 Kasım 2026)
+
+Sonraki yinelemede sepet, sipariş geçmişi, yönetici siparişleri ve satıcı siparişleri ayrı lazy chunk'lara alındı. Buyer girişinde sepet/sipariş chunk'ları oturum ve kimlik API istekleriyle paralel, engelleyici olmayan şekilde ön yüklenir; HomePage bu ön yüklemeyi beklemez. Satıcı başvuru paneli ana pakette kaldı; kaynak incelemesi, bu panelin veri yanıtı LCP sonrasına sarktığında karşılama ve ürün bölümlerinin dikey konumunun değiştiğini gösterdi. Adres defteri, ürün oluşturma ve yönetici başvuru yönetimi yalnız etkileşimle yüklenmeye devam eder.
+
+| Ekran | LCP tekrarları (ms) | LCP ortancası | CLS (tüm tekrarlar) | JS aktarımı |
+|---|---|---:|---:|---:|
+| Giriş | 2.660 / 2.676 / 2.752 | 2.676 ms | 0,01758 | 318.057 bayt |
+| Katalog | 2.768 / 2.768 / 2.780 | 2.768 ms | 0,03822 | 335.909 bayt |
+
+Baseline'a kıyasla giriş JS aktarımı 38.756 bayt (%10,9), katalog aktarımı 20.904 bayt (%5,9) azaldı. CLS her koşuda 0,1 hedefinin altında kaldı; katalog değeri baseline'dan yüksek olduğundan izlenmeye devam etmeli. LCP ortancaları baseline'a göre girişte 104 ms, katalogda 128 ms daha iyi olsa da 2.500 ms hedefini karşılamadı. Ana build dosyası 317.850 bayt (Node gzip: 93.630 bayt); gzip için belirlenen 90.005 bayt hedefi de henüz karşılanmadı. QA-027 devam ediyor.
+
+## Baseline JS boyutu ve yorum
+
+16 Kasım baseline build'inde tek JS dosyası oluştu: `index-DuNIFa-B.js`, **356.615 bayt** ham dosya boyutu; Node'un varsayılan gzip algoritmasıyla **100.006 bayt**. Gzip, dosyanın ayrıca hesaplanan boyutudur; sunucu bu koşularda gzip kullanmadığı için ölçülen ağ aktarımı değildir. Aktarılan 356.813 bayt, ham JS ve HTTP protokol başlıklarını içerir. Bu baseline'da iki ekran aynı paketi yükledi; QA-027 seçici lazy loading sonuçları yukarıda raporlanmıştır.
 
 İlk takip hedefleri olarak bu laboratuvar profilinde her koşuda LCP ≤ 2.500 ms ve CLS ≤ 0,1 önerilir; bunlar gerçek kullanıcı Core Web Vitals p75 ölçümü veya SLA değildir. Bu koşularda CLS hedefi karşılandı, LCP altı koşunun tamamında aşılmıştır. JS için aynı gzip yöntemiyle başlangıca göre en az %10 küçülme (≤ 90.005 bayt) ayrıca takip edilebilir; gerçek sunucuda sıkıştırma ve dağıtım koşulları ayrı ölçülmelidir. Üç tekrar ve paylaşılan makinedeki yük, gerçek kullanıcı deneyimi ya da üretim kapasitesi hakkında genelleme için yeterli değildir.
 
 ## Tekrar çalıştırma ve temizlik
 
-Ölçüm oturumunun `qa026-frontend-lab-2026-11-16-evidence.zip` arşivi ham JSON ve ölçüm aracını içerir; token veya özel anahtar içermez. Mevcut Playwright Chromium, frontend ve backend bağımlılıkları, Node, Python ve `uv` gerekir. `18080`, `18081`, `18082` portları boş olmalı; başka servisler durdurulmamalıdır. Araç yeni test kimliği ve geçici SQLite veritabanı oluşturur, veri seed'ini API üzerinden yapar ve kendi süreçlerini/veritabanını temizler.
+Tekrar kullanılabilir ölçüm aracı depodaki [`performance/frontend-lab.mjs`](../performance/frontend-lab.mjs) dosyasıdır. Ölçüm oturumunun `qa026-frontend-lab-2026-11-16-evidence.zip` arşivi ham JSON çıktısını içerir; token veya özel anahtar içermez. Mevcut Playwright Chromium, frontend ve backend bağımlılıkları, Node, Python ve `uv` gerekir. `18080`, `18081`, `18082` portları boş olmalı; başka servisler durdurulmamalıdır. Araç yeni test kimliği ve geçici SQLite veritabanı oluşturur, veri seed'ini API üzerinden yapar ve kendi süreçlerini/veritabanını temizler.
 
-Depo kökünden, arşiv açıldıktan sonra ve **yeni bir çıktı dosyası** kullanarak:
+Depo kökünden ve **yeni bir çıktı dosyası** kullanarak:
 
 ```powershell
 $env:VITE_OIDC_AUTHORITY = "http://127.0.0.1:18082/realms/e2e"
 $env:VITE_OIDC_CLIENT_ID = "shop-web"
 npm.cmd --prefix apps\web run build
 if ($LASTEXITCODE -ne 0) { throw "Production build başarısız" }
-node "<arşivin açıldığı dizin>\frontend-lab.mjs" (Get-Location).Path "<yeni çıktı dosyası>.json"
+node performance\frontend-lab.mjs (Get-Location).Path "<yeni çıktı dosyası>.json"
 if ($LASTEXITCODE -ne 0) { throw "Frontend laboratuvar ölçümü başarısız" }
 ```
 

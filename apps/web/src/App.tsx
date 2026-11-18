@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
 import {
@@ -22,14 +22,16 @@ import type {
   ProductSearchParams,
 } from './api'
 import { beginLogin, beginRegistration, endSession, getCurrentSession } from './auth'
-import AdminOrdersPanel from './AdminOrdersPanel'
-import AdminSellerApplicationsPanel from './AdminSellerApplicationsPanel'
-import CartPanel from './CartPanel'
-import AddressBookPanel from './AddressBookPanel'
-import OrderHistoryPanel from './OrderHistoryPanel'
-import ProductCreatePage from './ProductCreatePage'
+import LazyPanel from './LazyPanel'
 import SellerApplicationPanel from './SellerApplicationPanel'
-import SellerOrdersPanel from './SellerOrdersPanel'
+
+const AdminOrdersPanel = lazy(() => import('./AdminOrdersPanel'))
+const AdminSellerApplicationsPanel = lazy(() => import('./AdminSellerApplicationsPanel'))
+const AddressBookPanel = lazy(() => import('./AddressBookPanel'))
+const CartPanel = lazy(() => import('./CartPanel'))
+const OrderHistoryPanel = lazy(() => import('./OrderHistoryPanel'))
+const ProductCreatePage = lazy(() => import('./ProductCreatePage'))
+const SellerOrdersPanel = lazy(() => import('./SellerOrdersPanel'))
 
 function BrandMark() {
   return (
@@ -433,20 +435,22 @@ function HomePage({
 
   if ((isCreatingProduct || editingProduct !== null) && canCreateProducts) {
     return (
-      <ProductCreatePage
-        key={editingProduct?.id ?? 'new'}
-        onCancel={() => {
-          setIsCreatingProduct(false)
-          setEditingProduct(null)
-        }}
-        onSaved={(_product) => {
-          setRetryCount((count) => count + 1)
-          setIsCreatingProduct(false)
-          setEditingProduct(null)
-        }}
-        product={editingProduct ?? undefined}
-        token={token}
-      />
+      <LazyPanel>
+        <ProductCreatePage
+          key={editingProduct?.id ?? 'new'}
+          onCancel={() => {
+            setIsCreatingProduct(false)
+            setEditingProduct(null)
+          }}
+          onSaved={(_product) => {
+            setRetryCount((count) => count + 1)
+            setIsCreatingProduct(false)
+            setEditingProduct(null)
+          }}
+          product={editingProduct ?? undefined}
+          token={token}
+        />
+      </LazyPanel>
     )
   }
 
@@ -466,7 +470,9 @@ function HomePage({
             Mağazaya dön
           </button>
         </header>
-        <AdminSellerApplicationsPanel token={token} />
+        <LazyPanel>
+          <AdminSellerApplicationsPanel token={token} />
+        </LazyPanel>
       </main>
     )
   }
@@ -496,51 +502,57 @@ function HomePage({
             </button>
           </div>
           {isAddressBookOpen && (
-            <AddressBookPanel
+            <LazyPanel>
+              <AddressBookPanel
+                addresses={addresses}
+                isLoading={isAddressLoading}
+                loadError={addressLoadError}
+                onRetry={() => {
+                  setIsAddressLoading(true)
+                  setAddressLoadError('')
+                  setAddressRetryCount((count) => count + 1)
+                }}
+                onSaved={() => {
+                  setIsAddressLoading(true)
+                  setAddressRetryCount((count) => count + 1)
+                }}
+                token={token}
+              />
+            </LazyPanel>
+          )}
+          <LazyPanel>
+            <CartPanel
               addresses={addresses}
-              isLoading={isAddressLoading}
-              loadError={addressLoadError}
+              cart={cart}
+              error={cartError || cartLoadError}
+              deliveryMethod={deliveryMethod}
+              isCheckingOut={isCheckingOut}
+              isAddressLoading={isAddressLoading}
+              isLoading={isCartLoading}
+              isMutating={isCartMutating}
+              isOpen={isCartOpen}
+              onCheckout={handleCheckout}
+              onManageAddresses={() => setIsAddressBookOpen(true)}
+              onRemove={handleCartRemove}
               onRetry={() => {
-                setIsAddressLoading(true)
-                setAddressLoadError('')
-                setAddressRetryCount((count) => count + 1)
+                setIsCartLoading(true)
+                setCartLoadError('')
+                setCartRetryCount((count) => count + 1)
               }}
-              onSaved={() => {
-                setIsAddressLoading(true)
-                setAddressRetryCount((count) => count + 1)
-              }}
+              onToggle={() => setIsCartOpen((open) => !open)}
+              onUpdate={handleCartUpdate}
+              onSelectAddress={setSelectedAddressId}
+              onSelectDeliveryMethod={setDeliveryMethod}
+              selectedAddressId={selectedAddressId}
+            />
+          </LazyPanel>
+          <LazyPanel>
+            <OrderHistoryPanel
+              latestOrder={latestOrder}
+              refreshVersion={orderHistoryRefreshVersion}
               token={token}
             />
-          )}
-          <CartPanel
-            addresses={addresses}
-            cart={cart}
-            error={cartError || cartLoadError}
-            deliveryMethod={deliveryMethod}
-            isCheckingOut={isCheckingOut}
-            isAddressLoading={isAddressLoading}
-            isLoading={isCartLoading}
-            isMutating={isCartMutating}
-            isOpen={isCartOpen}
-            onCheckout={handleCheckout}
-            onManageAddresses={() => setIsAddressBookOpen(true)}
-            onRemove={handleCartRemove}
-            onRetry={() => {
-              setIsCartLoading(true)
-              setCartLoadError('')
-              setCartRetryCount((count) => count + 1)
-            }}
-            onToggle={() => setIsCartOpen((open) => !open)}
-            onUpdate={handleCartUpdate}
-            onSelectAddress={setSelectedAddressId}
-            onSelectDeliveryMethod={setDeliveryMethod}
-            selectedAddressId={selectedAddressId}
-          />
-          <OrderHistoryPanel
-            latestOrder={latestOrder}
-            refreshVersion={orderHistoryRefreshVersion}
-            token={token}
-          />
+          </LazyPanel>
         </>
       )}
       {sessionError && (
@@ -566,12 +578,18 @@ function HomePage({
           >
             Satıcı başvurularını yönet
           </button>
-          <AdminOrdersPanel token={token} />
+          <LazyPanel>
+            <AdminOrdersPanel token={token} />
+          </LazyPanel>
         </>
       ) : (
         <>
           <SellerApplicationPanel token={token} />
-          {roles.includes('seller') && <SellerOrdersPanel token={token} />}
+          {roles.includes('seller') && (
+            <LazyPanel>
+              <SellerOrdersPanel token={token} />
+            </LazyPanel>
+          )}
         </>
       )}
       <section aria-labelledby="products-heading" className="products-section">
@@ -794,10 +812,22 @@ function App() {
           return
         }
 
+        const panelPreloads: Promise<unknown>[] = [
+          import('./CartPanel'),
+          import('./OrderHistoryPanel'),
+        ]
         const [identity, homeResponse] = await Promise.all([
           getCurrentUser(session.accessToken),
           getHome(session.accessToken),
         ])
+        if (identity.is_admin) {
+          panelPreloads.push(import('./AdminOrdersPanel'))
+        }
+        if (identity.roles.includes('seller')) {
+          panelPreloads.push(import('./SellerOrdersPanel'))
+        }
+        // Preloads stay non-blocking; LazyPanel displays a visible error for failed chunks.
+        void Promise.allSettled(panelPreloads)
         if (active) {
           setHome({
             email: identity.email || session.email || 'Hesabın',

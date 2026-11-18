@@ -539,7 +539,7 @@ describe('Keycloak authentication and storefront', () => {
 
     await screen.findByRole('heading', { name: 'Alışverişe hoş geldiniz.' })
     await user.click(screen.getByRole('button', { name: /^Adreslerim$/ }))
-    await user.click(screen.getByRole('button', { name: 'Yenile' }))
+    await user.click(await screen.findByRole('button', { name: 'Yenile' }))
     await user.click(screen.getAllByRole('button', { name: 'Düzenle' })[0]!)
     await user.clear(screen.getByLabelText('Adres başlığı'))
     await user.type(screen.getByLabelText('Adres başlığı'), 'Yeni Ev')
@@ -1291,17 +1291,14 @@ describe('Keycloak authentication and storefront', () => {
 
   it('shows a connection-specific message when the catalog cannot be reached', async () => {
     setupApi()
-    vi.mocked(fetch).mockImplementation(async (input) => {
+    const fetchMock = vi.mocked(fetch)
+    const originalFetch = fetchMock.getMockImplementation()
+    if (!originalFetch) throw new Error('Expected the storefront API mock to be configured.')
+    fetchMock.mockImplementation(async (input, init) => {
       if (String(input).startsWith('/api/v1/products?')) {
         throw new TypeError('network failure')
       }
-      if (String(input) === '/api/v1/auth/me') {
-        return jsonResponse({ email: 'customer@example.com', is_admin: false })
-      }
-      if (String(input) === '/api/v1/seller-applications/me') {
-        return jsonResponse(null)
-      }
-      return jsonResponse({ message: 'Welcome', featured_categories: [] })
+      return originalFetch(input, init)
     })
     render(<App />)
 
@@ -1361,7 +1358,7 @@ describe('Keycloak authentication and storefront', () => {
     render(<App />)
 
     await user.click(await screen.findByRole('button', { name: '+ Ürün ekle' }))
-    await user.click(screen.getByRole('button', { name: 'Ürün listesine dön' }))
+    await user.click(await screen.findByRole('button', { name: 'Ürün listesine dön' }))
     expect(await screen.findByRole('table', { name: 'Ürün listesi' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '+ Ürün ekle' }))
     await user.type(screen.getByLabelText('Ürün adı'), newProduct.name)
@@ -1539,7 +1536,12 @@ describe('Keycloak authentication and storefront', () => {
         throw new TypeError('network failure')
       }
       if (String(input) === '/api/v1/auth/me') {
-        return jsonResponse({ email: 'admin@example.com', is_admin: true })
+        return jsonResponse({
+          subject: 'keycloak-admin',
+          email: 'admin@example.com',
+          roles: ['admin'],
+          is_admin: true,
+        })
       }
       if (String(input) === '/api/v1/home') {
         return jsonResponse({ message: 'Welcome', featured_categories: [] })

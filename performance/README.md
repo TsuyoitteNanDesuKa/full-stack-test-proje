@@ -1,4 +1,44 @@
-# QA-026 API yük senaryoları
+# QA-026 ölçüm araçları
+
+Ölçüm araçlarının kaynakları bu dizindedir; tekrar çalıştırmak için oturum arşivi gerekmez:
+
+- `load.js`, `seed.py`, `serve_jwks.py`, `report.py`: API yük ölçümü; aşağıdaki adımlar geçerlidir.
+- `measure-sql.py`: sipariş listelerinin SQL sorgu sayısı ve plan tanısı.
+- `frontend-lab.mjs`: giriş ve katalog ekranları için LCP, CLS ve JavaScript laboratuvar ölçümü.
+
+Ham k6 verileri, token içeren fixture'lar ve ölçüm çıktıları kaynak kodu değildir; repoya veya CI artefaktlarına eklenmemelidir. Her koşu için yeni, boş bir çıktı dizini kullanın. Raporları paylaşmadan önce kişisel veri, token veya yerel yol içermediklerini kontrol edin.
+
+## SQL tanı tekrarı
+
+API yük ölçümündeki izole PostgreSQL container'ını ve seed'i hazırlayın. `measure-sql.py` yalnız `127.0.0.1:15432/shop_perf_test` veya aynı localhost adresindeki veritabanını kabul eder; ayrıca oturum salt okunur olmalı ve beklenen sentetik tablo sayıları doğrulanmalıdır. Bu kontroller tek başına container izolasyonunu kanıtlamaz: yalnız bu koşu için oluşturulan PostgreSQL container'ını kullandığınızı doğrulayın.
+
+```powershell
+$env:SHOP_DATABASE_URL = "postgresql+psycopg://perf:local-perf-only@127.0.0.1:15432/shop_perf_test"
+$out = Join-Path $env:TEMP ("qa026-sql-" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path $out
+uv run --directory apps\api python ..\..\performance\measure-sql.py --repo (Get-Location).Path --output $out
+if ($LASTEXITCODE -ne 0) { throw "SQL tanı başarısız" }
+```
+
+Araç salt-okunur bağlantıda bir temsilî API isteği başına sorgu sayısını ölçer ve yakalanan sorgular için ayrı `EXPLAIN (ANALYZE, BUFFERS)` çalıştırır. Bu bir yük testi veya p95 ölçümü değildir. Çıktı `sql-results.json` istek parametrelerini ve planları içerir; test verisi dışında hassas bilgi olmadığını kontrol ederek güvenli konumda saklayın. Veritabanını yalnız bu tanı için oluşturduğunuz container'dan okuyun ve iş bitince yalnız o container'ı durdurun.
+
+## Frontend laboratuvar ölçüm tekrarı
+
+Gereksinimler: Node/npm, backend `uv` ortamı, Playwright ve kurulu Chromium. Ölçüm aracı yeni geçici SQLite veritabanı ve test anahtarları üretir; API, web ve JWKS sunucularını `127.0.0.1` üzerinde kendi başlatıp durdurur. 18080–18082 portları boş olmalıdır; başka servisleri kapatmayın. Frontend production build ayarları proje README'sindeki gibi olmalıdır.
+
+```powershell
+$env:VITE_OIDC_AUTHORITY = "http://127.0.0.1:18082/realms/e2e"
+$env:VITE_OIDC_CLIENT_ID = "shop-web"
+npm.cmd --prefix apps\web run build
+if ($LASTEXITCODE -ne 0) { throw "Production build başarısız" }
+$output = Join-Path $env:TEMP ("qa026-frontend-" + [guid]::NewGuid().ToString("N") + ".json")
+node performance\frontend-lab.mjs (Get-Location).Path $output
+if ($LASTEXITCODE -ne 0) { throw "Frontend laboratuvar ölçümü başarısız" }
+```
+
+Araç mevcut çıktı dosyasını ezmez ve ölçüm sonunda kendi geçici veritabanını/süreçlerini temizler. JSON raporu tarayıcı sürümünü, ölçüm profilini, commit ve çalışma ağacı durumunu, asset hash'lerini ve altı koşunun sonuçlarını kaydeder. Raporu güvenli konumda tutun; paylaşmadan önce yerel yolları ve çalışma ağacı bilgisini inceleyin.
+
+## API yük ölçümü
 
 Bu araçlar yalnız yerel, izole test içindir; canlı veya mevcut geliştirme veritabanına uygulanmaz. PostgreSQL 17, Python/uv ve k6 gerektirir. k6 `v2.4.0` ile doğrulanmıştır. Senaryolar normal API kimlik doğrulamasını geçici RS256/JWKS ile kullanır; Keycloak giriş performansı ölçülmez. Checkout yerel mock ödemedir.
 
