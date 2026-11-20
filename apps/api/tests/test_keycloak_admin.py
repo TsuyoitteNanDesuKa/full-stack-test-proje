@@ -1,4 +1,5 @@
 import json
+import logging
 from json import JSONDecodeError
 from urllib.error import HTTPError, URLError
 from urllib.request import Request
@@ -168,6 +169,26 @@ def test_seller_role_provisioning_wraps_transport_and_decode_errors(monkeypatch,
 
     with pytest.raises(KeycloakProvisioningError, match="failed"):
         provisioner.assign_seller_role("user-subject")
+
+
+@pytest.mark.security
+def test_seller_role_provisioning_log_omits_sensitive_http_url(monkeypatch, caplog) -> None:
+    sensitive_url = "http://keycloak.test/users/customer@example.com?access_token=private-token"
+    provisioner = KeycloakRoleProvisioner(Settings(keycloak_admin_client_secret="test-secret"))
+
+    def fail_send(*args: object, **kwargs: object) -> bytes:
+        raise HTTPError(sensitive_url, 403, "private-token rejected", None, None)
+
+    monkeypatch.setattr(KeycloakRoleProvisioner, "_send", staticmethod(fail_send))
+
+    with caplog.at_level(logging.ERROR, logger="shop_api.keycloak_admin"):
+        with pytest.raises(KeycloakProvisioningError):
+            provisioner.assign_seller_role("customer@example.com")
+
+    assert "HTTP 403" in caplog.text
+    assert sensitive_url not in caplog.text
+    assert "customer@example.com" not in caplog.text
+    assert "private-token" not in caplog.text
 
 
 def test_send_builds_request_and_returns_response_body(monkeypatch) -> None:

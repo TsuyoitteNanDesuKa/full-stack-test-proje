@@ -45,7 +45,7 @@ The API persists an approval as `approval_pending` until it can assign and verif
 ## Run the API
 
 ```powershell
-uv run uvicorn shop_api.main:create_app --factory --reload
+uv run uvicorn shop_api.main:create_app --factory --reload --no-access-log
 ```
 
 - OpenAPI UI: `http://127.0.0.1:8000/docs`
@@ -57,6 +57,8 @@ uv run uvicorn shop_api.main:create_app --factory --reload
 - Checkout: `POST /api/v1/orders` requires an `Idempotency-Key` header and a JSON body such as `{"address_id": 1, "delivery_method": "standard"}`. This replaces the previous bodyless checkout. Standard delivery costs 49.90 TRY, or is free at an item subtotal of at least 1,000 TRY; express costs 89.90 TRY. The order retains an immutable address and delivery snapshot. Item returns exclude the delivery fee.
 - Seller applications: buyer self-service routes under `/api/v1/seller-applications`; review routes require admin
 - Product create/update/delete: admin can manage all products; an approved seller can manage only their own products
+
+Operational endpoints are available outside the OpenAPI schema: `GET /health/live` reports process liveness without checking dependencies, while `GET /health/ready` returns `503` if the database or payment-expiry worker is unavailable. Readiness responses expose only dependency status, not underlying exception details. Every response includes a server-generated `X-Request-ID`, which is added to request-scoped application logs. The generic request summary records only the method and status; the API does not log the request URL, query, headers, or body, and error logs use sanitized summaries rather than raw exception details.
 
 The former `POST /api/v1/auth/login` endpoint has been removed. The browser redirects to Keycloak for login/registration; it must never send a password to the shop API. The API validates RS256 signatures, `iss`, `aud`, `exp`, `iat`, `sub`, and recognized realm roles. A JWKS connection failure returns `503` rather than accepting an unverifiable token.
 

@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 
@@ -9,8 +8,9 @@ from sqlalchemy.orm import Session
 from shop_api.models import CustomerOrder, OrderItem, Payment, Product
 from shop_api.order_fulfillment import set_order_fulfillments_status
 from shop_api.order_lifecycle import record_order_status_event
+from shop_api.request_context import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class StockRestorationError(Exception):
@@ -116,6 +116,9 @@ async def payment_expiry_worker(
     while True:
         try:
             await asyncio.to_thread(_expire_in_session, session_factory)
-        except Exception:
-            logger.exception("Payment expiry sweep failed.")
+        except Exception as error:
+            logger.error(
+                "Payment expiry sweep failed (error_type=%s).",
+                type(error).__name__,
+            )
         await asyncio.sleep(interval_seconds)

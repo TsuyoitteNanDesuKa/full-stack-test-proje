@@ -17,6 +17,28 @@ async function expectNoAccessibilityViolations(page: Page) {
   expect(violations, JSON.stringify(violations, null, 2)).toEqual([])
 }
 
+async function expectNoHorizontalOverflow(page: Page, width: number) {
+  await page.setViewportSize({ width, height: 720 })
+  await expectNoAccessibilityViolations(page)
+
+  const overflow = await page.evaluate(() => ({
+    document: document.documentElement.scrollWidth,
+    viewport: document.documentElement.clientWidth,
+    elements: Array.from(document.querySelectorAll('body *'))
+      .filter((element) => element.getBoundingClientRect().right > document.documentElement.clientWidth + 1)
+      .map((element) => ({
+        tag: element.tagName,
+        className: typeof element.className === 'string' ? element.className : '',
+        right: element.getBoundingClientRect().right,
+      }))
+      .slice(0, 10),
+  }))
+  expect(
+    overflow.document,
+    `Content must reflow without horizontal page overflow at ${width}px: ${JSON.stringify(overflow)}`,
+  ).toBeLessThanOrEqual(overflow.viewport)
+}
+
 test.describe('QA-017 accessibility @smoke', () => {
   test('unauthenticated entry has no WCAG 2.1 A/AA axe violations', async ({ page }) => {
     await page.goto('/')
@@ -87,24 +109,10 @@ test.describe('QA-023 critical browser accessibility @smoke', () => {
     await expect(page.getByRole('heading', { name: /Sipariş #/ })).toBeVisible()
     await expectNoAccessibilityViolations(page)
 
-    await page.setViewportSize({ width: 320, height: 720 })
-    await expectNoAccessibilityViolations(page)
-    const buyerOverflow = await page.evaluate(() => ({
-      document: document.documentElement.scrollWidth,
-      viewport: document.documentElement.clientWidth,
-      elements: Array.from(document.querySelectorAll('body *'))
-        .filter((element) => element.getBoundingClientRect().right > document.documentElement.clientWidth + 1)
-        .map((element) => ({
-          tag: element.tagName,
-          className: typeof element.className === 'string' ? element.className : '',
-          right: element.getBoundingClientRect().right,
-        }))
-        .slice(0, 10),
-    }))
-    expect(
-      buyerOverflow.document,
-      `Buyer content must reflow without horizontal page overflow: ${JSON.stringify(buyerOverflow)}`,
-    ).toBeLessThanOrEqual(buyerOverflow.viewport)
+    // 305px models the client area left by a classic 15px scrollbar in a 320px viewport.
+    for (const width of [320, 305]) {
+      await expectNoHorizontalOverflow(page, width)
+    }
 
     await scenario.authenticate(page, 'admin')
     await page.goto('/')
@@ -114,23 +122,8 @@ test.describe('QA-023 critical browser accessibility @smoke', () => {
     await expect(page.getByRole('heading', { name: 'Satıcı başvuruları' })).toBeVisible()
     await expectNoAccessibilityViolations(page)
 
-    await page.setViewportSize({ width: 320, height: 720 })
-    await expectNoAccessibilityViolations(page)
-    const adminOverflow = await page.evaluate(() => ({
-      document: document.documentElement.scrollWidth,
-      viewport: document.documentElement.clientWidth,
-      elements: Array.from(document.querySelectorAll('body *'))
-        .filter((element) => element.getBoundingClientRect().right > document.documentElement.clientWidth + 1)
-        .map((element) => ({
-          tag: element.tagName,
-          className: typeof element.className === 'string' ? element.className : '',
-          right: element.getBoundingClientRect().right,
-        }))
-        .slice(0, 10),
-    }))
-    expect(
-      adminOverflow.document,
-      `Admin content must reflow without horizontal page overflow: ${JSON.stringify(adminOverflow)}`,
-    ).toBeLessThanOrEqual(adminOverflow.viewport)
+    for (const width of [320, 305]) {
+      await expectNoHorizontalOverflow(page, width)
+    }
   })
 })

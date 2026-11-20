@@ -1,12 +1,12 @@
 import json
-import logging
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 from shop_api.config import Settings
+from shop_api.request_context import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class KeycloakProvisioningError(Exception):
@@ -80,14 +80,16 @@ class KeycloakRoleProvisioner:
         except KeycloakProvisioningError:
             raise
         except HTTPError as error:
-            logger.exception(
-                "Keycloak seller role provisioning returned HTTP %s from %s.",
+            logger.error(
+                "Keycloak seller role provisioning returned HTTP %s.",
                 error.code,
-                error.url,
             )
             raise KeycloakProvisioningError("Keycloak seller role provisioning failed.") from error
         except (URLError, TimeoutError, json.JSONDecodeError, OSError) as error:
-            logger.exception("Keycloak seller role provisioning failed.")
+            logger.error(
+                "Keycloak seller role provisioning failed (error_type=%s).",
+                type(error).__name__,
+            )
             raise KeycloakProvisioningError("Keycloak seller role provisioning failed.") from error
 
     @staticmethod

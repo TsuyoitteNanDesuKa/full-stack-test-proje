@@ -1,4 +1,3 @@
-import logging
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -11,6 +10,7 @@ from shop_api.database import get_db
 from shop_api.dependencies import get_admin_user, get_current_user
 from shop_api.keycloak_admin import KeycloakProvisioningError
 from shop_api.models import SellerApplication, SellerApplicationAudit
+from shop_api.request_context import get_logger
 from shop_api.schemas import (
     AdminSellerApplicationResponse,
     SellerApplicationAction,
@@ -23,7 +23,7 @@ from shop_api.schemas import (
 from shop_api.security import AuthenticatedUser
 
 router = APIRouter(prefix="/api/v1/seller-applications", tags=["seller applications"])
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 ACTIVE_STATUSES = (
     SellerApplicationStatus.DRAFT,
@@ -358,10 +358,10 @@ def review_application(
             request.app.state.keycloak_role_provisioner.assign_seller_role(
                 application.owner_subject
             )
-        except KeycloakProvisioningError:
-            logger.exception(
-                "Could not assign seller role for application %s.",
-                application.id,
+        except KeycloakProvisioningError as error:
+            logger.error(
+                "Could not assign seller role (error_type=%s).",
+                type(error).__name__,
             )
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

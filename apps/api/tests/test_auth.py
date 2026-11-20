@@ -175,7 +175,7 @@ def test_current_user_reports_keycloak_jwks_outage_as_unavailable(
         def get_signing_key_from_jwt(self, _: str) -> None:
             from jwt.exceptions import PyJWKClientConnectionError
 
-            raise PyJWKClientConnectionError("test outage")
+            raise PyJWKClientConnectionError(f"test outage {token} customer@example.com")
 
     client.app.state.jwks_client = UnavailableJwksClient()
     token = create_test_token(client)
@@ -187,3 +187,6 @@ def test_current_user_reports_keycloak_jwks_outage_as_unavailable(
 
     assert response.status_code == 503
     assert "Keycloak JWKS endpoint is unavailable" in caplog.text
+    assert response.headers["X-Request-ID"] in caplog.text
+    assert token not in caplog.text
+    assert "customer@example.com" not in caplog.text

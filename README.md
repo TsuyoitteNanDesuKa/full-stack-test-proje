@@ -2,6 +2,41 @@
 
 Bu proje, çevrimiçi alışveriş uygulamasını Agile yaklaşımla gereksinimlerden başlayarak geliştirirken yazılım testinin her seviyesini uygulamalı öğrenmek için hazırlanmıştır. Amaç yalnızca çalışan bir uygulama çıkarmak değil; testleri doğru seviyede tasarlamak, otomatikleştirmek, sonuçlarını yorumlamak ve kalite kararlarını kanıta dayandırmaktır. Ürün gereksinimleri [docs/requirements.md](./docs/requirements.md) dosyasında tutulur.
 
+## Mimari ve yerel demo
+
+**Mimari:** React/TypeScript/Vite tarayıcı istemcisi (5173) OIDC girişini Keycloak'tan (8080) alır ve FastAPI'ye (8000) çağrı yapar; uygulama verisi yerel PostgreSQL'de tutulur. Hızlı API ve Playwright testleri üretim kimlik sağlayıcısı yerine ephemeral OIDC/JWKS ve geçici SQLite kullanır. GitHub Actions ayrıca PostgreSQL entegrasyonu, tarayıcı E2E ve gece/elle tetiklenen gerçek Keycloak E2E işleri çalıştırır.
+
+**Yerel demo yolu (PowerShell):**
+
+1. Depo kökünde PostgreSQL ve Keycloak'ı başlatın:
+
+   ```powershell
+   Set-Location .
+   $env:KEYCLOAK_ADMIN_PASSWORD = Read-Host "Yerel Keycloak yönetici parolası"
+   docker compose up -d postgres keycloak
+   ```
+
+2. Ayrı bir terminalde API'yi hazırlayıp başlatın:
+
+   ```powershell
+   Set-Location apps/api
+   uv sync
+   if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+   uv run alembic upgrade head
+   uv run uvicorn shop_api.main:create_app --factory --reload
+   ```
+
+3. Başka bir terminalde web uygulamasını başlatın:
+
+   ```powershell
+   Set-Location apps/web
+   npm ci
+   if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+   npm run dev
+   ```
+
+4. `http://localhost:5173` adresinde alıcı hesabı oluşturun veya giriş yapın. Geliştirme değişkenleri, Keycloak kurulumu ve veritabanı güvenlik notları için aşağıdaki Backend bölümünü izleyin.
+
 ## Öğrenme hedefleri
 
 - Bir ürün fikrini test edilebilir gereksinimlere ve kabul kriterlerine dönüştürmek.
@@ -139,6 +174,14 @@ npm run test:e2e:keycloak
 Vitest smoke testi `npm run test:smoke`, tüm frontend regresyon testleri `npm test` veya `npm run test:coverage`; backend smoke `uv run pytest -m smoke`, tüm SQLite regresyonları `uv run pytest`, PostgreSQL entegrasyonları `uv run pytest -m postgres tests/test_cart_postgres.py` ile seçilir. Yeni testler için marker/tag ve çalışma politikası [gereksinim dokümanında](./docs/requirements.md#qa-020-test-sınıflandırması-ve-çalışma-sıklığı) açıklanmıştır.
 
 Frontend coverage, tüm projeyi değil kritik uygulama, API/auth ve `*Panel.tsx` dosyalarını ölçer; eşikler ve kapsam dışı dosyalar [web test katmanları](./apps/web/README.md#test-layers) bölümündedir. Coverage, davranış doğrulamasının veya E2E testlerinin yerine geçmez.
+
+## QA vaka çalışması: sipariş geçmişindeki N+1 sorguları
+
+1.000 siparişli buyer geçmişinde SQL tanısı sorgu sayısının 6.001'den toplu yükleme sonrası 13'e indiğini gösterdi. Üç bağımsız yük koşusunun p95 ortancası 44.234,9 ms'den 2.302,9 ms'ye (%94,8 düşüş) geriledi; hata oranı %0 olsa da üç koşunun tamamı 500 ms hedefini kaçırdı. Yanıt yaklaşık 1,03 MB kaldı ve ölçülen API CPU kullanımı bir çekirdeğe yakındı. Bu nedenle N+1 sorgu azaltımı önemli bir kazanımdır, fakat büyük buyer geçmişinin performans sorunu çözülmüş sayılmaz.
+
+Sonuçların sınırları ve tekrar adımları: [SQL analizi](./docs/performance-sql-analysis-2026-11-14.md), [üç tekrarlı yük karşılaştırması](./docs/performance-load-after-sql-2026-11-15.md), [ölçüm araçları](./performance/README.md). Yük karşılaştırmasının ölçüm çalışma ağacı temiz değildi; sonuçlar tek başına belirli bir kaynak değişikliğine atfedilmemelidir.
+
+Gerçek CI kanıtı: [20 Kasım 2026 tarihli başarılı GitHub Actions koşusu #35](https://github.com/TsuyoitteNanDesuKa/full-stack-test-proje/actions/runs/44714667009) ve [CI koşu geçmişi](https://github.com/TsuyoitteNanDesuKa/full-stack-test-proje/actions/workflows/ci.yml). Koşu `dc34f87` commit'indedir; yerel `main` bir commit ileride ve çalışma ağacı değişikliklidir, dolayısıyla bu koşu mevcut yerel değişiklikleri doğrulamaz. Backend, frontend, PostgreSQL, browser ve Keycloak raporları koşu artefaktlarında 4 Aralık 2026'ya kadar saklanır.
 
 Deterministik QA-019 senaryosu buyer ürün görüntüleme, sepet, adres, checkout ve mock ödeme akışını doğrular; buyer'ın ürün oluşturma girişimi reddedilir. Keycloak E2E'leri kayıt/giriş ve realm rol yönetimi testlerini içerir; admin CRUD/satıcı başvurusu geçici test hesapları kullanır. Satıcı akışı için API service-account secret'ı ve yerel realm rol eşlemeleri gerekir. Her iki kip de E2E'ye özel geçici SQLite veritabanını kullanır.
 

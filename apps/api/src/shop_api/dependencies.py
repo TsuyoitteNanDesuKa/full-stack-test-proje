@@ -1,4 +1,3 @@
-import logging
 from typing import Annotated, Any
 
 import jwt
@@ -6,9 +5,10 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt.exceptions import PyJWKClientConnectionError, PyJWKClientError
 
+from shop_api.request_context import get_logger
 from shop_api.security import AuthenticatedUser
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
@@ -39,8 +39,11 @@ def get_current_user(
             issuer=request.app.state.oidc_issuer,
             options={"require": ["exp", "iat", "sub", "iss", "aud"]},
         )
-    except PyJWKClientConnectionError:
-        logger.exception("Keycloak JWKS endpoint is unavailable.")
+    except PyJWKClientConnectionError as error:
+        logger.error(
+            "Keycloak JWKS endpoint is unavailable (error_type=%s).",
+            type(error).__name__,
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Kimlik sağlayıcısına şu anda ulaşılamıyor.",
