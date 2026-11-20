@@ -548,7 +548,7 @@ describe('Keycloak authentication and storefront', () => {
 
     await user.click(screen.getByRole('button', { name: 'Adres defterini kapat' }))
     await user.click(screen.getByRole('button', { name: 'Sepet (2)' }))
-    await user.click(screen.getByRole('button', { name: 'Adreslerimi yönet' }))
+    await user.click(await screen.findByRole('button', { name: 'Adreslerimi yönet' }))
     expect(screen.getByRole('heading', { name: 'Adres defterim' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Adres defterini kapat' }))
     await user.selectOptions(

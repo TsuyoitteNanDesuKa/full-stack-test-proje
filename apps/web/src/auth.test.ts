@@ -38,6 +38,11 @@ describe('Keycloak OIDC client', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     window.history.replaceState({}, '', '/')
+    window.sessionStorage.clear()
+    window.sessionStorage.setItem(
+      'oidc.user:http://localhost:8080/realms/shop:shop-web',
+      'stored-user',
+    )
     oidcMocks.getUser.mockResolvedValue({
       access_token: 'keycloak-access-token',
       expired: false,
@@ -48,7 +53,8 @@ describe('Keycloak OIDC client', () => {
     oidcMocks.signoutRedirect.mockResolvedValue(undefined)
   })
 
-  it('uses the public web client with authorization code and session-only storage', () => {
+  it('uses the public web client with authorization code and session-only storage', async () => {
+    await getCurrentSession()
     expect(oidcMocks.settings).toMatchObject({
       authority: 'http://localhost:8080/realms/shop',
       client_id: 'shop-web',
@@ -58,6 +64,14 @@ describe('Keycloak OIDC client', () => {
       automaticSilentRenew: false,
     })
     expect(oidcMocks.storageSettings?.store).toBe(window.sessionStorage)
+  })
+
+  it('skips loading the OIDC client when there is no stored session', async () => {
+    window.sessionStorage.clear()
+
+    await expect(getCurrentSession()).resolves.toBeNull()
+
+    expect(oidcMocks.getUser).not.toHaveBeenCalled()
   })
 
   it('returns an active Keycloak access token and profile email', async () => {

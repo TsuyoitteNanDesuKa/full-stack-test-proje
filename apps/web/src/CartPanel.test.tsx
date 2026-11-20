@@ -39,12 +39,10 @@ function renderCart(
     isMutating: false,
     isCheckingOut: false,
     error: '',
-    isOpen: true,
     addresses: [savedAddress],
     isAddressLoading: false,
     selectedAddressId: savedAddress.id,
     deliveryMethod: 'standard',
-    onToggle: vi.fn(),
     onManageAddresses: vi.fn(),
     onSelectAddress: vi.fn(),
     onSelectDeliveryMethod: vi.fn(),
@@ -179,14 +177,8 @@ describe('cart panel', () => {
     expect(screen.getByText('Sipariş toplamı').parentElement).toHaveTextContent(total)
   })
 
-  it('opens and closes when the cart toggle is activated', () => {
-    const { props, rerender } = renderCart(undefined, { isOpen: false })
-    const toggle = screen.getByRole('button', { name: 'Sepet (2)' })
-    expect(toggle).toHaveAttribute('aria-expanded', 'false')
-    fireEvent.click(toggle)
-    expect(props.onToggle).toHaveBeenCalledOnce()
-
-    rerender(<CartPanel {...props} isOpen />)
+  it('renders cart contents', () => {
+    renderCart()
     expect(screen.getByRole('heading', { name: 'Sepetim' })).toBeInTheDocument()
   })
 })

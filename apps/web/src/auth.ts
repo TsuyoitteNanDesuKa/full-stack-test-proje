@@ -1,4 +1,4 @@
-import { UserManager, WebStorageStateStore } from 'oidc-client-ts'
+import type { UserManager } from 'oidc-client-ts'
 
 export interface AuthSession {
   accessToken: string
@@ -8,22 +8,41 @@ export interface AuthSession {
 const authority = import.meta.env.VITE_OIDC_AUTHORITY ?? 'http://localhost:8080/realms/shop'
 const clientId = import.meta.env.VITE_OIDC_CLIENT_ID ?? 'shop-web'
 const redirectUri = window.location.origin
+// Match oidc-client-ts's default WebStorageStateStore key before loading its bundle.
+const userStorageKey = `oidc.user:${authority}:${clientId}`
 
-const userManager = new UserManager({
-  authority,
-  client_id: clientId,
-  redirect_uri: redirectUri,
-  post_logout_redirect_uri: redirectUri,
-  response_type: 'code',
-  disablePKCE: false,
-  scope: 'openid profile email',
-  userStore: new WebStorageStateStore({ store: window.sessionStorage }),
-  automaticSilentRenew: false,
-})
+let userManagerPromise: Promise<UserManager> | null = null
+
+function getUserManager(): Promise<UserManager> {
+  if (!userManagerPromise) {
+    userManagerPromise = import('oidc-client-ts').then(({ UserManager, WebStorageStateStore }) =>
+      new UserManager({
+        authority,
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        post_logout_redirect_uri: redirectUri,
+        response_type: 'code',
+        disablePKCE: false,
+        scope: 'openid profile email',
+        userStore: new WebStorageStateStore({ store: window.sessionStorage }),
+        automaticSilentRenew: false,
+      }),
+    )
+  }
+  return userManagerPromise
+}
+
+const initialQuery = new URLSearchParams(window.location.search)
+if (
+  (initialQuery.has('code') && initialQuery.has('state')) ||
+  (!initialQuery.has('error') && window.sessionStorage.getItem(userStorageKey))
+) {
+  void getUserManager()
+}
 
 let callbackPromise: Promise<void> | null = null
 
-function completeOidcCallback(): Promise<void> {
+function completeOidcCallback(userManager: UserManager): Promise<void> {
   if (callbackPromise) {
     return callbackPromise
   }
@@ -43,8 +62,14 @@ export async function getCurrentSession(): Promise<AuthSession | null> {
     return null
   }
 
-  if (query.has('code') && query.has('state')) {
-    await completeOidcCallback()
+  const hasCallback = query.has('code') && query.has('state')
+  if (!hasCallback && !window.sessionStorage.getItem(userStorageKey)) {
+    return null
+  }
+
+  const userManager = await getUserManager()
+  if (hasCallback) {
+    await completeOidcCallback(userManager)
   }
 
   const user = await userManager.getUser()
@@ -58,14 +83,17 @@ export async function getCurrentSession(): Promise<AuthSession | null> {
   }
 }
 
-export function beginLogin(): Promise<void> {
+export async function beginLogin(): Promise<void> {
+  const userManager = await getUserManager()
   return userManager.signinRedirect()
 }
 
-export function beginRegistration(): Promise<void> {
+export async function beginRegistration(): Promise<void> {
+  const userManager = await getUserManager()
   return userManager.signinRedirect()
 }
 
-export function endSession(): Promise<void> {
+export async function endSession(): Promise<void> {
+  const userManager = await getUserManager()
   return userManager.signoutRedirect()
 }

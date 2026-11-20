@@ -135,6 +135,9 @@ describe('critical flow accessibility', () => {
   it('has no WCAG 2.1 A/AA violations in cart and checkout', async () => {
     const { container } = render(
       <main>
+        <button aria-expanded="true" className="cart-toggle" type="button">
+          Sepet (2)
+        </button>
         <CartPanel
           addresses={[address]}
           cart={{ items: [cartItem], subtotal: '25.00' }}
@@ -144,14 +147,12 @@ describe('critical flow accessibility', () => {
           isCheckingOut={false}
           isLoading={false}
           isMutating={false}
-          isOpen
           onCheckout={vi.fn().mockResolvedValue(undefined)}
           onManageAddresses={vi.fn()}
           onRemove={vi.fn().mockResolvedValue(undefined)}
           onRetry={vi.fn()}
           onSelectAddress={vi.fn()}
           onSelectDeliveryMethod={vi.fn()}
-          onToggle={vi.fn()}
           onUpdate={vi.fn().mockResolvedValue(undefined)}
           selectedAddressId={address.id}
         />
@@ -233,6 +234,9 @@ describe('critical flow accessibility', () => {
     const user = userEvent.setup()
     render(
       <main>
+        <button aria-expanded="true" className="cart-toggle" type="button">
+          Sepet (2)
+        </button>
         <CartPanel
           addresses={[address]}
           cart={{ items: [cartItem], subtotal: '25.00' }}
@@ -242,14 +246,12 @@ describe('critical flow accessibility', () => {
           isCheckingOut={false}
           isLoading={false}
           isMutating={false}
-          isOpen
           onCheckout={vi.fn().mockResolvedValue(undefined)}
           onManageAddresses={vi.fn()}
           onRemove={vi.fn().mockResolvedValue(undefined)}
           onRetry={vi.fn()}
           onSelectAddress={vi.fn()}
           onSelectDeliveryMethod={vi.fn()}
-          onToggle={vi.fn()}
           onUpdate={vi.fn().mockResolvedValue(undefined)}
           selectedAddressId={address.id}
         />

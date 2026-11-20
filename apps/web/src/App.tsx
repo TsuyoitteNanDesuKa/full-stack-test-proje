@@ -520,32 +520,42 @@ function HomePage({
               />
             </LazyPanel>
           )}
-          <LazyPanel>
-            <CartPanel
-              addresses={addresses}
-              cart={cart}
-              error={cartError || cartLoadError}
-              deliveryMethod={deliveryMethod}
-              isCheckingOut={isCheckingOut}
-              isAddressLoading={isAddressLoading}
-              isLoading={isCartLoading}
-              isMutating={isCartMutating}
-              isOpen={isCartOpen}
-              onCheckout={handleCheckout}
-              onManageAddresses={() => setIsAddressBookOpen(true)}
-              onRemove={handleCartRemove}
-              onRetry={() => {
-                setIsCartLoading(true)
-                setCartLoadError('')
-                setCartRetryCount((count) => count + 1)
-              }}
-              onToggle={() => setIsCartOpen((open) => !open)}
-              onUpdate={handleCartUpdate}
-              onSelectAddress={setSelectedAddressId}
-              onSelectDeliveryMethod={setDeliveryMethod}
-              selectedAddressId={selectedAddressId}
-            />
-          </LazyPanel>
+          <section className="cart-section">
+            <button
+              aria-expanded={isCartOpen}
+              className="cart-toggle"
+              onClick={() => setIsCartOpen((open) => !open)}
+              type="button"
+            >
+              Sepet ({cart?.items.reduce((count, item) => count + item.quantity, 0) ?? 0})
+            </button>
+            {isCartOpen && (
+              <LazyPanel>
+                <CartPanel
+                  addresses={addresses}
+                  cart={cart}
+                  error={cartError || cartLoadError}
+                  deliveryMethod={deliveryMethod}
+                  isCheckingOut={isCheckingOut}
+                  isAddressLoading={isAddressLoading}
+                  isLoading={isCartLoading}
+                  isMutating={isCartMutating}
+                  onCheckout={handleCheckout}
+                  onManageAddresses={() => setIsAddressBookOpen(true)}
+                  onRemove={handleCartRemove}
+                  onRetry={() => {
+                    setIsCartLoading(true)
+                    setCartLoadError('')
+                    setCartRetryCount((count) => count + 1)
+                  }}
+                  onUpdate={handleCartUpdate}
+                  onSelectAddress={setSelectedAddressId}
+                  onSelectDeliveryMethod={setDeliveryMethod}
+                  selectedAddressId={selectedAddressId}
+                />
+              </LazyPanel>
+            )}
+          </section>
           <LazyPanel>
             <OrderHistoryPanel
               latestOrder={latestOrder}
@@ -812,10 +822,7 @@ function App() {
           return
         }
 
-        const panelPreloads: Promise<unknown>[] = [
-          import('./CartPanel'),
-          import('./OrderHistoryPanel'),
-        ]
+        const panelPreloads: Promise<unknown>[] = [import('./OrderHistoryPanel')]
         const [identity, homeResponse] = await Promise.all([
           getCurrentUser(session.accessToken),
           getHome(session.accessToken),
