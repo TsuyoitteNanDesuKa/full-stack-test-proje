@@ -47,6 +47,8 @@ Veri modeli kısıtları (ör. yabancı anahtar, `strict`/`min_length` şema do�
 | `routes/orders.py` | 213, 602 | Serializasyon ve yabancı anahtar kontrolleri |
 | `routes/cart.py` | 184 | `CartItem.product_id` yabancı anahtarı `ondelete` ile boşalır; ürün satırı bulunamadığında dal yalnızca `product_id` boşken girilen 176. satır koluna düşer |
 | `schemas.py` | 269, 283 | Pydantic `strict` ve `min_length` doğrulaması önce reddeder |
+| `main.py` | 97 | `Settings.payment_provider` alanı `mock` dışını doğrulamada reddeder; `create_app` dalı ulaşılamaz |
+| `main.py` | 146–151 | Middleware her istekte `request.state.request_id` atar; `else` kolu yalnızca middleware dışı bir hatada çalışır |
 
 ### B. Eşzamanlılık yarışları
 
@@ -59,6 +61,7 @@ Yalnızca iki eşzamanlı işlem arasında oluşan dallar. Sıralı SQLite testl
 | `routes/orders.py` | 296–297, 484, 490, 740–761 | Checkout/iptal döngüsü ile ödeme oluşturma arasındaki yarışlar; `IntegrityError` yeniden deneme yolu |
 | `routes/cart.py` | 60 | Eşzamanlı ilk sepet oluşturma (`IntegrityError`) |
 | `payment_expiry.py` | 74 | Süresi dolan ödeme taranırken webhook ile yarış |
+| `main.py` | 56–57 | Expiry worker görevinin lifespan kapanışındaki zamanlaması; worker istisnası `TestClient` kapanmadan önce işlenmeyebilir (`test_main_coverage_gaps.py` davranışı doğrular, satır kapsamı zamanlamaya bağlı) |
 
 Not: `cart.py` 60 için PostgreSQL eşzamanlılık testi mevcuttur (`test_cart_postgres.py`); ayrı bir kapsam ölçümüyle doğrulanır.
 
