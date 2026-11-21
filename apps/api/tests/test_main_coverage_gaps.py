@@ -19,6 +19,25 @@ def test_settings_reject_unsupported_payment_provider_before_app_creation(tmp_pa
         )
 
 
+def test_worker_that_returns_unexpectedly_is_marked_stopped_and_warned(
+    tmp_path,
+    monkeypatch,
+    caplog,
+) -> None:
+    async def returning_worker(_session_factory) -> None:
+        return None
+
+    monkeypatch.setattr(main_module, "payment_expiry_worker", returning_worker)
+    app = create_app(settings=Settings(database_url=f"sqlite:///{tmp_path / 'worker-returns.db'}"))
+
+    with caplog.at_level(logging.WARNING, logger="shop_api.main"):
+        with TestClient(app) as client:
+            assert client.get("/health/live").status_code == 200
+
+    assert "Payment expiry worker exited unexpectedly." in caplog.text
+    assert app.state.payment_expiry_worker_status == "stopped"
+
+
 def test_worker_failure_during_lifespan_is_logged_without_message_text(
     tmp_path,
     monkeypatch,

@@ -61,7 +61,7 @@ Yalnızca iki eşzamanlı işlem arasında oluşan dallar. Sıralı SQLite testl
 | `routes/orders.py` | 296–297, 484, 490, 740–761 | Checkout/iptal döngüsü ile ödeme oluşturma arasındaki yarışlar; `IntegrityError` yeniden deneme yolu |
 | `routes/cart.py` | 60 | Eşzamanlı ilk sepet oluşturma (`IntegrityError`) |
 | `payment_expiry.py` | 74 | Süresi dolan ödeme taranırken webhook ile yarış |
-| `main.py` | 56–57 | Expiry worker görevinin lifespan kapanışındaki zamanlaması; worker istisnası `TestClient` kapanmadan önce işlenmeyebilir (`test_main_coverage_gaps.py` davranışı doğrular, satır kapsamı zamanlamaya bağlı) |
+
 
 Not: `cart.py` 60 için PostgreSQL eşzamanlılık testi mevcuttur (`test_cart_postgres.py`); ayrı bir kapsam ölçümüyle doğrulanır.
 
