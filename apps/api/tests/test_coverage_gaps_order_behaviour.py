@@ -2,8 +2,7 @@
 
 from datetime import UTC, datetime
 
-from conftest import create_checkout_request, create_test_token
-from factories import product_payload
+from conftest import create_test_token
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from test_admin_orders import create_order

@@ -76,7 +76,10 @@ def test_detail_reflects_latest_price_and_stock_after_update(client: TestClient)
     admin = _headers(client, "detail-admin-update", ["admin"])
     product = _create_product(client, admin, price="10.00", stock=3)
     updated = {**product_payload(price="25.50", stock=9), "name": product["name"]}
-    assert client.put(f"/api/v1/products/{product['id']}", json=updated, headers=admin).status_code == 200
+    assert (
+        client.put(f"/api/v1/products/{product['id']}", json=updated, headers=admin).status_code
+        == 200
+    )
 
     response = client.get(f"/api/v1/products/{product['id']}", headers=admin)
 

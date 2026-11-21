@@ -1,4 +1,4 @@
-"""Coverage gap tests: webhook failure restoring stock above the stock ceiling, naive expiry timestamp."""
+"""Coverage gap tests: webhook stock ceiling failure and naive expiry timestamp."""
 
 import json
 from datetime import datetime, timedelta

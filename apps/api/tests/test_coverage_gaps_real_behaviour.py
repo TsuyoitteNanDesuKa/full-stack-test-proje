@@ -1,4 +1,4 @@
-"""Coverage gap tests for real behaviour: expiry skips settled payments, deleted-product cart edits."""
+"""Coverage gap tests: expiry skips settled payments, deleted-product cart edits."""
 
 from datetime import UTC, datetime, timedelta
 

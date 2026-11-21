@@ -2,7 +2,6 @@
 
 from conftest import create_test_token
 from fastapi.testclient import TestClient
-
 from test_seller_orders import create_paid_multi_seller_order
 
 

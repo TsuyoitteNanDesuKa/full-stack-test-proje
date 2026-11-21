@@ -1,4 +1,4 @@
-"""Coverage gap tests: refund reason trimming, Turkish phone normalization, expiry for non-pending orders."""
+"""Coverage gap tests: refund reason trimming, phone normalization, expiry of unpaid orders."""
 
 from datetime import UTC, datetime, timedelta
 
@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from shop_api.models import CustomerOrder, Payment
 from shop_api.payment_expiry import expire_due_payments
-from shop_api.schemas import AdminOrderRefundRequest, AddressRequest
+from shop_api.schemas import AddressRequest, AdminOrderRefundRequest
 
 
 def test_refund_reason_is_trimmed_before_length_check() -> None:
@@ -52,9 +52,7 @@ def _address(**overrides) -> AddressRequest:
     return AddressRequest(**data)
 
 
-def test_expiry_marks_payment_expired_without_touching_a_paid_order(
-    client, engine
-) -> None:
+def test_expiry_marks_payment_expired_without_touching_a_paid_order(client, engine) -> None:
     from test_admin_orders import auth_headers, create_order
 
     headers = auth_headers(client, "expiry-paid-order-gap")

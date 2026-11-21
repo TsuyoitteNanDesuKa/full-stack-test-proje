@@ -1,9 +1,9 @@
 """Coverage gap: checkout is rejected when a cart seller's store is no longer approved."""
 
+from conftest import create_checkout_request, create_test_token
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from test_seller_orders import create_seller_product
-from conftest import create_checkout_request, create_test_token
 
 from shop_api.models import SellerApplication
 

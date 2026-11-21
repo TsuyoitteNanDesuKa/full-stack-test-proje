@@ -1,7 +1,6 @@
 """Coverage gap tests for buyer order cancellation and product return edge branches."""
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 from test_admin_orders import auth_headers, create_order
 
@@ -82,5 +81,3 @@ def test_cancel_rejects_order_in_non_cancellable_state(client: TestClient, engin
 
     assert response.status_code == 409
     assert response.json()["detail"] == "Sipariş bu aşamada iptal edilemez."
-
-

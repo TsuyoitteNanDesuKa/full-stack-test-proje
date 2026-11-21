@@ -28,9 +28,7 @@ def test_worker_failure_during_lifespan_is_logged_without_message_text(
         raise RuntimeError("secret-detail-do-not-log")
 
     monkeypatch.setattr(main_module, "payment_expiry_worker", failing_worker)
-    app = create_app(
-        settings=Settings(database_url=f"sqlite:///{tmp_path / 'worker-failure.db'}")
-    )
+    app = create_app(settings=Settings(database_url=f"sqlite:///{tmp_path / 'worker-failure.db'}"))
 
     with caplog.at_level(logging.ERROR, logger="shop_api.main"):
         with TestClient(app) as client:

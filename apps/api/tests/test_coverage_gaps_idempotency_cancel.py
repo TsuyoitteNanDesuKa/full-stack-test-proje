@@ -1,4 +1,4 @@
-"""Coverage gap tests: idempotent checkout replay and repeated buyer cancellation (routes/orders.py)."""
+"""Coverage gap tests: idempotent checkout replay and repeated buyer cancellation."""
 
 from conftest import create_checkout_request, create_test_token
 from factories import product_payload
