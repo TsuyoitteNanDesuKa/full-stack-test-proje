@@ -23,7 +23,7 @@ Bu proje, çevrimiçi alışveriş uygulamasını Agile yaklaşımla gereksiniml
    uv sync
    if (-not (Test-Path .env)) { Copy-Item .env.example .env }
    uv run alembic upgrade head
-   uv run uvicorn shop_api.main:create_app --factory --reload
+   uv run uvicorn shop_api.main:create_app --factory --reload --no-access-log
    ```
 
 3. Başka bir terminalde web uygulamasını başlatın:
@@ -36,6 +36,8 @@ Bu proje, çevrimiçi alışveriş uygulamasını Agile yaklaşımla gereksiniml
    ```
 
 4. `http://localhost:5173` adresinde alıcı hesabı oluşturun veya giriş yapın. Geliştirme değişkenleri, Keycloak kurulumu ve veritabanı güvenlik notları için aşağıdaki Backend bölümünü izleyin.
+
+**Sürüm:** Güncel etiket [`v1.0.0`](https://github.com/TsuyoitteNanDesuKa/full-stack-test-proje/releases/tag/v1.0.0) (`5d49644`); kapsam, kalite kapıları ve bilinen sınırlamalar için [v1.0.0 sürüm notları](./docs/release-notes-v1.0.0.md) belgesine bakın.
 
 ## Öğrenme hedefleri
 
@@ -181,7 +183,7 @@ Frontend coverage, tüm projeyi değil kritik uygulama, API/auth ve `*Panel.tsx`
 
 Sonuçların sınırları ve tekrar adımları: [SQL analizi](./docs/performance-sql-analysis-2026-11-14.md), [üç tekrarlı yük karşılaştırması](./docs/performance-load-after-sql-2026-11-15.md), [ölçüm araçları](./performance/README.md). Yük karşılaştırmasının ölçüm çalışma ağacı temiz değildi; sonuçlar tek başına belirli bir kaynak değişikliğine atfedilmemelidir.
 
-Gerçek CI kanıtı: [20 Kasım 2026 tarihli başarılı GitHub Actions koşusu #35](https://github.com/TsuyoitteNanDesuKa/full-stack-test-proje/actions/runs/44714667009) ve [CI koşu geçmişi](https://github.com/TsuyoitteNanDesuKa/full-stack-test-proje/actions/workflows/ci.yml). Koşu `dc34f87` commit'indedir; yerel `main` bir commit ileride ve çalışma ağacı değişikliklidir, dolayısıyla bu koşu mevcut yerel değişiklikleri doğrulamaz. Backend, frontend, PostgreSQL, browser ve Keycloak raporları koşu artefaktlarında 4 Aralık 2026'ya kadar saklanır.
+Tarihsel CI kanıtı: [20 Kasım 2026 tarihli başarılı GitHub Actions koşusu #35](https://github.com/TsuyoitteNanDesuKa/full-stack-test-proje/actions/runs/44714667009) `dc34f87` commit'ine aittir ve o tarihteki N+1 ölçümünü kapsar. Sürüm `v1.0.0` (`5d49644`) için CI koşuları [CI koşu geçmişinde](https://github.com/TsuyoitteNanDesuKa/full-stack-test-proje/actions/workflows/ci.yml) izlenebilir. #35 koşusunun artefaktları 4 Aralık 2026'ya kadar saklanır.
 
 Deterministik QA-019 senaryosu buyer ürün görüntüleme, sepet, adres, checkout ve mock ödeme akışını doğrular; buyer'ın ürün oluşturma girişimi reddedilir. Keycloak E2E'leri kayıt/giriş ve realm rol yönetimi testlerini içerir; admin CRUD/satıcı başvurusu geçici test hesapları kullanır. Satıcı akışı için API service-account secret'ı ve yerel realm rol eşlemeleri gerekir. Her iki kip de E2E'ye özel geçici SQLite veritabanını kullanır.
 

@@ -76,6 +76,8 @@ The imported realm enables Keycloak admin-event recording without event details 
 
 The development API and Alembic migrations use PostgreSQL. API tests continue to use isolated SQLite databases and a test RSA/JWKS double for fast, deterministic unit and route coverage. They cover access-token signature and claim validation, role enforcement, JWKS unavailability, buyer cart ownership and stock behavior, deleted products, cart migration rollback, seller application/review and provisioning behavior, storefront/product behavior, and imported realm settings. Representative API responses are validated against the versioned `docs/openapi.json` snapshot with the test-only `jsonschema` dependency. PostgreSQL-specific cart persistence, constraints, and concurrency integration tests run separately against the dedicated Compose test database.
 
+Coverage gate and the classification of uncovered branches are documented in [docs/coverage-policy.md](../../docs/coverage-policy.md).
+
 ```powershell
 uv run pytest
 uv run pytest --cov=shop_api --cov-report=term-missing
