@@ -61,6 +61,7 @@ const calls: [string, () => Promise<unknown>][] = [
   ['home', () => api.getHome(token)],
   ['products', () => api.getProducts(token, 20, 0, { search: 'test', sort: 'name' })],
   ['create product', () => api.createProduct(token, productRequest(createTestProduct()))],
+  ['get product', () => api.getProduct(token, 1)],
   ['update product', () => api.updateProduct(token, 1, productRequest(createTestProduct()))],
   ['delete product', () => api.deleteProduct(token, 1)],
   ['cart', () => api.getMyCart(token)],

@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -76,6 +76,22 @@ def list_products(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get("/{product_id}", response_model=ProductResponse)
+def get_product(
+    product_id: Annotated[int, Path(ge=1)],
+    current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> ProductResponse:
+    product = db.get(Product, product_id)
+    if product is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ürün bulunamadı.",
+        )
+    db.refresh(product)
+    return _product_response(product, current_user)
 
 
 @router.post(

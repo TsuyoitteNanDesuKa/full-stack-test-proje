@@ -345,6 +345,12 @@ export function getProducts(
   })
 }
 
+export function getProduct(token: string, productId: number): Promise<Product> {
+  return request<Product>(`/api/v1/products/${productId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
 export function createProduct(
   token: string,
   product: ProductCreateRequest,

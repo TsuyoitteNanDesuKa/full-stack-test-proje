@@ -26,12 +26,20 @@ import LazyPanel from './LazyPanel'
 import SellerApplicationPanel from './SellerApplicationPanel'
 
 const AdminOrdersPanel = lazy(() => import('./AdminOrdersPanel'))
+const ProductDetailPanel = lazy(() => import('./ProductDetailPanel'))
 const AdminSellerApplicationsPanel = lazy(() => import('./AdminSellerApplicationsPanel'))
 const AddressBookPanel = lazy(() => import('./AddressBookPanel'))
 const CartPanel = lazy(() => import('./CartPanel'))
 const OrderHistoryPanel = lazy(() => import('./OrderHistoryPanel'))
 const ProductCreatePage = lazy(() => import('./ProductCreatePage'))
 const SellerOrdersPanel = lazy(() => import('./SellerOrdersPanel'))
+
+function productIdFromPath(pathname: string): number | null {
+  const match = /^\/products\/(\d+)\/?$/.exec(pathname)
+  if (!match) return null
+  const id = Number(match[1])
+  return Number.isSafeInteger(id) && id > 0 ? id : null
+}
 
 function BrandMark() {
   return (
@@ -164,6 +172,16 @@ function HomePage({
   const [productMaxPrice, setProductMaxPrice] = useState('')
   const [productSort, setProductSort] = useState<ProductSearchParams['sort']>('id')
   const [appliedProductFilters, setAppliedProductFilters] = useState<ProductSearchParams>({})
+  const [productDetailId, setProductDetailId] = useState<number | null>(() =>
+    productIdFromPath(window.location.pathname),
+  )
+  useEffect(() => {
+    function syncProductDetailFromLocation() {
+      setProductDetailId(productIdFromPath(window.location.pathname))
+    }
+    window.addEventListener('popstate', syncProductDetailFromLocation)
+    return () => window.removeEventListener('popstate', syncProductDetailFromLocation)
+  }, [])
   const [isCreatingProduct, setIsCreatingProduct] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [deletingProductId, setDeletingProductId] = useState<number | null>(null)
@@ -183,6 +201,7 @@ function HomePage({
   const [isCartOpen, setIsCartOpen] = useState(false)
   const [isCartMutating, setIsCartMutating] = useState(false)
   const [cartError, setCartError] = useState('')
+  const [lastAddedProductId, setLastAddedProductId] = useState<number | null>(null)
   const [addingProductId, setAddingProductId] = useState<number | null>(null)
   const [isCheckingOut, setIsCheckingOut] = useState(false)
   const [latestOrder, setLatestOrder] = useState<CustomerOrder | null>(null)
@@ -332,6 +351,7 @@ function HomePage({
       const updatedCart = await addCartItem(token, { product_id: product.id, quantity: 1 })
       setCart(updatedCart)
       setCartLoadError('')
+      setLastAddedProductId(product.id)
       setIsCartOpen(true)
     } catch (error) {
       setCartError(getCartErrorMessage(error))
@@ -431,6 +451,26 @@ function HomePage({
     } finally {
       setDeletingProductId(null)
     }
+  }
+
+  if (productDetailId !== null) {
+    return (
+      <LazyPanel>
+        <ProductDetailPanel
+          addedToCart={lastAddedProductId === productDetailId && !cartError && !cartLoadError}
+          key={productDetailId}
+          cartMessage={cartError || cartLoadError}
+          isAdding={addingProductId === productDetailId}
+          onAddToCart={(product) => handleAddToCart(product)}
+          onBack={() => {
+            window.history.pushState({}, '', '/')
+            setProductDetailId(null)
+          }}
+          productId={productDetailId}
+          token={token}
+        />
+      </LazyPanel>
+    )
   }
 
   if ((isCreatingProduct || editingProduct !== null) && canCreateProducts) {
@@ -732,7 +772,16 @@ function HomePage({
                 {products.map((product) => (
                   <tr key={product.id}>
                     <th scope="row">
-                      {product.name}
+                      <a
+                        href={`/products/${product.id}`}
+                        onClick={(event) => {
+                          event.preventDefault()
+                          window.history.pushState({}, '', `/products/${product.id}`)
+                          setProductDetailId(product.id)
+                        }}
+                      >
+                        {product.name}
+                      </a>
                       {product.updated_at && (
                         <time
                           className="product-updated-badge"

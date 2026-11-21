@@ -1127,3 +1127,34 @@ Kategoriler örtüşebilir. PostgreSQL testleri `integration` ve `postgres`; Pla
 - **Onay/rol provisioning:** `apps/api/tests/test_seller_applications.py`; başarılı onay/audit, Keycloak provisioning hatası, pending durum ve güvenli retry.
 - **Gerçek Keycloak E2E:** `apps/web/e2e/seller-applications.spec.ts`; buyer başvurur, admin onaylar, yeni oturumda buyer+seller rolleri görülür, seller ürün yayımlar ve başka buyer ortak katalogda ürünü salt okunur görür.
 - **Geliştirme/test kapısı:** İlgili backend testleri, frontend lint/build ve mevcut gerçek Keycloak E2E kalite kapısı geçmelidir; E2E yalnız yapılandırılmış yerel test realm'inde çalıştırılır.
+
+## REQ-020 — Alıcı ürün detay sayfası
+
+- **Öncelik:** P5 (ROADMAP sıradaki planlı iş)
+- **Durum:** Tamamlandı. Backend ürün/sözleşme testleri geçti; web 305/305 test geçti, `App.tsx`/`api.ts`/`ProductCreatePage.tsx` %100 kapısı korundu; deterministik Playwright `product-detail.spec.ts` 3/3 geçti (katalog → detay → sepete ekle, doğrudan URL, bulunamadı). Sepete ekleme sonucu detay sayfasında satır içi bildirilir.
+- **Kullanıcı hikâyesi:** Alıcı olarak katalogdaki bir ürünü açıp güncel fiyat ve stok bilgisini görmek, ürünü sepete ekleyip sonucunu görmek istiyorum; böylece satın alma kararını ürün bazında verebilirim.
+- **Kapsam:** Kimliği doğrulanmış kullanıcılar için tekil ürün okuma uç noktası ve buna bağlı istemci sayfası. Ürün görseli yükleme/depolama, varyant, puan/yorum, kampanya ve gerçek ödeme/kargo entegrasyonu kapsam dışıdır. İlk dilimde ürünlerde görsel alanı olmadığından görsel gösterimi yapılmaz.
+- **Yetki kaynağı:** Okuma, mevcut katalog görünürlük kuralına uyar: kimliği doğrulanmış her kullanıcı (buyer, seller, admin) ortak kataloğu görebildiği gibi tekil ürünü de görebilir. Yönetim yetkisi bilgisi (`can_manage`) mevcut owner/admin kurallarıyla aynı şekilde hesaplanır.
+
+### Kabul kriterleri
+
+1. `GET /api/v1/products/{product_id}` kimliği doğrulanmış kullanıcılara ürün temsilini döndürür; yanıt mevcut `ProductResponse` şemasıyla aynıdır (ad, kategori, açıklama, fiyat, stok, `can_manage`, zaman damgaları).
+2. Kimlik doğrulaması yoksa veya token geçersizse `401`; istek kimlik doğrulamasından geçmiş ama ürün yoksa `404` döner.
+3. Silinmiş veya hiç var olmayan ürün kimliği `404` ile yanıtlanır ve yanıt ürün varlığını başka bir şekilde ifşa etmez.
+4. Geçersiz kimlik biçimi (sıfır/negatif/sayı olmayan) doğrulama hatası döndürür ve veritabanına gitmez.
+5. `can_manage` yalnız admin veya ürünün sahibi olan seller için `true`'dur; buyer için her zaman `false`'tur.
+6. Fiyat ve stok bilgisi her istekte veritabanındaki güncel değeri yansıtır; ürün detayında gösterilen stok, sepete ekleme kontrolüyle aynı kaynaktan gelir.
+7. UI katalogdaki ürün adından/bağlantısından detay sayfasına gider; doğrudan URL (`/products/{id}`) açılır ve yenilemede aynı içeriği yükler.
+8. UI yükleniyor, API hatası (tekrar dene), bulunamayan ürün (`404`) ve stokta olmayan ürün durumlarını ayrı ve erişilebilir biçimde gösterir.
+9. Buyer ürünü detay sayfasından sepete ekleyebilir; stok sınırı aşıldığında veya ürün artık yoksa sepet mevcut hata davranışını (REQ-009) korur ve sonucu açıkça bildirir.
+10. Detay sayfasındaki sepete ekleme, sepet özetini ve sepet sayacını katalogdaki eklemeyle aynı şekilde günceller.
+
+### Test planı ve izlenebilirlik
+
+- **API/entegrasyon (`apps/api/tests/test_products.py`):** Kimlik doğrulamasız `401`; geçersiz token `401`; mevcut ürün (buyer, seller sahibi, admin) `200` ve `can_manage` doğrulaması; olmayan/silinmiş ürün `404`; geçersiz kimlik biçimi `422`; güncel fiyat/stok yansıması.
+- **OpenAPI/sözleşme:** `docs/openapi.json` snapshot'ı ve `apps/web/src/api.contract.ts` yeni yol/yöntem için güncellenir; `contract:check` ve `test_openapi_contract.py` geçer.
+- **Component/API client (`apps/web/src/api.test.ts`, yeni detay bileşen testi):** Yükleniyor, API hatası ve yeniden deneme, `404` (bulunamadı), stok yok, başarılı gösterim ve sepete ekleme sonucu.
+- **E2E (`apps/web/e2e/qa-019-deterministic.spec.ts`):** Buyer katalog → ürün detayı → sepete ekle; doğrudan URL ile açılış; olmayan ürün için `404` durumu. Deterministik sağlayıcı ile CI'da çalışır.
+- **Regresyon:** Katalog listeleme/filtreleme (REQ-013), admin/seller CRUD (REQ-003–005, REQ-016) ve sepet/checkout (REQ-009–010) değişmeden geçer.
+
+**Çıkış ölçütü:** Detay uç noktası ve sayfası erişilebilir; fiyat/stok ve sepet sonucu katalogla tutarlı; sözleşme, API, component ve deterministik E2E kapıları geçer.
