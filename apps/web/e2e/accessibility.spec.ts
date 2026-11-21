@@ -66,6 +66,49 @@ test.describe('QA-017 accessibility @smoke', () => {
   })
 })
 
+test.describe('P2 keyboard-only buyer journey @smoke', () => {
+  test('buyer reaches the add-to-cart control and the product detail link by keyboard', async ({
+    page,
+    scenario,
+  }) => {
+    const product = await scenario.api.createProduct({
+      name: `P2 keyboard ${scenario.id.slice(4, 16)}`,
+      category: 'Test',
+      description: 'Product for keyboard-only navigation checks.',
+      price: '18.00',
+      stock: 3,
+    })
+
+    await scenario.authenticate(page, 'buyer')
+    await page.goto('/')
+    const row = page.getByRole('row').filter({ hasText: product.name })
+    await expect(row).toBeVisible()
+
+    // Focus the product link by tabbing from the top of the page until it receives focus.
+    const productLink = row.getByRole('link', { name: product.name })
+    for (let step = 0; step < 60; step += 1) {
+      if (await productLink.evaluate((element) => element === document.activeElement)) break
+      await page.keyboard.press('Tab')
+    }
+    await expect(productLink).toBeFocused()
+    await expect(productLink).toHaveCSS('outline-style', /solid|auto/)
+
+    await page.keyboard.press('Enter')
+    await expect(page).toHaveURL(new RegExp(`/products/${product.id}$`))
+    await expect(page.getByRole('heading', { name: product.name, level: 1 })).toBeVisible()
+
+    // The detail page's primary action must be reachable and operable by keyboard.
+    const addToCart = page.getByRole('button', { name: 'Sepete ekle', exact: true })
+    for (let step = 0; step < 20; step += 1) {
+      if (await addToCart.evaluate((element) => element === document.activeElement)) break
+      await page.keyboard.press('Tab')
+    }
+    await expect(addToCart).toBeFocused()
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('status')).toHaveText('Ürün sepetine eklendi.')
+  })
+})
+
 test.describe('QA-023 critical browser accessibility @smoke', () => {
   test('buyer and admin flows meet WCAG 2.1 A/AA and reflow at mobile width', async ({
     page,
