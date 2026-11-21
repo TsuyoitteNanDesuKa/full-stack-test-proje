@@ -49,6 +49,7 @@ it('rejects a checkout callback when no address is selected', async () => {
   vi.stubGlobal('fetch', fetchMock)
   render(<App />)
 
+  fireEvent.click(await screen.findByRole('button', { name: /^Sepet \(\d+\)$/ }))
   fireEvent.click(await screen.findByRole('button', { name: 'Force checkout' }))
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'önce bir teslimat adresi ekle veya seç',
