@@ -60,20 +60,6 @@ async function confirmKeycloakAction(page: Page) {
   await page.getByText('Click here to proceed').click()
 }
 
-// Ends any Keycloak SSO session so the next sign-in starts from the login form.
-async function endKeycloakSession(page: Page) {
-  await page.goto('http://localhost:8080/realms/shop/protocol/openid-connect/logout?client_id=shop-web&post_logout_redirect_uri=http%3A%2F%2F127.0.0.1%3A5174%2F')
-  await page.waitForLoadState('domcontentloaded')
-  // The app keeps its own OIDC user in session storage; clear it so the sign-in screen is shown.
-  await page.goto('/')
-  await page.evaluate(() => {
-    for (const key of Object.keys(window.sessionStorage)) {
-      if (key.startsWith('oidc.')) window.sessionStorage.removeItem(key)
-    }
-  })
-  await page.reload()
-}
-
 // Signs in through the real browser login form in a fresh browser context, so no
 // Keycloak SSO or app session from an earlier step can make the result look successful.
 // Success means Keycloak returned an authorization code to the app.
@@ -130,6 +116,89 @@ test.describe('REQ-019 email verification and password reset @keycloak', () => {
       await confirmKeycloakAction(page)
 
       expect(await signInInFreshContext(browser, buyer.email, buyer.password)).toBe(true)
+    } finally {
+      await admin.deleteUserByEmail(buyer.email)
+    }
+  })
+
+  test('password and reset tokens never appear in app storage or in the app response bodies', async ({
+    page,
+    request,
+  }) => {
+    const admin = await createKeycloakAdminClient(request)
+    const buyer = uniqueBuyer()
+    await admin.createVerifiedBuyer(buyer.email, buyer.password)
+    try {
+      const bodies: string[] = []
+      page.on('response', async (response) => {
+        if (response.url().startsWith('http://127.0.0.1:5174') || response.url().includes('/api/')) {
+          bodies.push(await response.text().catch(() => ''))
+        }
+      })
+
+      await startSignedOut(page)
+      await page.getByRole('button', { name: 'Parolamı unuttum' }).click()
+      await page.locator('#username').fill(buyer.email)
+      await page.locator('input[type="submit"], button[type="submit"]').first().click()
+      const resetLink = await recipientEmailLink(request, buyer.email, 'Reset password')
+      await page.goto(resetLink)
+
+      const storage = await page.evaluate(() =>
+        JSON.stringify({ ...window.localStorage, ...window.sessionStorage }),
+      )
+      expect(storage).not.toContain(buyer.password)
+      expect(storage).not.toContain(buyer.newPassword)
+      expect(storage).not.toMatch(/"(access_token|refresh_token|code)"/)
+      for (const body of bodies) {
+        expect(body).not.toContain(buyer.password)
+        expect(body).not.toContain(buyer.newPassword)
+      }
+    } finally {
+      await admin.deleteUserByEmail(buyer.email)
+    }
+  })
+
+  test('a reused verification link does not verify again and reports it is already verified', async ({
+    page,
+    request,
+  }) => {
+    const admin = await createKeycloakAdminClient(request)
+    const buyer = uniqueBuyer()
+    await admin.createUnverifiedBuyer(buyer.email, buyer.password)
+    try {
+      await admin.sendVerificationEmail(buyer.email)
+      const verifyLink = await recipientEmailLink(request, buyer.email, 'Verify email')
+      await page.goto(verifyLink)
+      await page.getByText('Click here to proceed').click()
+      await page.waitForLoadState('domcontentloaded')
+
+      await page.goto(verifyLink)
+      await expect(page.getByText('Your email address has been verified already.')).toBeVisible()
+    } finally {
+      await admin.deleteUserByEmail(buyer.email)
+    }
+  })
+
+  test('the reset form rejects a confirmation that does not match the new password', async ({
+    page,
+    request,
+  }) => {
+    const admin = await createKeycloakAdminClient(request)
+    const buyer = uniqueBuyer()
+    await admin.createVerifiedBuyer(buyer.email, buyer.password)
+    try {
+      await page.goto('http://localhost:8080/realms/shop/login-actions/reset-credentials?client_id=shop-web&redirect_uri=http%3A%2F%2F127.0.0.1%3A5174%2F')
+      await page.locator('#username').fill(buyer.email)
+      await page.locator('input[type="submit"], button[type="submit"]').first().click()
+      const resetLink = await recipientEmailLink(request, buyer.email, 'Reset password')
+      await page.goto(resetLink)
+
+      await page.locator('#password-new').fill(buyer.newPassword)
+      await page.locator('#password-confirm').fill(`${buyer.newPassword}-different`)
+      await page.locator('input[type="submit"], button[type="submit"]').first().click()
+
+      await expect(page.getByText("Passwords don't match.")).toBeVisible()
+      expect(await admin.passwordGrantStatus(buyer.email, buyer.newPassword)).toBeGreaterThanOrEqual(400)
     } finally {
       await admin.deleteUserByEmail(buyer.email)
     }

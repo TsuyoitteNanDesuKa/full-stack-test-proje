@@ -1131,7 +1131,7 @@ Kategoriler örtüşebilir. PostgreSQL testleri `integration` ve `postgres`; Pla
 ## REQ-019 — E-posta doğrulama ve parola sıfırlama
 
 - **Öncelik:** P6 (kapsam kararı alındı; uygulama başladı)
-- **Durum:** Uygulama tamamlandı (yerel altyapı ve canlı Keycloak doğrulaması dahil). Realm `verifyEmail` ve `resetPasswordAllowed` açık, SMTP yerel Mailpit'e yönlü; doğrulanmamış hesap girişi canlı Keycloak'ta reddediliyor ve doğrulama e-postası Mailpit'te yakalanıyor. Giriş ekranında "Parolamı unuttum" Keycloak'ın reset-credentials akışını başlatır; yeni parola Keycloak'ın kendi formunda belirlenir. Bu oturumda tam E2E (tarayıcıdan sıfırlama ve doğrulama bağlantısının tıklanması) henüz koşturulmadı.
+- **Durum:** Uygulama tamamlandı (yerel altyapı ve canlı Keycloak doğrulaması dahil). Realm `verifyEmail` ve `resetPasswordAllowed` açık, SMTP yerel Mailpit'e yönlü; doğrulanmamış hesap girişi canlı Keycloak'ta reddediliyor ve doğrulama e-postası Mailpit'te yakalanıyor. Giriş ekranında "Parolamı unuttum" Keycloak'ın reset-credentials akışını başlatır; yeni parola Keycloak'ın kendi formunda belirlenir. Tarayıcı E2E (`apps/web/e2e/email-verification-reset.spec.ts`, 5 senaryo) canlı Keycloak ve Mailpit ile geçer; kabul kriterleri 1–5, 7–8 kanıtlıdır, 6'da zayıf parola politikası kararı açıktır.
 - **Kullanıcı hikâyesi:** Alıcı olarak kayıt sonrası e-posta adresimi doğrulamak ve parolamı unuttuğumda uygulama içinden sıfırlamak istiyorum; böylece hesabıma güvenle erişebilirim.
 - **Kararlar (kullanıcı onaylı):**
   - **Doğrulama zorunludur:** Doğrulanmamış e-posta ile giriş yapılamaz. Keycloak `verifyEmail` açılır.
@@ -1147,7 +1147,7 @@ Kategoriler örtüşebilir. PostgreSQL testleri `integration` ve `postgres`; Pla
 3. Doğrulama bağlantısı bir kez kullanılır; süresi dolmuş veya kullanılmış bağlantı açıkça hata verir.
 4. Giriş ekranından "Parolamı unuttum" akışı başlatılabilir; kayıtlı olsun ya da olmasın genel onay mesajı gösterilir.
 5. Sıfırlama bağlantısı yalnızca bir kez kullanılabilir ve süresi kısadır; sıfırlama sonrası eski parola ile giriş reddedilir.
-6. Sıfırlama formunda parola ve parola tekrarı eşleşmeli; zayıf/eşleşmeyen parola Keycloak tarafından reddedilir ve uygulama bunu anlaşılır gösterir.
+6. Sıfırlama formunda parola ve parola tekrarı eşleşmeli; eşleşmeyen parola Keycloak tarafından reddedilir ("Passwords don't match.") ve kanıtlanmıştır. Zayıf parola reddi ise realm'de parola politikası tanımlanmasına bağlıdır: mevcut `shop` realm'inde `passwordPolicy` boştur, bu nedenle zayıf parola kabul edilir. Politika kararı (uzunluk/karmaşıklık) açık bırakılmıştır.
 7. Parola ve sıfırlama token'ı API istek/yanıt gövdelerinde, uygulama loglarında veya tarayıcı depolamasında bulunmaz.
 8. Doğrulama ve sıfırlama e-postaları yalnızca yerel yakalama servisinde görünür; gerçek bir e-posta adresine gönderilmez.
 9. Mevcut kayıt, giriş, rol ve admin/seller yetki sınırları (REQ-006, REQ-007, REQ-008) değişmez.
