@@ -175,10 +175,89 @@ async function connectToKeycloakAdmin(
   }
 }
 
+export interface KeycloakBuyerAdmin {
+  deleteUserByEmail: (email: string) => Promise<void>
+  createUnverifiedBuyer: (email: string, password: string) => Promise<void>
+  createVerifiedBuyer: (email: string, password: string) => Promise<void>
+  sendVerificationEmail: (email: string) => Promise<void>
+  passwordGrantStatus: (email: string, password: string) => Promise<number>
+}
+
+async function createBuyer(
+  request: APIRequestContext,
+  access: KeycloakAdminAccess,
+  email: string,
+  password: string,
+  emailVerified: boolean,
+): Promise<void> {
+  const response = await request.post(`${access.apiUrl}/users`, {
+    headers: access.headers,
+    data: {
+      username: email,
+      email,
+      firstName: 'P6',
+      lastName: 'Buyer',
+      enabled: true,
+      emailVerified,
+      requiredActions: [],
+      credentials: [{ type: 'password', value: password, temporary: false }],
+    },
+  })
+  requireStatus(response.status(), 201, 'Creating the temporary buyer user')
+}
+
 export async function createKeycloakAdminClient(
   request: APIRequestContext,
-): Promise<Pick<KeycloakAdminAccess, 'deleteUserByEmail'>> {
-  return connectToKeycloakAdmin(request)
+): Promise<KeycloakBuyerAdmin> {
+  const access = await connectToKeycloakAdmin(request)
+  const issuer = new URL(
+    process.env.E2E_KEYCLOAK_ISSUER ?? 'http://localhost:8080/realms/shop',
+  )
+  const tokenUrl = new URL(
+    '/realms/shop/protocol/openid-connect/token',
+    issuer.origin,
+  ).toString()
+
+  async function userIdByEmail(email: string): Promise<string> {
+    const response = await request.get(`${access.apiUrl}/users`, {
+      headers: access.headers,
+      params: { email, exact: 'true' },
+    })
+    requireStatus(response.status(), 200, 'Finding a Keycloak user by email')
+    const users = (await response.json()) as KeycloakUser[]
+    if (users.length !== 1) {
+      throw new Error(`Expected one Keycloak user for ${email}; found ${users.length}.`)
+    }
+    return users[0].id
+  }
+
+  return {
+    deleteUserByEmail: access.deleteUserByEmail,
+    createUnverifiedBuyer: (email, password) =>
+      createBuyer(request, access, email, password, false),
+    createVerifiedBuyer: (email, password) =>
+      createBuyer(request, access, email, password, true),
+    async sendVerificationEmail(email) {
+      const id = await userIdByEmail(email)
+      const response = await request.put(
+        `${access.apiUrl}/users/${id}/send-verify-email`,
+        { headers: access.headers },
+      )
+      requireStatus(response.status(), 204, 'Sending the verification email')
+    },
+    async passwordGrantStatus(email, password) {
+      const response = await request.post(tokenUrl, {
+        form: {
+          grant_type: 'password',
+          client_id: 'shop-web',
+          username: email,
+          password,
+          scope: 'openid',
+        },
+      })
+      return response.status()
+    },
+  }
 }
 
 export async function createKeycloakTestAdmin(
