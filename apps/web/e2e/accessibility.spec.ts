@@ -157,12 +157,27 @@ test.describe('QA-023 critical browser accessibility @smoke', () => {
       await expectNoHorizontalOverflow(page, width)
     }
 
+  })
+
+  test('admin seller applications meet WCAG 2.1 A/AA and reflow at mobile width', async ({
+    page,
+    scenario,
+  }) => {
+    test.setTimeout(60_000)
     await scenario.authenticate(page, 'admin')
     await page.goto('/')
     await expect(page.getByRole('heading', { name: 'Sipariş yönetimi' })).toBeVisible()
     await expectNoAccessibilityViolations(page)
     await page.getByRole('button', { name: 'Satıcı başvurularını yönet' }).click()
     await expect(page.getByRole('heading', { name: 'Satıcı başvuruları' })).toBeVisible()
+    // The heading renders before data loads; wait for the loading state to finish so the
+    // axe scan and reflow checks run against the real list or empty state.
+    await expect(page.getByText('Başvurular yükleniyor...')).toHaveCount(0, { timeout: 15_000 })
+    await expect(
+      page
+        .getByText('Henüz satıcı başvurusu bulunmuyor.')
+        .or(page.locator('.seller-application-list')),
+    ).toBeVisible({ timeout: 15_000 })
     await expectNoAccessibilityViolations(page)
 
     for (const width of [320, 305]) {
