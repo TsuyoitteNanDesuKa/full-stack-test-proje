@@ -731,7 +731,7 @@ Kaynak: proje ve roadmap'in QA adayı portföyü gözüyle yapılan review'u. He
 **Kalite kapısı şeffaflığı:**
 
 - [ ] **QA-031 — Kalite kapısı tablosu (PR vs gece):** README'ye hangi kontrolün PR'da, hangisinin gece/elle tetiklenen `keycloak-e2e` job'ında koştuğunu gösteren tablo ekle. Kabul: her `@keycloak` etiketli testin nerede koştuğu tabloda yazılı.
-- [ ] **QA-032 — REQ-019 smoke'unun PR kapısına taşınması değerlendirmesi:** Doğrulama ve sıfırlama senaryolarının en az bir smoke'unun PR'da çalışıp çalışamayacağını ölç (Keycloak servisi CI'da gerekir). Kabul: karar kaydı; uygulanırsa süre ve flakiness ölçümü.
+- [ ] **QA-032 — REQ-019 smoke'unun PR kapısına taşınması değerlendirmesi:** Doğrulama ve sıfırlama senaryolarının en az bir smoke'unun PR'da çalışıp çalışamayacağını ölç (Keycloak servisi CI'da gerekir). Kabul: karar kaydı; uygulanırsa süre ve flakiness ölçümü. Ölçüm günlük gece `keycloak-e2e` koşusundan, günde bir kez okunarak alınır; push veya manuel tetikleme yapılmaz.
 
 **Portföy kanıtları:**
 

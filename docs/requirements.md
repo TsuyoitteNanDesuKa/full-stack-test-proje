@@ -1167,8 +1167,8 @@ Kategoriler örtüşebilir. PostgreSQL testleri `integration` ve `postgres`; Pla
 
 - **Mevcut durum:** REQ-019 senaryoları `@keycloak` etiketli; yalnızca `keycloak-e2e` job'ında (gece ve elle) koşar. PR'da çalışmaz.
 - **Bağımlılıklar:** Gerçek Keycloak (`shop` realm) ve Mailpit. `docker compose up -d keycloak`, `mailpit` sağlıklı olana kadar bekler; dolayısıyla Mailpit de başlar. Ek CI değişikliği gerekmez.
-- **Ölçüm yöntemi:** Yerel koşularda 6 senaryo ≈ 2,2 dakika (senaryo başına 3–24 sn). CI'da gerçek ölçüm için `workflow_dispatch` ile `keycloak-e2e` koşusunun REQ-019 süresi ve kararlılığı (en az 5 ardışık koşu) kaydedilecek.
-- **Karar kriteri:** Ortalama süre PR için kabul edilebilir bir üst sınırın (öneri: toplam +4 dakika) altındaysa ve 5 koşuda flaky sonuç yoksa REQ-019'un bir smoke alt kümesi (doğrulama + sıfırlama, her biri tek senaryo) `@smoke` olarak PR'a alınır. Aksi halde gece kapsamında kalır.
+- **Ölçüm yöntemi:** Yerel koşularda 6 senaryo ≈ 2,2 dakika (senaryo başına 3–24 sn). Ölçüm, zaten günlük çalışan gece `keycloak-e2e` koşusundan alınır: her gün bir kez bakılır, manuel `workflow_dispatch` ve push tetiklemesi kullanılmaz. Kayıt: job süresi ve REQ-019 senaryolarının sonucu.
+- **Karar kriteri:** REQ-019 eklenmesinin PR süresini en fazla +4 dakika artırması ve ardışık 5 gece koşusunda flaky sonuç çıkmaması halinde REQ-019'un bir smoke alt kümesi (doğrulama + sıfırlama, her biri tek senaryo) `@smoke` olarak PR'a alınır. Aksi halde gece kapsamında kalır.
 - **Geçici karar:** Ölçüm tamamlanana kadar REQ-019 `@keycloak` olarak kalır; PR kapısına alınmaz.
 
 ## REQ-020 — Alıcı ürün detay sayfası
