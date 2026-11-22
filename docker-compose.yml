@@ -16,7 +16,20 @@ services:
       retries: 10
       start_period: 5s
 
+  mailpit:
+    image: axllent/mailpit:v1.21
+    ports:
+      - "127.0.0.1:8025:8025"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8025/readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   keycloak:
+    depends_on:
+      mailpit:
+        condition: service_healthy
     image: quay.io/keycloak/keycloak:26.8.1
     command:
       - start-dev

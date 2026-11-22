@@ -21,7 +21,13 @@ import type {
   Product,
   ProductSearchParams,
 } from './api'
-import { beginLogin, beginRegistration, endSession, getCurrentSession } from './auth'
+import {
+  beginLogin,
+  beginPasswordReset,
+  beginRegistration,
+  endSession,
+  getCurrentSession,
+} from './auth'
 import LazyPanel from './LazyPanel'
 import SellerApplicationPanel from './SellerApplicationPanel'
 
@@ -58,10 +64,12 @@ function BrandMark() {
 function LoginPage({
   onLogin,
   onRegister,
+  onForgotPassword,
   error,
 }: {
   onLogin: () => Promise<void>
   onRegister: () => Promise<void>
+  onForgotPassword: () => void
   error: string | null
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -134,6 +142,11 @@ function LoginPage({
           >
             <span>Alıcı hesabı oluştur</span><span className="submit-arrow">↗</span>
           </button>
+          <p className="privacy-note">
+            <button className="link-button" disabled={isSubmitting} onClick={onForgotPassword} type="button">
+              Parolamı unuttum
+            </button>
+          </p>
           <p className="privacy-note">
             Giriş yaparak <a href="#terms">Kullanım Koşulları</a> ve{' '}
             <a href="#privacy">Gizlilik Politikası</a>'nı kabul etmiş olursun.
@@ -937,6 +950,7 @@ function App() {
       error={authError}
       onLogin={beginLogin}
       onRegister={beginRegistration}
+      onForgotPassword={beginPasswordReset}
     />
   )
 }

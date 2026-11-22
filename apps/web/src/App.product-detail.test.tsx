@@ -5,6 +5,7 @@ import { getCurrentSession } from './auth'
 
 vi.mock('./auth', () => ({
   beginLogin: vi.fn(),
+  beginPasswordReset: vi.fn(),
   beginRegistration: vi.fn(),
   endSession: vi.fn(),
   getCurrentSession: vi.fn(),

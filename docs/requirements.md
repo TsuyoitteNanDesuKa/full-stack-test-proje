@@ -1128,6 +1128,41 @@ Kategoriler örtüşebilir. PostgreSQL testleri `integration` ve `postgres`; Pla
 - **Gerçek Keycloak E2E:** `apps/web/e2e/seller-applications.spec.ts`; buyer başvurur, admin onaylar, yeni oturumda buyer+seller rolleri görülür, seller ürün yayımlar ve başka buyer ortak katalogda ürünü salt okunur görür.
 - **Geliştirme/test kapısı:** İlgili backend testleri, frontend lint/build ve mevcut gerçek Keycloak E2E kalite kapısı geçmelidir; E2E yalnız yapılandırılmış yerel test realm'inde çalıştırılır.
 
+## REQ-019 — E-posta doğrulama ve parola sıfırlama
+
+- **Öncelik:** P6 (kapsam kararı alındı; uygulama başladı)
+- **Durum:** Uygulama tamamlandı (yerel altyapı ve canlı Keycloak doğrulaması dahil). Realm `verifyEmail` ve `resetPasswordAllowed` açık, SMTP yerel Mailpit'e yönlü; doğrulanmamış hesap girişi canlı Keycloak'ta reddediliyor ve doğrulama e-postası Mailpit'te yakalanıyor. Giriş ekranında "Parolamı unuttum" Keycloak'ın reset-credentials akışını başlatır; yeni parola Keycloak'ın kendi formunda belirlenir. Bu oturumda tam E2E (tarayıcıdan sıfırlama ve doğrulama bağlantısının tıklanması) henüz koşturulmadı.
+- **Kullanıcı hikâyesi:** Alıcı olarak kayıt sonrası e-posta adresimi doğrulamak ve parolamı unuttuğumda uygulama içinden sıfırlamak istiyorum; böylece hesabıma güvenle erişebilirim.
+- **Kararlar (kullanıcı onaylı):**
+  - **Doğrulama zorunludur:** Doğrulanmamış e-posta ile giriş yapılamaz. Keycloak `verifyEmail` açılır.
+  - **Parola sıfırlama uygulama içinde yapılır:** Giriş ekranında "Parolamı unuttum" akışı uygulamanın kendi ekranında e-posta alır; sıfırlama bağlantısı Keycloak tarafından üretilir.
+- **Yerel e-posta:** Gerçek SMTP gönderimi yoktur. Yerel geliştirme ve test için bir e-posta yakalama servisi (ör. Mailpit) Docker Compose'a eklenir; Keycloak SMTP'si bu servise yönlendirilir. Gerçek e-posta sağlayıcısı kapsam dışıdır.
+- **Parola gizliliği ilkesi (REQ-006 ile tutarlı):** Parola uygulama backend'inden geçmez. Sıfırlama formundaki yeni parola doğrudan Keycloak'a gönderilir; istek/yanıt ve loglarda parola veya sıfırlama token'ı görünmez.
+- **Hesap keşfi:** Sıfırlama isteği var olmayan e-posta için de aynı genel yanıtı döner; kayıtlı e-postayı ifşa etmez.
+
+### Kabul kriterleri
+
+1. Yeni alıcı kayıt olduktan sonra doğrulama e-postası yerel yakalama servisine düşer; e-postadaki bağlantı hesabı doğrular.
+2. Doğrulanmamış kullanıcı giriş yapmaya çalıştığında giriş reddedilir ve kullanıcıya doğrulama gerektiği anlaşılır biçimde bildirilir.
+3. Doğrulama bağlantısı bir kez kullanılır; süresi dolmuş veya kullanılmış bağlantı açıkça hata verir.
+4. Giriş ekranından "Parolamı unuttum" akışı başlatılabilir; kayıtlı olsun ya da olmasın genel onay mesajı gösterilir.
+5. Sıfırlama bağlantısı yalnızca bir kez kullanılabilir ve süresi kısadır; sıfırlama sonrası eski parola ile giriş reddedilir.
+6. Sıfırlama formunda parola ve parola tekrarı eşleşmeli; zayıf/eşleşmeyen parola Keycloak tarafından reddedilir ve uygulama bunu anlaşılır gösterir.
+7. Parola ve sıfırlama token'ı API istek/yanıt gövdelerinde, uygulama loglarında veya tarayıcı depolamasında bulunmaz.
+8. Doğrulama ve sıfırlama e-postaları yalnızca yerel yakalama servisinde görünür; gerçek bir e-posta adresine gönderilmez.
+9. Mevcut kayıt, giriş, rol ve admin/seller yetki sınırları (REQ-006, REQ-007, REQ-008) değişmez.
+
+### Test planı
+
+- **Unit/config:** Realm export'ta `verifyEmail` ve `resetPasswordAllowed` değerleri; SMTP ayarının yerel yakalama servisine işaret etmesi.
+- **Keycloak entegrasyon (opt-in `@keycloak`):** Gerçek Keycloak'ta kayıt → doğrulama e-postası → bağlantı → giriş; doğrulanmadan giriş reddi; sıfırlama akışı ve tek kullanımlık token.
+- **API:** Doğrulanmamış token/kullanıcı davranışı; parola ve token'ın yanıt ve loglarda görünmemesi.
+- **Component:** Giriş ekranında "Parolamı unuttum" ve sıfırlama formu durumları (yükleniyor, genel onay, hata).
+- **E2E:** Yerel e-posta yakalama servisinden doğrulama bağlantısını okuyup hesabı doğrulama; sıfırlama bağlantısıyla yeni parola belirleme ve yeniden giriş.
+- **Regresyon:** REQ-006 kayıt/giriş, REQ-008 admin rol sınırları ve mevcut Keycloak E2E senaryoları korunur.
+
+**Çıkış ölçütü:** Doğrulama zorunlu ve tek kullanımlık; sıfırlama uygulama içinde çalışıyor; parola gizliliği kanıtlanmış; yerel e-posta yakalama ile uçtan uca test edilmiş; tüm kalite kapıları geçmiş.
+
 ## REQ-020 — Alıcı ürün detay sayfası
 
 - **Öncelik:** P5 (ROADMAP sıradaki planlı iş)

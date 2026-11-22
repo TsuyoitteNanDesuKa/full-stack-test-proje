@@ -93,6 +93,18 @@ export async function beginRegistration(): Promise<void> {
   return userManager.signinRedirect()
 }
 
+// Starts Keycloak's standard reset-credentials flow. The password is entered only on
+// Keycloak's hosted form; this application never receives or forwards it (REQ-019).
+export function beginPasswordReset(): void {
+  const url = new URL(
+    '/realms/shop/login-actions/reset-credentials',
+    new URL(authority).origin,
+  )
+  url.searchParams.set('client_id', clientId)
+  url.searchParams.set('redirect_uri', redirectUri)
+  window.location.assign(url.toString())
+}
+
 export async function endSession(): Promise<void> {
   const userManager = await getUserManager()
   return userManager.signoutRedirect()

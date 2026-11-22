@@ -8,15 +8,25 @@ def load_realm() -> dict[str, Any]:
     return json.loads(realm_path.read_text(encoding="utf-8"))
 
 
-def test_keycloak_realm_allows_self_registration_without_verification_or_reset() -> None:
+def test_keycloak_realm_requires_email_verification_and_allows_in_app_reset() -> None:
     realm = load_realm()
 
     assert realm["registrationAllowed"] is True
     assert realm["registrationEmailAsUsername"] is True
     assert realm["loginWithEmailAllowed"] is True
     assert realm["duplicateEmailsAllowed"] is False
-    assert realm["verifyEmail"] is False
-    assert realm["resetPasswordAllowed"] is False
+    assert realm["verifyEmail"] is True
+    assert realm["resetPasswordAllowed"] is True
+
+
+def test_keycloak_smtp_points_only_to_the_local_capture_service() -> None:
+    smtp = load_realm()["smtpServer"]
+
+    assert smtp["host"] == "mailpit"
+    assert smtp["port"] == "1025"
+    assert smtp["from"].endswith("@liva.local")
+    assert smtp["ssl"] == "false"
+    assert smtp["auth"] == "false"
 
 
 def test_keycloak_login_theme_uses_generic_duplicate_account_errors() -> None:
