@@ -748,7 +748,7 @@ Kaynak: proje ve roadmap'in QA adayı portföyü gözüyle yapılan review'u. He
 
 **Bakım:**
 
-- [ ] **QA-040 — GitHub Actions action sürümlerinin güncellenmesi:** `actions/checkout`, `astral-sh/setup-uv` ve diğer action'ları Node.js 24 uyumlu sürümlere yükselt; uyarının kalmadığını bir CI koşusunda doğrula. Kabul: CI'da Node 20 deprecation uyarısı yok.
+- [~] **QA-040 — GitHub Actions action sürümlerinin güncellenmesi (sürümler yükseltildi; Node 20 uyarısının kalktığı CI koşusu bekleniyor):** `actions/checkout`, `astral-sh/setup-uv` ve diğer action'ları Node.js 24 uyumlu sürümlere yükselt; uyarının kalmadığını bir CI koşusunda doğrula. Kabul: CI'da Node 20 deprecation uyarısı yok.
 
 **Odak sırası (güncel):** P0 kapandı ve `v1.0.0` etiketi yayınlandı (`5d49644`); P3 ve P7 tamamlandı; P2 otomasyonla kısmen kapatıldı (ekran okuyucu ve gerçek kullanıcı incelemesi manuel sınır olarak kalır). P1 (QA-027) yeni kök-neden kanıtı olmadan duraklatılmış kalır. P4 ve P5 tamamlandı. Sıradaki karar: P6 (REQ-019 e-posta doğrulama ve parola sıfırlama) yalnızca kapsam genişletme kararı alınırsa başlar. Performans hedeflerinin (QA-026 dışındaki uç noktalar) ve GitHub Actions Node.js 20 uyarılarının action sürümlerinin güncellenmesi açık teknik borçtur.
 
