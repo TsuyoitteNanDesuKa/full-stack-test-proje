@@ -738,7 +738,7 @@ Kaynak: proje ve roadmap'in QA adayı portföyü gözüyle yapılan review'u. He
 - [x] **QA-033 — Test planı belgesi:** `docs/test-plan.md` (1–2 sayfa): kapsam ve kapsam dışı, risk matrisi (olasılık/etki), test seviyeleri, giriş/çıkış kriterleri, ortamlar, kabul ölçütleri. Kabul: her risk bir test seviyesine ve bir kanıta bağlı.
 - [x] **QA-034 — Hata raporu örnekleri (BR-001 test tasarım riski, BR-002 Mailpit birikmesi, BR-003 zaman aşımı; `docs/bug-reports/`):** Gerçek bulgulardan 2–3 rapor (`docs/bug-reports/`): `App.checkout-guard` testinin yanlış varsayımı, Mailpit e-posta birikmesi, erişilebilirlik testinde bir kez görülen zaman aşımı. Her rapor: başlık, ortam, adımlar, beklenen/gerçek, kök neden, çözüm, regresyon testi. Kabul: her raporun bir regresyon kanıtı var.
 - [x] **QA-035 — Regresyon ve smoke etiket gerekçeleri (`docs/test-strategy.md`; kullanılmayan `keycloak` ve `performance` pytest işaretleri açık iş):** Pytest marker'ları ve Playwright tag'lerinin hangi testi neden o etikete aldığını `docs/test-strategy.md` içinde yaz. Kabul: her etiket için tek cümlelik kriter.
-- [ ] **QA-036 — Performans risk raporu:** QA-026'daki hedef tutmayan sonuçların nedenini ve sonraki adımı tek belgede topla (başarısızlığın dürüst raporu). Kabul: her hedef için "tutuldu / tutulmadı / neden" satırı.
+- [x] **QA-036 — Performans risk raporu (`docs/performance-risk-report.md`):** QA-026'daki hedef tutmayan sonuçların nedenini ve sonraki adımı tek belgede topla (başarısızlığın dürüst raporu). Kabul: her hedef için "tutuldu / tutulmadı / neden" satırı.
 
 **Kapsam boşlukları:**
 
