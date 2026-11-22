@@ -24,6 +24,8 @@ The `shop` realm, `shop-web` public OIDC client, buyer/seller/admin roles, and A
 
 The `liva` login theme is mounted from `infra/keycloak/themes/liva` and uses generic duplicate-account errors to avoid revealing whether an email is registered. Realm import only initializes a new realm; it does not overwrite configuration in an existing persistent Keycloak volume. For an existing realm, select `liva` as the Login theme under Admin Console → Realm settings → Themes. Removing the volume also deletes its realm data and users.
 
+The realm also enforces a password policy (`length(8) and upperCase(1) and lowerCase(1) and digits(1) and notUsername and notEmail`) and SMTP settings that send verification and reset mail to the local Mailpit service. These values are read from the import only on first creation. For an existing persistent volume, apply them through the Admin Console (Realm settings → Authentication → Password policy; Realm settings → Email) or with the admin API (`PUT /admin/realms/shop` with `passwordPolicy`). Removing the volume is not required.
+
 From this directory, configure the API and apply migrations to PostgreSQL:
 
 ```powershell

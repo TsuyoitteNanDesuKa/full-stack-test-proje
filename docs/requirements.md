@@ -12,7 +12,7 @@ Müşterilerin ürünleri bulup satın alabildiği bir çevrimiçi mağaza geli�
 - REQ-001'in yerel parola tabanlı ilk prototipi Keycloak/OIDC entegrasyonuyla değiştirilmektedir; alıcı self-registration REQ-006 kapsamındadır.
 - Alıcı, satıcı ve platform yöneticisi farklı iş profilleridir. Herkese açık kayıt yalnızca alıcı hesabı oluşturur; satıcı/yönetici rolü kullanıcı tarafından seçilemez veya yükseltilemez.
 - Ürün öğrenme kapsamı çok satıcılı marketplace akışlarını ve yerel/mock ödeme, sipariş operasyonu ve iptal davranışlarını kapsar. Gerçek ödeme/PSP, kargo/taşıyıcı ve KYC/KYB entegrasyonları ile canlıya çıkış kapsam dışıdır.
-- E-posta doğrulama ve parola sıfırlama daha sonraki dilimlere bırakılmıştır; ilk kayıt akışında e-posta doğrulaması zorunlu değildir.
+- E-posta doğrulama ve parola sıfırlama başlangıçta REQ-006 dışında bırakılmış, REQ-019 ile uygulanmıştır. Bu tarihsel kapsam notudur; güncel davranış REQ-019'dadır.
 - Yerel geliştirme ve Alembic migration hedefi Docker Compose PostgreSQL'dir. Hızlı unit/API testleri ve izole Playwright E2E veritabanı olarak SQLite kullanılır. PostgreSQL bağlantı/migration temeli REQ-009 QA adımında kuruldu; PostgreSQL eşzamanlılık testleri kapanış koşulu olarak ayrıca çalıştırılacaktır.
 - Ana sayfa ve ürün kataloğu yalnızca doğrulanmış kullanıcılara sunulur. Ürün CRUD'u admin için mağaza genelinde, onaylı seller için yalnızca kendisine ait ürünlerde kullanılabilir.
 
@@ -39,7 +39,7 @@ Bu araştırma, sağlayıcıların kamuya açık müşteri/satıcı akışları 
 - [Amazon — How to sell on Amazon](https://sell.amazon.com/sell): satıcı kayıt planı, işletme/irtibat bilgileri, banka ve kimlik doğrulaması adımları.
 - [Keycloak Server Administration Guide](https://www.keycloak.org/docs/latest/server_admin/): Keycloak kullanıcı, rol, self-registration ve hesap yönetimi kabiliyetleri.
 
-**Karar:** İlk kullanıcı yönetimi dilimi Keycloak ile OIDC tabanlı olacak. Alıcı kendi kendine kayıt olabilir; satıcı ve admin erişimleri güvenilir yönetim süreciyle verilir. E-posta doğrulama ve parola sıfırlama sonraki roadmap maddeleridir.
+**Karar:** İlk kullanıcı yönetimi dilimi Keycloak ile OIDC tabanlı olacak. Alıcı kendi kendine kayıt olabilir; satıcı ve admin erişimleri güvenilir yönetim süreciyle verilir. E-posta doğrulama ve parola sıfırlama, REQ-006 sonrasında REQ-019 olarak uygulanmıştır.
 
 ## REQ-001 — Kayıtlı müşteri girişi ve ana sayfaya erişim
 

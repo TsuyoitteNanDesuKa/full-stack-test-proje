@@ -716,8 +716,39 @@ Eşikler **önerilen öğrenme hedefleridir**: üç koşunun her birinde ve ilgi
    - **İlerleme (20 Kasım):** README'ye mimari ve yerel demo özeti, N+1 vaka çalışması ve [gerçek CI koşusu #35](https://github.com/TsuyoitteNanDesuKa/full-stack-test-proje/actions/runs/44714667009) eklendi. Koşunun beş rapor artefaktı 4 Aralık'a kadar erişilebilir; koşu `dc34f87` üzerindedir ve yerel `main`'in bir commit gerisinde olduğundan mevcut çalışma ağacını kapsamaz. Çalışma ağacı farkı incelendi; release-notes dosyası bulunmadı/oluşturulmadı. P0 kontrol listesindeki tag öncesi inceleme açık kalıyor.
 5. **P4 — QA-028: Yerel operasyonel görünürlük (tamamlandı):** Kullanıcının talebiyle P0/P2 kapanışını beklemeden uygulandı; P0/P2 release kapıları yine açık. API liveness/readiness, veritabanı bağlantı durumunun güvenli raporlanması, ödeme expiry görevinin yaşam döngüsü ve istek korelasyonlu/hassas veri içermeyen loglar. Ayrıntılı kapsam ve doğrulama aşağıdaki QA-028 diliminde. Üretim dağıtımı veya izleme platformu kapsam dışıdır.
 6. **P5 — REQ-020: Ürün detay sayfası (tamamlandı):** `GET /api/v1/products/{id}` eklendi (401/404/422 davranışı, `can_manage`), OpenAPI snapshot ve istemci sözleşmesi güncellendi; `ProductDetailPanel` yükleniyor/hata/yeniden deneme/bulunamadı/stok yok durumlarını gösterir; katalogdan detay bağlantısı, doğrudan `/products/{id}` URL'i ve geri/ileri gezinme eklendi. Backend ve web testleri geçti; deterministik Playwright senaryosu (`e2e/product-detail.spec.ts`) 3/3 geçti (`uv` kurulup Chromium yüklendikten sonra).
-7. **P6 — REQ-019 e-posta doğrulama ve parola sıfırlama (uygulandı; tarayıcı E2E geçti; zayıf parola politikası kararı açık):** Kullanıcı kararlarıyla doğrulama zorunlu ve parola sıfırlama Keycloak `reset-credentials` akışıyla uygulandı; yerel Mailpit e-posta yakalama Compose'a eklendi. Canlı Keycloak'ta doğrulanmamış giriş reddi ve doğrulama e-postasının yakalanması kanıtlandı. [Gereksinim](./docs/requirements.md#req-019--e-posta-doğrulama-ve-parola-sıfırlama). Tarayıcıdan doğrulama, sıfırlama, yeniden kullanılan bağlantı, eşleşmeyen parola ve parola/token gizliliği E2E ile kanıtlandı. Açık karar: realm'e parola politikası eklenip eklenmeyeceği (zayıf parola reddi).
+7. **P6 — REQ-019 e-posta doğrulama ve parola sıfırlama (tamamlandı; tarayıcı E2E geçti; parola politikası `8b7a98e` ile eklendi):** Kullanıcı kararlarıyla doğrulama zorunlu ve parola sıfırlama Keycloak `reset-credentials` akışıyla uygulandı; yerel Mailpit e-posta yakalama Compose'a eklendi. Canlı Keycloak'ta doğrulanmamış giriş reddi ve doğrulama e-postasının yakalanması kanıtlandı. [Gereksinim](./docs/requirements.md#req-019--e-posta-doğrulama-ve-parola-sıfırlama). Tarayıcıdan doğrulama, sıfırlama, yeniden kullanılan bağlantı, eşleşmeyen parola ve parola/token gizliliği E2E ile kanıtlandı. Parola politikası (en az 8 karakter, büyük/küçük harf, rakam, kullanıcı adı/e-posta olamaz) realm'e eklendi ve zayıf parola reddi E2E ile doğrulandı.
 8. **P7 — Backend `main.py` kapsam açıkları (tamamlandı):** Worker'ın beklenmedik normal çıkış dalı (`else`, satır 56–57) `test_main_coverage_gaps.py` içindeki `returning_worker` testiyle kapatıldı; `main.py` kapsamı %96'ya, kaynak kapsam %96,99'a yükseldi. Kalan satırlar 97 ve 146–151 ulaşılamaz savunma dallarıdır (A sınıfı; [kapsam politikası](./docs/coverage-policy.md)). Ayrıca worker hatasının (`except` kolu) hassas veri içermeden loglandığı mevcut testlerle doğrulanır. Kabul ölçütü karşılandı: backend kapısı (`fail_under = 95`) korunur ve politika değerleri ölçümle tutarlıdır.
+
+### Sıradaki işler — QA portföy review'u (22 Kasım 2026)
+
+Kaynak: proje ve roadmap'in QA adayı portföyü gözüyle yapılan review'u. Her madde ölçülebilir bir çıktı ile kapanır.
+
+**Tutarlılık düzeltmeleri (önce yapılır):**
+
+- [x] **QA-029 — Bayat "ertelendi" ifadelerinin temizlenmesi:** `docs/release-notes-v1.0.0.md` içindeki "E-posta doğrulama ve parola sıfırlama ertelenmiştir" ifadesini REQ-019 gerçek durumuyla güncelle; ROADMAP P6 satırındaki "zayıf parola politikası kararı açık" ifadesini kapat (politika `8b7a98e` ile eklendi). Kabul: iki dokümanda çelişen ifade kalmaz.
+- [x] **QA-030 — Parola politikası kurulum notu:** README'ye mevcut Keycloak volume'u için realm'in yeniden içe aktarılması ya da admin API ile `passwordPolicy` uygulama adımını ekle. Kabul: politika değişikliğinin yeni ve mevcut kurulumda nasıl uygulandığı belgelenmiş olur.
+
+**Kalite kapısı şeffaflığı:**
+
+- [ ] **QA-031 — Kalite kapısı tablosu (PR vs gece):** README'ye hangi kontrolün PR'da, hangisinin gece/elle tetiklenen `keycloak-e2e` job'ında koştuğunu gösteren tablo ekle. Kabul: her `@keycloak` etiketli testin nerede koştuğu tabloda yazılı.
+- [ ] **QA-032 — REQ-019 smoke'unun PR kapısına taşınması değerlendirmesi:** Doğrulama ve sıfırlama senaryolarının en az bir smoke'unun PR'da çalışıp çalışamayacağını ölç (Keycloak servisi CI'da gerekir). Kabul: karar kaydı; uygulanırsa süre ve flakiness ölçümü.
+
+**Portföy kanıtları:**
+
+- [ ] **QA-033 — Test planı belgesi:** `docs/test-plan.md` (1–2 sayfa): kapsam ve kapsam dışı, risk matrisi (olasılık/etki), test seviyeleri, giriş/çıkış kriterleri, ortamlar, kabul ölçütleri. Kabul: her risk bir test seviyesine ve bir kanıta bağlı.
+- [ ] **QA-034 — Hata raporu örnekleri:** Gerçek bulgulardan 2–3 rapor (`docs/bug-reports/`): `App.checkout-guard` testinin yanlış varsayımı, Mailpit e-posta birikmesi, erişilebilirlik testinde bir kez görülen zaman aşımı. Her rapor: başlık, ortam, adımlar, beklenen/gerçek, kök neden, çözüm, regresyon testi. Kabul: her raporun bir regresyon kanıtı var.
+- [ ] **QA-035 — Regresyon ve smoke etiket gerekçeleri:** Pytest marker'ları ve Playwright tag'lerinin hangi testi neden o etikete aldığını `docs/test-strategy.md` içinde yaz. Kabul: her etiket için tek cümlelik kriter.
+- [ ] **QA-036 — Performans risk raporu:** QA-026'daki hedef tutmayan sonuçların nedenini ve sonraki adımı tek belgede topla (başarısızlığın dürüst raporu). Kabul: her hedef için "tutuldu / tutulmadı / neden" satırı.
+
+**Kapsam boşlukları:**
+
+- [ ] **QA-037 — Manuel erişilebilirlik inceleme planı:** P2'nin manuel kısmı için ekran okuyucu (NVDA) senaryo listesi, kim/ne zaman sorumluluğu ve kayıt formatı. Kabul: plan var; uygulama tarihi roadmap'te.
+- [ ] **QA-038 — Erişilebilirlik flakiness kapatma:** QA-023 mobil reflow testindeki zaman aşımını kök nedene indir (yavaş admin görünümü beklemesi) ve bekleme koşulunu açık hale getir. Kabul: 5 ardışık koşuda geçer.
+- [ ] **QA-039 — Sözleşme testi genişletme değerlendirmesi:** Pact benzeri consumer-driven yaklaşımın bu projede gerekli olup olmadığına karar kaydı. Kabul: karar ve gerekçe `docs/`'ta.
+
+**Bakım:**
+
+- [ ] **QA-040 — GitHub Actions action sürümlerinin güncellenmesi:** `actions/checkout`, `astral-sh/setup-uv` ve diğer action'ları Node.js 24 uyumlu sürümlere yükselt; uyarının kalmadığını bir CI koşusunda doğrula. Kabul: CI'da Node 20 deprecation uyarısı yok.
 
 **Odak sırası (güncel):** P0 kapandı ve `v1.0.0` etiketi yayınlandı (`5d49644`); P3 ve P7 tamamlandı; P2 otomasyonla kısmen kapatıldı (ekran okuyucu ve gerçek kullanıcı incelemesi manuel sınır olarak kalır). P1 (QA-027) yeni kök-neden kanıtı olmadan duraklatılmış kalır. P4 ve P5 tamamlandı. Sıradaki karar: P6 (REQ-019 e-posta doğrulama ve parola sıfırlama) yalnızca kapsam genişletme kararı alınırsa başlar. Performans hedeflerinin (QA-026 dışındaki uç noktalar) ve GitHub Actions Node.js 20 uyarılarının action sürümlerinin güncellenmesi açık teknik borçtur.
 

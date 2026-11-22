@@ -32,7 +32,7 @@ Kapsam politikası ve sınıflandırılmış kapsanmayan dallar: [docs/coverage-
 ## Bilinen sınırlamalar
 
 - Ödeme, iade ve kargo yalnızca yerel/mock davranışlardır; gerçek para hareketi yoktur.
-- E-posta doğrulama ve parola sıfırlama ertelenmiştir.
+- E-posta doğrulama ve parola sıfırlama (REQ-019) yerel Mailpit üzerinde uygulanmış ve tarayıcı E2E ile doğrulanmıştır; gerçek e-posta sağlayıcısı kullanılmaz. Parola politikası (en az 8 karakter, büyük/küçük harf, rakam) realm'de tanımlıdır; bu sürüm etiketinden sonra eklenmiştir (`8b7a98e`).
 - Satıcı onayı manuel beyana dayanır; KYC/KYB ve resmi uygunluk doğrulaması yoktur.
 - Admin rolü yalnızca Keycloak Admin Console'dan atanır.
 - Frontend ölçüm sonuçları JSDOM tabanlıdır; tarayıcı davranışı E2E ile ayrıca doğrulanır.
