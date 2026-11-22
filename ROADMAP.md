@@ -731,11 +731,11 @@ Kaynak: proje ve roadmap'in QA adayı portföyü gözüyle yapılan review'u. He
 **Kalite kapısı şeffaflığı:**
 
 - [ ] **QA-031 — Kalite kapısı tablosu (PR vs gece):** README'ye hangi kontrolün PR'da, hangisinin gece/elle tetiklenen `keycloak-e2e` job'ında koştuğunu gösteren tablo ekle. Kabul: her `@keycloak` etiketli testin nerede koştuğu tabloda yazılı.
-- [ ] **QA-032 — REQ-019 smoke'unun PR kapısına taşınması değerlendirmesi:** Doğrulama ve sıfırlama senaryolarının en az bir smoke'unun PR'da çalışıp çalışamayacağını ölç (Keycloak servisi CI'da gerekir). Kabul: karar kaydı; uygulanırsa süre ve flakiness ölçümü. Ölçüm günlük gece `keycloak-e2e` koşusundan, günde bir kez okunarak alınır; push veya manuel tetikleme yapılmaz.
+- [ ] **QA-032 — REQ-019 smoke'unun PR kapısına taşınması değerlendirmesi (ölçüm bekliyor):** Doğrulama ve sıfırlama senaryolarının en az bir smoke'unun PR'da çalışıp çalışamayacağını ölç (Keycloak servisi CI'da gerekir). Kabul: karar kaydı; uygulanırsa süre ve flakiness ölçümü. Ölçüm günlük gece `keycloak-e2e` koşusundan, günde bir kez okunarak alınır; push veya manuel tetikleme yapılmaz.
 
 **Portföy kanıtları:**
 
-- [ ] **QA-033 — Test planı belgesi:** `docs/test-plan.md` (1–2 sayfa): kapsam ve kapsam dışı, risk matrisi (olasılık/etki), test seviyeleri, giriş/çıkış kriterleri, ortamlar, kabul ölçütleri. Kabul: her risk bir test seviyesine ve bir kanıta bağlı.
+- [x] **QA-033 — Test planı belgesi:** `docs/test-plan.md` (1–2 sayfa): kapsam ve kapsam dışı, risk matrisi (olasılık/etki), test seviyeleri, giriş/çıkış kriterleri, ortamlar, kabul ölçütleri. Kabul: her risk bir test seviyesine ve bir kanıta bağlı.
 - [ ] **QA-034 — Hata raporu örnekleri:** Gerçek bulgulardan 2–3 rapor (`docs/bug-reports/`): `App.checkout-guard` testinin yanlış varsayımı, Mailpit e-posta birikmesi, erişilebilirlik testinde bir kez görülen zaman aşımı. Her rapor: başlık, ortam, adımlar, beklenen/gerçek, kök neden, çözüm, regresyon testi. Kabul: her raporun bir regresyon kanıtı var.
 - [ ] **QA-035 — Regresyon ve smoke etiket gerekçeleri:** Pytest marker'ları ve Playwright tag'lerinin hangi testi neden o etikete aldığını `docs/test-strategy.md` içinde yaz. Kabul: her etiket için tek cümlelik kriter.
 - [ ] **QA-036 — Performans risk raporu:** QA-026'daki hedef tutmayan sonuçların nedenini ve sonraki adımı tek belgede topla (başarısızlığın dürüst raporu). Kabul: her hedef için "tutuldu / tutulmadı / neden" satırı.
