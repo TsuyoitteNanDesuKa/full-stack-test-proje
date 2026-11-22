@@ -255,6 +255,21 @@ Her pull request için hedeflenen temel sıra:
 4. İstemci build'i.
 5. Kararlı ve kritik Playwright senaryoları.
 
+### Hangi kontrol nerede koşar?
+
+Aşağıdaki tablo `.github/workflows/ci.yml` ile birebir eşleşir. Pull request, push ve zamanlanmış/elle koşular farklı kapsam çalıştırır.
+
+| Kontrol | Job | Push / PR | Gece (02:00 UTC) / elle |
+|---|---|---|---|
+| Backend Ruff lint/format, OpenAPI snapshot, pip-audit | `backend` | Evet | Evet |
+| Backend pytest (SQLite, `fail_under = 95`) | `backend` | Evet | Evet |
+| PostgreSQL migration ve entegrasyon testleri | `postgres` | Evet | Evet |
+| Frontend lint, tip, Vitest, build, npm audit | `frontend` | Evet | Evet |
+| Playwright `@smoke` (deterministik, Keycloak gerektirmez) | `e2e` | Evet | Evet |
+| Playwright `@keycloak` (gerçek Keycloak + Mailpit) | `keycloak-e2e` | Hayır | Evet |
+
+`@keycloak` etiketli senaryolar (REQ-001/006, REQ-007, REQ-008, REQ-009/010/012, REQ-017, REQ-019 ve admin CRUD regresyonu) PR'da çalışmaz; bu bir bilinçli kapsam kararıdır. Gerçek Keycloak regresyonu PR'ı bloke etmez, ancak her gece sonuçlanır.
+
 Testlerin deterministik, bağımsız ve anlaşılır hata mesajlarına sahip olmasını hedefleyin. Test başarısızlıklarını gizlemeyin; flaky testleri karantinaya almak yerine kök nedenini takip edin. Kapsam yüzdesini tek başına kalite ölçütü olarak kullanmayın; kritik kuralların ve risklerin gerçekten kapsandığını değerlendirin.
 
 ### CI sonuçlarını tek ekranda izleme
