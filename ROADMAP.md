@@ -743,7 +743,7 @@ Kaynak: proje ve roadmap'in QA adayı portföyü gözüyle yapılan review'u. He
 **Kapsam boşlukları:**
 
 - [ ] **QA-037 — Manuel erişilebilirlik inceleme planı:** P2'nin manuel kısmı için ekran okuyucu (NVDA) senaryo listesi, kim/ne zaman sorumluluğu ve kayıt formatı. Kabul: plan var; uygulama tarihi roadmap'te.
-- [ ] **QA-038 — Erişilebilirlik flakiness kapatma:** QA-023 mobil reflow testindeki zaman aşımını kök nedene indir (yavaş admin görünümü beklemesi) ve bekleme koşulunu açık hale getir. Kabul: 5 ardışık koşuda geçer.
+- [x] **QA-038 — Erişilebilirlik flakiness kapatma (`5ce3d18`; 5 ardışık yeşil koşu):** QA-023 mobil reflow testindeki zaman aşımını kök nedene indir (yavaş admin görünümü beklemesi) ve bekleme koşulunu açık hale getir. Kabul: 5 ardışık koşuda geçer.
 - [ ] **QA-039 — Sözleşme testi genişletme değerlendirmesi:** Pact benzeri consumer-driven yaklaşımın bu projede gerekli olup olmadığına karar kaydı. Kabul: karar ve gerekçe `docs/`'ta.
 
 **Bakım:**
