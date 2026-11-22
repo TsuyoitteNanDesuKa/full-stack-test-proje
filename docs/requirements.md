@@ -1163,6 +1163,14 @@ Kategoriler örtüşebilir. PostgreSQL testleri `integration` ve `postgres`; Pla
 
 **Çıkış ölçütü:** Doğrulama zorunlu ve tek kullanımlık; sıfırlama uygulama içinde çalışıyor; parola gizliliği kanıtlanmış; yerel e-posta yakalama ile uçtan uca test edilmiş; tüm kalite kapıları geçmiş.
 
+### PR kapısı kararı (QA-032)
+
+- **Mevcut durum:** REQ-019 senaryoları `@keycloak` etiketli; yalnızca `keycloak-e2e` job'ında (gece ve elle) koşar. PR'da çalışmaz.
+- **Bağımlılıklar:** Gerçek Keycloak (`shop` realm) ve Mailpit. `docker compose up -d keycloak`, `mailpit` sağlıklı olana kadar bekler; dolayısıyla Mailpit de başlar. Ek CI değişikliği gerekmez.
+- **Ölçüm yöntemi:** Yerel koşularda 6 senaryo ≈ 2,2 dakika (senaryo başına 3–24 sn). CI'da gerçek ölçüm için `workflow_dispatch` ile `keycloak-e2e` koşusunun REQ-019 süresi ve kararlılığı (en az 5 ardışık koşu) kaydedilecek.
+- **Karar kriteri:** Ortalama süre PR için kabul edilebilir bir üst sınırın (öneri: toplam +4 dakika) altındaysa ve 5 koşuda flaky sonuç yoksa REQ-019'un bir smoke alt kümesi (doğrulama + sıfırlama, her biri tek senaryo) `@smoke` olarak PR'a alınır. Aksi halde gece kapsamında kalır.
+- **Geçici karar:** Ölçüm tamamlanana kadar REQ-019 `@keycloak` olarak kalır; PR kapısına alınmaz.
+
 ## REQ-020 — Alıcı ürün detay sayfası
 
 - **Öncelik:** P5 (ROADMAP sıradaki planlı iş)
