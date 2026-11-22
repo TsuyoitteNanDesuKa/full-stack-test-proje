@@ -1147,7 +1147,7 @@ Kategoriler örtüşebilir. PostgreSQL testleri `integration` ve `postgres`; Pla
 3. Doğrulama bağlantısı bir kez kullanılır; süresi dolmuş veya kullanılmış bağlantı açıkça hata verir.
 4. Giriş ekranından "Parolamı unuttum" akışı başlatılabilir; kayıtlı olsun ya da olmasın genel onay mesajı gösterilir.
 5. Sıfırlama bağlantısı yalnızca bir kez kullanılabilir ve süresi kısadır; sıfırlama sonrası eski parola ile giriş reddedilir.
-6. Sıfırlama formunda parola ve parola tekrarı eşleşmeli; eşleşmeyen parola Keycloak tarafından reddedilir ("Passwords don't match.") ve kanıtlanmıştır. Zayıf parola reddi ise realm'de parola politikası tanımlanmasına bağlıdır: mevcut `shop` realm'inde `passwordPolicy` boştur, bu nedenle zayıf parola kabul edilir. Politika kararı (uzunluk/karmaşıklık) açık bırakılmıştır.
+6. Sıfırlama formunda parola ve parola tekrarı eşleşmeli; eşleşmeyen parola Keycloak tarafından reddedilir ("Passwords don't match.") ve kanıtlanmıştır. Parola politikası `length(8) and upperCase(1) and lowerCase(1) and digits(1) and notUsername and notEmail` olarak realm'e (`realm-export.json` ve canlı `shop` realm) eklendi; zayıf parola ("Invalid password: minimum length 8.") reddedilir ve eski parola geçerli kalır.
 7. Parola ve sıfırlama token'ı API istek/yanıt gövdelerinde, uygulama loglarında veya tarayıcı depolamasında bulunmaz.
 8. Doğrulama ve sıfırlama e-postaları yalnızca yerel yakalama servisinde görünür; gerçek bir e-posta adresine gönderilmez.
 9. Mevcut kayıt, giriş, rol ve admin/seller yetki sınırları (REQ-006, REQ-007, REQ-008) değişmez.

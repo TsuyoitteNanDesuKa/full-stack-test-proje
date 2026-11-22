@@ -19,6 +19,16 @@ def test_keycloak_realm_requires_email_verification_and_allows_in_app_reset() ->
     assert realm["resetPasswordAllowed"] is True
 
 
+def test_keycloak_realm_enforces_password_policy() -> None:
+    policy = load_realm()["passwordPolicy"]
+
+    assert "length(8)" in policy
+    assert "upperCase(1)" in policy
+    assert "lowerCase(1)" in policy
+    assert "digits(1)" in policy
+    assert "notUsername" in policy
+
+
 def test_keycloak_smtp_points_only_to_the_local_capture_service() -> None:
     smtp = load_realm()["smtpServer"]
 

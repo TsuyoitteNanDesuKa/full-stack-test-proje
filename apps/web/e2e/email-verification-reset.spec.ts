@@ -158,6 +158,32 @@ test.describe('REQ-019 email verification and password reset @keycloak', () => {
     }
   })
 
+  test('the reset form rejects a weak password and keeps the old password', async ({
+    page,
+    request,
+    browser,
+  }) => {
+    const admin = await createKeycloakAdminClient(request)
+    const buyer = uniqueBuyer()
+    await admin.createVerifiedBuyer(buyer.email, buyer.password)
+    try {
+      await page.goto('http://localhost:8080/realms/shop/login-actions/reset-credentials?client_id=shop-web&redirect_uri=http%3A%2F%2F127.0.0.1%3A5174%2F')
+      await page.locator('#username').fill(buyer.email)
+      await page.locator('input[type="submit"], button[type="submit"]').first().click()
+      const resetLink = await recipientEmailLink(request, buyer.email, 'Reset password')
+      await page.goto(resetLink)
+
+      await page.locator('#password-new').fill('abc')
+      await page.locator('#password-confirm').fill('abc')
+      await page.locator('input[type="submit"], button[type="submit"]').first().click()
+
+      await expect(page.getByText('Invalid password: minimum length 8.')).toBeVisible()
+      expect(await signInInFreshContext(browser, buyer.email, buyer.password)).toBe(true)
+    } finally {
+      await admin.deleteUserByEmail(buyer.email)
+    }
+  })
+
   test('a reused verification link does not verify again and reports it is already verified', async ({
     page,
     request,
