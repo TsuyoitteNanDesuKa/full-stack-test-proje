@@ -753,6 +753,16 @@ Kaynak: proje ve roadmap'in QA adayı portföyü gözüyle yapılan review'u. He
 
 **Odak sırası (güncel):** P0 kapandı ve `v1.0.0` etiketi yayınlandı (`5d49644`); P3 ve P7 tamamlandı; P2 otomasyonla kısmen kapatıldı (ekran okuyucu ve gerçek kullanıcı incelemesi manuel sınır olarak kalır). P1 (QA-027) yeni kök-neden kanıtı olmadan duraklatılmış kalır. P4 ve P5 tamamlandı. Sıradaki karar: P6 (REQ-019 e-posta doğrulama ve parola sıfırlama) yalnızca kapsam genişletme kararı alınırsa başlar. Performans hedeflerinin (QA-026 dışındaki uç noktalar) ve GitHub Actions Node.js 20 uyarılarının action sürümlerinin güncellenmesi açık teknik borçtur.
 
+### Sıradaki uygulama dilimleri (23 Kasım 2026)
+
+Bu sıra, gece ölçümü bekleyen QA-032 ve QA-040 ile paralel ilerler. Her dilimde aşağıdaki ortak Definition of Done uygulanır; gerçek ödeme, kargo ve KYC entegrasyonları kapsam dışıdır.
+
+1. [~] **QA-041 — CI raporunda atlanan Keycloak artefaktı:** Keycloak job'ı atlandığında indirme adımı atlanır; çalışan job'ın raporu eksikse zorunlu gece/elle kalite kapısı başarısız ve eksiklik görünür kalır. Lokal rapor testleri geçti; push CI anotasyonları ve gece/elle rapor doğrulaması bekleniyor.
+2. [ ] **QA-042 — Sipariş listesi ölçeklenebilirliği:** Eski sınırsız sipariş API'sinin tüketicilerini ve uyumluluk etkisini incele; veri kaybına veya sessiz kırılmaya yol açmadan sınırlandırma/geçiş planı uygula. Temiz commit üzerinde 1.000 siparişli profilde sayfalama ölçümünü üç bağımsız koşuyla tekrarla; sorgu sayısı, yanıt kapsamı/boyutu, her koşunun p95 ve hata oranını kaydet. 500 ms p95 hedefini her koşuda değerlendir ve eski tam listeyle farklı yanıt kapsamını belirt. API/UI sahiplik, sayfa sınırları ve regresyon testleri geçsin.
+3. [ ] **QA-043 — Satıcı liste sorgusu analizi:** Temsilî PostgreSQL verisinde `EXPLAIN (ANALYZE, BUFFERS)` ve sorgu sayısını ölç; indeks ve toplu yükleme etkilerini ayrı karşılaştır. Üç bağımsız yük koşusunun her birinde 500 ms p95 hedefini ve hata oranını raporla; iyileştirme yapılırsa sahiplik, sıralama ve mevcut davranış regresyonlarını doğrula. Kanıt desteklemiyorsa hedefi sağlanmış sayma.
+4. [ ] **REQ-021 — Alıcı favorileri (öneri):** Gereksinim ve kabul kriterlerini tanımla; alıcıya özel favori ekleme, çıkarma ve listeleme akışını backend, UI ve kalıcılıkla uygula. Tekrar ekleme, bulunmayan/silinmiş ürün, oturum ve sahiplik sınırlarını belirle; API, DB, component ve en az bir buyer E2E akışıyla doğrula.
+5. [ ] **REQ-022 — Ürün değerlendirmeleri (öneri):** Uygun satın alma sonrası puan/yorum kuralını, sipariş durumu ve tekrar değerlendirme davranışını önce gereksinimde netleştir; ardından backend, UI ve kalıcılığı uygula. Yetkisiz erişim, uygun olmayan sipariş, puan/metin sınırları ve sahiplik değişiklikleri API/DB/component testleri ve buyer E2E ile doğrulansın.
+
 ### P4 — QA-028: Yerel operasyonel görünürlük
 
 - **Durum:** Tamamlandı; P0/P2 kapanışını beklemeden kullanıcı talebiyle uygulandı. P0/P2 tamamlanmadan release/tag oluşturulamaz.

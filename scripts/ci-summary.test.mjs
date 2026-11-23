@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 
 const script = fileURLToPath(new URL('./ci-summary.mjs', import.meta.url))
+const workflow = fileURLToPath(new URL('../.github/workflows/ci.yml', import.meta.url))
 const junit = '<testsuites><testsuite><testcase name="example" /></testsuite></testsuites>'
 const metric = { pct: 95 }
 const total = { statements: metric, branches: metric, functions: metric, lines: metric }
@@ -84,4 +85,52 @@ test('requires Keycloak reports on scheduled and manual runs', async (t) => {
   env.KEYCLOAK_E2E_RESULT = 'failure'
   const result = spawnSync(process.execPath, [script], { cwd: dir, env, encoding: 'utf8' })
   assert.equal(result.status, 1, result.stderr)
+})
+
+test('only downloads the Keycloak artifact when the job was not skipped', async () => {
+  const contents = await readFile(workflow, 'utf8')
+  assert.match(
+    contents,
+    /- name: Download Keycloak browser test reports\r?\n\s+if: \$\{\{ always\(\) && needs\.keycloak-e2e\.result != 'skipped' \}\}/,
+  )
+})
+
+test('fails when a successful required Keycloak job has no report', async (t) => {
+  const { dir, summary, env } = await fixture(t)
+  env.KEYCLOAK_E2E_REQUIRED = 'true'
+  env.KEYCLOAK_E2E_RESULT = 'success'
+  const result = spawnSync(process.execPath, [script], { cwd: dir, env, encoding: 'utf8' })
+  assert.equal(result.status, 1, result.stderr)
+  assert.match(await readFile(summary, 'utf8'), /Keycloak E2E.*Report unavailable/)
+})
+
+test('fails when a required Keycloak job is skipped', async (t) => {
+  const { dir, summary, env } = await fixture(t)
+  env.KEYCLOAK_E2E_REQUIRED = 'true'
+  const result = spawnSync(process.execPath, [script], { cwd: dir, env, encoding: 'utf8' })
+  assert.equal(result.status, 1, result.stderr)
+  assert.match(await readFile(summary, 'utf8'), /Keycloak E2E.*Skipped.*Report unavailable/)
+})
+
+test('accepts a successful required Keycloak job with its report', async (t) => {
+  const { dir, summary, env } = await fixture(t)
+  env.KEYCLOAK_E2E_REQUIRED = 'true'
+  env.KEYCLOAK_E2E_RESULT = 'success'
+  const path = join(dir, 'artifacts/keycloak-e2e/e2e-junit.xml')
+  await mkdir(dirname(path), { recursive: true })
+  await writeFile(path, junit)
+  execFileSync(process.execPath, [script], { cwd: dir, env })
+  assert.match(await readFile(summary, 'utf8'), /Keycloak E2E.*Passed.*1\/1 passed/)
+})
+
+test('preserves a failed Keycloak job in the summary when its report exists', async (t) => {
+  const { dir, summary, env } = await fixture(t)
+  env.KEYCLOAK_E2E_REQUIRED = 'true'
+  env.KEYCLOAK_E2E_RESULT = 'failure'
+  const path = join(dir, 'artifacts/keycloak-e2e/e2e-junit.xml')
+  await mkdir(dirname(path), { recursive: true })
+  await writeFile(path, junit)
+  const result = spawnSync(process.execPath, [script], { cwd: dir, env, encoding: 'utf8' })
+  assert.equal(result.status, 1, result.stderr)
+  assert.match(await readFile(summary, 'utf8'), /Keycloak E2E.*Failed.*1\/1 passed/)
 })

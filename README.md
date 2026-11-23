@@ -302,6 +302,8 @@ GitHub Actions iş akışı her push ve pull request'te backend, frontend ve tar
 
 Bir iş akışı koşusu içinden **Unified test report** işinin özetine ulaşın. Frontend için gerçekten ölçülen dosyalar coverage raporundan okunarak listelenir; dosya kapsamı veya zorunlu rapor yoksa kalite kapısı başarısız olur. Ayrıntılı HTML coverage raporları, JUnit test sonuçları ve başarısız E2E koşularının Playwright izleri koşu artefaktları olarak 14 gün saklanır. CI yerelde çalışan geliştirme sunucularını veya veritabanını kullanmaz.
 
+Push/PR koşularında atlanan Keycloak job'ının artefaktı indirilmeye çalışılmaz. Gece/elle koşularda Keycloak raporu zorunludur; job atlanır veya rapor bulunamazsa özet kalite kapısını başarısız gösterir.
+
 ## Yol planı
 
 Uygulanabilir aşamalar, çıktılar ve tamamlanma ölçütleri için [ROADMAP.md](./ROADMAP.md) dosyasına bakın.
