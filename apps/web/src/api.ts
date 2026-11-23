@@ -484,6 +484,7 @@ export function createProductReturn(
   })
 }
 
+/** @deprecated Use getMyOrdersPage to avoid loading the entire order history. */
 export function getMyOrders(token: string): Promise<CustomerOrder[]> {
   return request<CustomerOrder[]>('/api/v1/orders', {
     headers: { Authorization: `Bearer ${token}` },

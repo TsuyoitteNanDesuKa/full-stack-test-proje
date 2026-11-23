@@ -36,8 +36,8 @@ Hata oranı: tüm koşularda %0,00 (hedef < %1 tutuldu).
 - **Kanıt:** 100 siparişte p95 ≈ 4,6 sn; 1.000 siparişte p95 ≈ 44 sn. Hata oranı %0; yani yanıtlar doğru ama yavaş.
 - **Neden:** [SQL analizi](./performance-sql-analysis-2026-11-14.md) buyer, admin ve seller listelerinde N+1 örüntüsünü kanıtladı: sorgu sayısı sonuç sayısıyla büyüyor (buyer `1 + 6N`, seller `3 + 2N`, admin `1 + 7N`). Analiz ayrıca toplu yüklemenin (IN gruplarına bölünmüş sorgular) bu sayıyı düşürdüğünü, ancak sayfalamasız tam listenin hâlâ büyük veride yavaş kaldığını gösteriyor.
 - **Düzeltme:** Sayfalı endpoint `GET /api/v1/orders/page?limit=20&offset=0` eklendi; QA-026 ölçümünde 1.000 sipariş için 20'lik sayfa ölçüldü ([performance-order-pagination-2026-11-16.md](./performance-order-pagination-2026-11-16.md)).
-- **Durum:** Sayfalı yol ölçüldü; eski tam liste yolu hâlâ hedef dışı. Eski yolun kaldırılması veya sınırlandırılması açık iş.
-- **Sınır:** Sayfalama ölçümünün çalışma ağacı temiz değildi (raporda belirtilen değişiklikler uygulanmıştı). Sonuçlar yeniden üretilebilir kabul edilmeden önce temiz bir commit'te tekrarlanmalı.
+- **Durum:** Sayfalı yol temiz commit'te [üç kez tekrar ölçüldü](./performance-order-pagination-2026-11-16.md#qa-042--temiz-commit-üzerinde-tekrar-23-kasım-2026); ilk sayfada her koşu hedefte. Eski tam liste hâlâ sınırsızdır ve deprecated işaretlenerek sayfalı yola geçiş başlatılmıştır; kaldırma/sınırlama için tarih belirlenmemiştir.
+- **Sınır:** İlk ölçümün çalışma ağacı temiz değildi; temiz commit tekrarı yalnız ilk sayfayı ölçer. Tam geçmişin performansını veya derin sayfaları doğrulamaz.
 
 ### 3.2 Satıcı listesi (seller)
 
@@ -57,8 +57,8 @@ Hata oranı: tüm koşularda %0,00 (hedef < %1 tutuldu).
 
 ## 5. Sonraki adımlar (öncelik sırasıyla)
 
-1. Eski tam sipariş listesi yolunu kaldırmak ya da sayfalı yola yönlendirmek; ardından `orders_100` ve `orders_1000` senaryolarını yeniden ölçmek. (Buyer sayfalaması API/UI uyumluluğu nedeniyle ayrı tasarım gerektirir; SQL analizinde belirtildiği gibi.)
-2. Temiz bir commit'te sayfalama ölçümünü tekrarlamak (kaynak kontrolü kanıtı için).
+1. Deprecated eski tam sipariş listesi kullanan istemcilerin geçişini değerlendirmek; kaldırma veya sınırlama için ayrı uyumluluk ve sürüm kararı almak. Eski yol korunurken performans sorunu çözülmüş sayılmaz.
+2. Gerektiğinde derin sayfa ve tüm geçmişi sayfalarla dolaşma maliyetini ayrı ölçmek; temiz commit üzerinde ilk sayfa tekrarı tamamlandı.
 3. Satıcı listesinin `EXPLAIN` analizi ve hedef farkının kapatılması.
 4. Frontend ilk yük için kök neden ölçümü (QA-027, duraklatıldı).
 

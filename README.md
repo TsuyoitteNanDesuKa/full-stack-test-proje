@@ -245,6 +245,8 @@ online-store/
 
 Bu yapı başlangıç önerisidir; ilk aşamada monorepo aracı eklemek zorunlu değildir. Python backend'i kendi `pyproject.toml` dosyasıyla yönetebilir; Nx/Turborepo gibi araçları erkenden eklemeyin.
 
+Alıcı sipariş geçmişi için `GET /api/v1/orders/page` kullanın. Eski, tüm geçmişi döndüren `GET /api/v1/orders` uyumluluk için korunur ancak deprecated durumdadır; başarılı yanıtında deprecation tarihi ve sayfalı ardılı gösteren `Link` başlığı bulunur. Bu uç nokta hâlâ sınırsızdır; kaldırma veya sınırlama tarihi belirlenmemiştir.
+
 ## Kalite kapıları
 
 Her pull request için hedeflenen temel sıra:

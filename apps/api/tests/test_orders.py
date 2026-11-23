@@ -278,6 +278,30 @@ def test_order_page_default_limits_results(client: TestClient, engine) -> None:
     assert body["offset"] == 0
 
 
+def test_legacy_order_history_preserves_full_response_and_advertises_successor(
+    client: TestClient, engine
+) -> None:
+    with Session(engine) as session:
+        session.add_all(
+            CustomerOrder(
+                owner_subject=owner,
+                idempotency_key=f"legacy-{index}",
+                status="pending_payment",
+                total_amount=Decimal("10.00"),
+                created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            )
+            for index, owner in enumerate(["legacy-buyer"] * 21 + ["other-buyer"])
+        )
+        session.commit()
+
+    response = client.get("/api/v1/orders", headers=auth_headers(client, "legacy-buyer"))
+    assert response.status_code == 200
+    assert len(response.json()) == 21
+    assert response.headers["deprecation"] == "@1795392000"
+    assert response.headers["link"] == '</api/v1/orders/page>; rel="successor-version"'
+    assert client.app.openapi()["paths"]["/api/v1/orders"]["get"]["deprecated"] is True
+
+
 def test_checkout_rejects_empty_or_unavailable_carts_without_mutation(
     client: TestClient,
     engine,

@@ -26,6 +26,18 @@ Yüksüz, süreç içi ve SQLAlchemy ile araçlandırılmış ayrı bir tanı is
 
 Bu çalışma ilk sayfayı ölçer; sonraki veya derin offset'ler, eş zamanlı yeni siparişler ve tüm geçmişi sayfalarla dolaşma süresi ölçülmedi. PostgreSQL ve deterministik Playwright işlevsel doğrulamaları daha sonra ayrı yapıldı; sonuçlar [roadmap'tedir](../ROADMAP.md).
 
+## QA-042 — Temiz commit üzerinde tekrar (23 Kasım 2026)
+
+`e5e480c18e84aa1b9265c8b98770ad4a062fa04b` temiz çalışma ağacında, yukarıdaki aynı `orders_page_1000` profili ve üç ayrı PostgreSQL container/migration/seed/API/JWKS kurulumu ile tekrarlandı. 60 sn ramp-up, 180 sn 10 VU ve 30 sn ramp-down kullanıldı. Ölçüm Windows üzerinde aynı Intel i5-10300H makinede, Python 3.13.15, Docker 29.9.2, PostgreSQL 17 Alpine ve k6 2.4.0 ile yapıldı; API ve k6 hostta, PostgreSQL Docker'da çalıştı.
+
+| Koşu | İstek | Hata oranı | p50 ms | p95 ms | p99 ms | Yanıt p50 bayt | p95 ≤ 500 ms |
+|---|---:|---:|---:|---:|---:|---:|---|
+| 1 | 1.761 | %0 | 19,20 | 33,29 | 62,93 | 20.729 | Geçti |
+| 2 | 1.761 | %0 | 19,66 | 31,01 | 73,80 | 20.729 | Geçti |
+| 3 | 1.754 | %0 | 18,94 | 32,13 | 136,21 | 20.729 | Geçti |
+
+Her koşu 20 kayıt ve `has_more=true` doğruladı; 500 ms hedefi ve <%1 hata hedefi üçünde de sağlandı. Üç p95 değerinin ortancası 32,13 ms'dir; birleşik isteklerin p95'i değildir. İlk ortamda ayrı, salt okunur ve süreç içi bir tanıda 7 SQL sorgusu ve 20.729 bayt yanıt gözlendi; bu tek tanı yük altındaki sorgu maliyeti değildir. Yalnız ilk sayfa ölçülmüştür; sınırsız eski yanıt veya derin sayfalar için performans sonucu çıkarılamaz. Ham ölçüm ve raporlar yerel oturum kanıtlarında tutuldu, geçici test token'ları silindi.
+
 ## Kaynak gözlemleri ve kanıt
 
 Yaklaşık 16–17 saniyede bir alınan noktasal örneklerden, üç koşunun 60–240. saniyelerindeki toplam 33 örnek kullanıldı. API CPU ardışık örnekler arasındaki CPU zamanı farkıdır (%100 bir mantıksal çekirdek); bellek working set'tir. PostgreSQL CPU ve bellek Docker noktasal ölçümleridir. CPU ve bellek değerleri tüm sistem yükünü veya darboğaz nedenini göstermez.

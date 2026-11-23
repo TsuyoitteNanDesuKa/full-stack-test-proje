@@ -2493,6 +2493,8 @@
     },
     "/api/v1/orders": {
       "get": {
+        "deprecated": true,
+        "description": "Unbounded legacy history. Migrate to GET /api/v1/orders/page.",
         "operationId": "list_my_orders_api_v1_orders_get",
         "responses": {
           "200": {
@@ -2507,7 +2509,21 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Successful Response",
+            "headers": {
+              "Deprecation": {
+                "description": "Deprecation date as an RFC 9745 structured timestamp.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Link": {
+                "description": "Successor paginated endpoint.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "security": [

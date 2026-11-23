@@ -398,12 +398,34 @@ def create_order(
     return _order_response(db, order)
 
 
-@router.get("", response_model=list[OrderResponse])
+@router.get(
+    "",
+    response_model=list[OrderResponse],
+    deprecated=True,
+    description="Unbounded legacy history. Migrate to GET /api/v1/orders/page.",
+    responses={
+        200: {
+            "headers": {
+                "Deprecation": {
+                    "description": "Deprecation date as an RFC 9745 structured timestamp.",
+                    "schema": {"type": "string"},
+                },
+                "Link": {
+                    "description": "Successor paginated endpoint.",
+                    "schema": {"type": "string"},
+                },
+            }
+        }
+    },
+)
 def list_my_orders(
+    response: Response,
     current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> list[OrderResponse]:
     _require_buyer(current_user)
+    response.headers["Deprecation"] = "@1795392000"
+    response.headers["Link"] = '</api/v1/orders/page>; rel="successor-version"'
     orders = db.scalars(
         select(CustomerOrder)
         .where(CustomerOrder.owner_subject == current_user.subject)
