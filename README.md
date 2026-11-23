@@ -264,11 +264,35 @@ Aşağıdaki tablo `.github/workflows/ci.yml` ile birebir eşleşir. Pull reques
 | Backend Ruff lint/format, OpenAPI snapshot, pip-audit | `backend` | Evet | Evet |
 | Backend pytest (SQLite, `fail_under = 95`) | `backend` | Evet | Evet |
 | PostgreSQL migration ve entegrasyon testleri | `postgres` | Evet | Evet |
-| Frontend lint, tip, Vitest, build, npm audit | `frontend` | Evet | Evet |
+| Frontend lint, tip, OpenAPI sözleşmesi, Vitest, build, npm audit | `frontend` | Evet | Evet |
 | Playwright `@smoke` (deterministik, Keycloak gerektirmez) | `e2e` | Evet | Evet |
 | Playwright `@keycloak` (gerçek Keycloak + Mailpit) | `keycloak-e2e` | Hayır | Evet |
 
-`@keycloak` etiketli senaryolar (REQ-001/006, REQ-007, REQ-008, REQ-009/010/012, REQ-017, REQ-019 ve admin CRUD regresyonu) PR'da çalışmaz; bu bir bilinçli kapsam kararıdır. Gerçek Keycloak regresyonu PR'ı bloke etmez, ancak her gece sonuçlanır.
+#### Gerçek Keycloak senaryoları
+
+Her satır bir Playwright testidir. Push/PR sütunu `e2e` job'ının `@smoke` seçimini, gece/elle sütunu `keycloak-e2e` job'ının `@keycloak` seçimini gösterir. Job'lar önceki kurulum adımları başarısız olursa testleri çalıştırmaz. Gerçek Keycloak regresyonu PR'ı bloke etmez; gece ve elle tetiklenen koşular için zorunludur.
+
+| Test dosyası | Senaryo | Push / PR | Gece / elle |
+|---|---|---|---|
+| [admin-access.spec.ts](./apps/web/e2e/admin-access.spec.ts) | revoked admin loses admin access after signing in again | Hayır | Evet |
+| [admin-crud.spec.ts](./apps/web/e2e/admin-crud.spec.ts) | admin creates, updates and deletes products while buyers remain read-only | Hayır | Evet |
+| [cart.spec.ts](./apps/web/e2e/cart.spec.ts) | buyer manages a persistent private cart and can remove a deleted product | Hayır | Evet |
+| [cart.spec.ts](./apps/web/e2e/cart.spec.ts) | express delivery stays paid at the free-standard threshold | Hayır | Evet |
+| [cart.spec.ts](./apps/web/e2e/cart.spec.ts) | buyer can partially and fully return a shipped order within the return window | Hayır | Evet |
+| [email-verification-reset.spec.ts](./apps/web/e2e/email-verification-reset.spec.ts) | unverified buyer cannot sign in, then verifies by email link and signs in | Hayır | Evet |
+| [email-verification-reset.spec.ts](./apps/web/e2e/email-verification-reset.spec.ts) | password and reset tokens never appear in app storage or in the app response bodies | Hayır | Evet |
+| [email-verification-reset.spec.ts](./apps/web/e2e/email-verification-reset.spec.ts) | the reset form rejects a weak password and keeps the old password | Hayır | Evet |
+| [email-verification-reset.spec.ts](./apps/web/e2e/email-verification-reset.spec.ts) | a reused verification link does not verify again and reports it is already verified | Hayır | Evet |
+| [email-verification-reset.spec.ts](./apps/web/e2e/email-verification-reset.spec.ts) | the reset form rejects a confirmation that does not match the new password | Hayır | Evet |
+| [email-verification-reset.spec.ts](./apps/web/e2e/email-verification-reset.spec.ts) | forgotten password is reset through the emailed link and the new password works | Hayır | Evet |
+| [login.spec.ts](./apps/web/e2e/login.spec.ts) | registers a buyer through Keycloak and denies product administration | Hayır | Evet |
+| [login.spec.ts](./apps/web/e2e/login.spec.ts) | rejects a second registration with an existing email | Hayır | Evet |
+| [login.spec.ts](./apps/web/e2e/login.spec.ts) | keeps an invalid login on Keycloak without calling protected shop APIs | Hayır | Evet |
+| [login.spec.ts](./apps/web/e2e/login.spec.ts) | prevents submission when required fields are missing or the email is malformed | Hayır | Evet |
+| [seller-applications.spec.ts](./apps/web/e2e/seller-applications.spec.ts) | buyer applies, admin approves, and the buyer receives the seller role | Hayır | Evet |
+| [seller-orders.spec.ts](./apps/web/e2e/seller-orders.spec.ts) | two sellers manage isolated packages and buyer/admin see the shared order | Hayır | Evet |
+
+Test seçimi değiştiğinde tabloyu güncelleyin. `apps/web` içinde `E2E_KEYCLOAK_E2E=1` ile `npm run test:e2e:keycloak -- --list` seçilen senaryoları, `npm run test:e2e:smoke -- --list` PR kapsamını servisleri başlatmadan listeler.
 
 Testlerin deterministik, bağımsız ve anlaşılır hata mesajlarına sahip olmasını hedefleyin. Test başarısızlıklarını gizlemeyin; flaky testleri karantinaya almak yerine kök nedenini takip edin. Kapsam yüzdesini tek başına kalite ölçütü olarak kullanmayın; kritik kuralların ve risklerin gerçekten kapsandığını değerlendirin.
 
