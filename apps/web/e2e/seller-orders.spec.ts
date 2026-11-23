@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test'
-import type { Page, Response } from '@playwright/test'
+import type { Page } from '@playwright/test'
 import { createTestProduct } from '../src/test/testData'
 import { createKeycloakAdminClient, createKeycloakTestAdmin } from './keycloakAdmin'
 import { KeycloakLoginPage } from './keycloakLoginPage'
+import { registerBuyer } from './keycloakRegistration'
 
 const keycloakE2EEnabled = process.env.E2E_KEYCLOAK_E2E === '1'
 
@@ -12,27 +13,6 @@ function createCredentials(prefix: string) {
     email: `${prefix}-${uniqueId}@example.com`,
     password: `LivaE2E-${uniqueId}!Aa`,
   }
-}
-
-async function registerBuyer(page: Page, email: string, password: string): Promise<Response> {
-  await page.goto('/')
-  await page.getByRole('button', { name: /alıcı hesabı oluştur/i }).click()
-  await expect(page).toHaveURL(/localhost:8080/)
-  await page.getByRole('link', { name: 'Register' }).click()
-  await page.locator('#firstName').fill('Test')
-  await page.locator('#lastName').fill('Marketplace User')
-  await page.locator('#email').fill(email)
-  const username = page.locator('#username')
-  if (await username.count()) await username.fill(email)
-  await page.locator('#password').fill(password)
-  await page.locator('#password-confirm').fill(password)
-  const identity = page.waitForResponse(
-    (response) =>
-      response.url().endsWith('/api/v1/auth/me') &&
-      response.request().method() === 'GET',
-  )
-  await page.locator('#kc-register-form input[type="submit"]').click()
-  return identity
 }
 
 async function applyAsSeller(page: Page, storeName: string) {

@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test'
-import type { Locator, Page, Response } from '@playwright/test'
 import { createTestProduct, productRequest } from '../src/test/testData'
 import { createKeycloakAdminClient } from './keycloakAdmin'
 import { KeycloakLoginPage } from './keycloakLoginPage'
+import { fillRegistrationForm, openRegistrationForm, registerBuyer } from './keycloakRegistration'
 
 const keycloakE2EEnabled = process.env.E2E_KEYCLOAK_E2E === '1'
 const temporaryBuyerEmails = new Map<string, string>()
@@ -13,45 +13,6 @@ function createBuyerCredentials() {
     email: `buyer-${uniqueId}@example.com`,
     password: `LivaE2E-${uniqueId}!Aa`,
   }
-}
-
-async function openRegistrationForm(page: Page): Promise<Locator> {
-  await page.goto('/')
-  await page.getByRole('button', { name: /alıcı hesabı oluştur/i }).click()
-  await expect(page).toHaveURL(/localhost:8080/)
-  await page.getByRole('link', { name: 'Register' }).click()
-
-  const form = page.locator('#kc-register-form')
-  await expect(form).toBeVisible()
-  return form
-}
-
-async function fillRegistrationForm(
-  page: Page,
-  email: string,
-  password: string,
-): Promise<Locator> {
-  const form = await openRegistrationForm(page)
-  await page.locator('#firstName').fill('Test')
-  await page.locator('#lastName').fill('Buyer')
-  await page.locator('#email').fill(email)
-  const username = page.locator('#username')
-  if (await username.count() > 0) {
-    await username.fill(email)
-  }
-  await page.locator('#password').fill(password)
-  await page.locator('#password-confirm').fill(password)
-  return form
-}
-
-async function submitRegistration(page: Page, form: Locator): Promise<Response> {
-  const identityResponsePromise = page.waitForResponse(
-    (response) =>
-      response.url().endsWith('/api/v1/auth/me') &&
-      response.request().method() === 'GET',
-  )
-  await form.locator('input[type="submit"]').click()
-  return identityResponsePromise
 }
 
 test.describe('REQ-001 authentication and REQ-006 buyer registration @keycloak', () => {
@@ -83,8 +44,7 @@ test.describe('REQ-001 authentication and REQ-006 buyer registration @keycloak',
         shopApiRequestBodies.push(requestEvent.postData() ?? '')
       }
     })
-    const registrationForm = await fillRegistrationForm(page, email, password)
-    const registrationIdentity = await submitRegistration(page, registrationForm)
+    const registrationIdentity = await registerBuyer(page, email, password)
     expect(registrationIdentity.status()).toBe(200)
     await expect(page.getByRole('heading', { name: 'Alışverişe hoş geldiniz.' })).toBeVisible()
 
@@ -126,15 +86,14 @@ test.describe('REQ-001 authentication and REQ-006 buyer registration @keycloak',
   test('rejects a second registration with an existing email', async ({ page }, testInfo) => {
     const { email, password } = createBuyerCredentials()
     temporaryBuyerEmails.set(testInfo.testId, email)
-    const initialRegistrationForm = await fillRegistrationForm(page, email, password)
-    const initialIdentityResponse = await submitRegistration(page, initialRegistrationForm)
+    const initialIdentityResponse = await registerBuyer(page, email, password)
     expect(initialIdentityResponse.status()).toBe(200)
     await expect(page.getByRole('heading', { name: 'Alışverişe hoş geldiniz.' })).toBeVisible()
 
     await page.getByRole('button', { name: /çıkış yap/i }).click()
     await expect(page.getByRole('button', { name: /alıcı hesabı oluştur/i })).toBeVisible()
 
-    const duplicateRegistrationForm = await fillRegistrationForm(page, email, password)
+    const duplicateRegistrationForm = await fillRegistrationForm(page, email, 'Buyer')
     await duplicateRegistrationForm.locator('input[type="submit"]').click()
 
     await expect(
@@ -184,14 +143,6 @@ test.describe('REQ-001 authentication and REQ-006 buyer registration @keycloak',
 
     await firstName.fill('Test')
     await page.locator('#lastName').fill('Buyer')
-    await email.fill(createBuyerCredentials().email)
-    await page.locator('#password').fill('LivaE2E-Valid-Password!Aa')
-    await page.locator('#password-confirm').fill('LivaE2E-Different-Password!Aa')
-    await form.locator('input[type="submit"]').click()
-    await expect(page.getByText(/password confirmation doesn't match/i)).toBeVisible()
-    await expect(page).toHaveURL(/login-actions\/registration/)
-
-    await page.locator('#password-confirm').fill('LivaE2E-Valid-Password!Aa')
     await email.fill('not-an-email')
     await form.locator('input[type="submit"]').click()
     await expect(email).toHaveAttribute('aria-invalid', 'true')

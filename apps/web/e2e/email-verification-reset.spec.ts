@@ -1,13 +1,9 @@
 import { expect, test } from '@playwright/test'
-import type { APIRequestContext, Browser, Page } from '@playwright/test'
+import type { Browser, Page } from '@playwright/test'
 import { createKeycloakAdminClient } from './keycloakAdmin'
+import { recipientEmailLink } from './mailpit'
 
 const keycloakE2EEnabled = process.env.E2E_KEYCLOAK_E2E === '1'
-const mailpitUrl = process.env.E2E_MAILPIT_URL ?? 'http://127.0.0.1:8025'
-
-interface MailpitSummary {
-  messages: Array<{ ID: string; Subject: string; Created: string; To: Array<{ Address: string }> }>
-}
 
 function uniqueBuyer() {
   const id = `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`
@@ -16,35 +12,6 @@ function uniqueBuyer() {
     password: `LivaP6-${id}!Aa`,
     newPassword: `LivaP6-reset-${id}!Bb`,
   }
-}
-
-// Reads the link from the newest Mailpit message addressed to this test's account.
-async function recipientEmailLink(
-  request: APIRequestContext,
-  recipient: string,
-  subject: string,
-): Promise<string> {
-  const deadline = Date.now() + 30_000
-  while (Date.now() < deadline) {
-    const list = await request.get(`${mailpitUrl}/api/v1/messages`)
-    const summary = (await list.json()) as MailpitSummary
-    // Take the most recent matching message so an earlier, expired link is never used.
-    const match = summary.messages
-      .filter(
-        (message) =>
-          message.Subject === subject &&
-          message.To.some((to) => to.Address === recipient),
-      )
-      .sort((a, b) => Date.parse(b.Created) - Date.parse(a.Created))[0]
-    if (match) {
-      const detail = await request.get(`${mailpitUrl}/api/v1/message/${match.ID}`)
-      const text = String(((await detail.json()) as { Text?: string }).Text ?? '')
-      const link = text.match(/https?:\/\/\S+/)?.[0]
-      if (link) return link
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500))
-  }
-  throw new Error(`No "${subject}" email for the test account arrived in Mailpit.`)
 }
 
 // Starts each scenario signed out: clears the app session so the sign-in screen is shown.

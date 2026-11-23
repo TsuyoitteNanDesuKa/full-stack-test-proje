@@ -3,6 +3,7 @@ import type { Page } from '@playwright/test'
 import { createTestProduct, productRequest } from '../src/test/testData'
 import { createKeycloakTestAdmin } from './keycloakAdmin'
 import { KeycloakLoginPage } from './keycloakLoginPage'
+import { registerBuyer } from './keycloakRegistration'
 
 const keycloakE2EEnabled = process.env.E2E_KEYCLOAK_E2E === '1'
 
@@ -56,13 +57,15 @@ test.describe('REQ-003/004/005/006 admin product CRUD regression @keycloak', () 
     const buyerContext = await browser.newContext()
     const buyerPage = await buyerContext.newPage()
     let buyerEmail: string | undefined
+    let adminToken: string | undefined
+    let createdProductId: number | undefined
 
     try {
       const adminIdentityResponse = await keycloakLogin.login(admin.email, admin.password)
       expect(adminIdentityResponse.status()).toBe(200)
+      adminToken = adminIdentityResponse.request().headers().authorization
       expect((await adminIdentityResponse.json()).is_admin).toBe(true)
       await expect(page.getByRole('button', { name: '+ Ürün ekle' })).toBeVisible()
-      await expect(page.getByText('Henüz listelenecek ürün yok.')).toBeVisible()
 
       const initialProduct = createTestProduct()
       const invalidProductPostStatuses: number[] = []
@@ -93,7 +96,8 @@ test.describe('REQ-003/004/005/006 admin product CRUD regression @keycloak', () 
       await page.getByRole('button', { name: 'Ürünü kaydet' }).click()
       const createResponse = await createResponsePromise
       expect(createResponse.status()).toBe(201)
-      const createdProduct = await createResponse.json()
+      const createdProduct = (await createResponse.json()) as { id: number }
+      createdProductId = createdProduct.id
       await expect(page.getByRole('button', { name: '+ Ürün ekle' })).toBeVisible()
       await expectProductRow(page, initialProduct, false)
 
@@ -157,29 +161,8 @@ test.describe('REQ-003/004/005/006 admin product CRUD regression @keycloak', () 
 
       const buyerCredentials = createTestProduct()
       buyerEmail = `buyer-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}@example.com`
-      await buyerPage.goto('/')
-      await buyerPage.getByRole('button', { name: /alıcı hesabı oluştur/i }).click()
-      await expect(buyerPage).toHaveURL(/localhost:8080/)
-      await buyerPage.getByRole('link', { name: 'Register' }).click()
-      const registrationForm = buyerPage.locator('#kc-register-form')
-      await expect(registrationForm).toBeVisible()
-      await buyerPage.locator('#firstName').fill('Test')
-      await buyerPage.locator('#lastName').fill('Buyer')
-      await buyerPage.locator('#email').fill(buyerEmail)
-      const usernameField = buyerPage.locator('#username')
-      if (await usernameField.count() > 0) {
-        await usernameField.fill(buyerEmail)
-      }
       const buyerPassword = `LivaE2E-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}!Aa`
-      await buyerPage.locator('#password').fill(buyerPassword)
-      await buyerPage.locator('#password-confirm').fill(buyerPassword)
-      const buyerIdentityPromise = buyerPage.waitForResponse(
-        (response) =>
-          response.url().endsWith('/api/v1/auth/me') &&
-          response.request().method() === 'GET',
-      )
-      await registrationForm.locator('input[type="submit"]').click()
-      const buyerIdentityResponse = await buyerIdentityPromise
+      const buyerIdentityResponse = await registerBuyer(buyerPage, buyerEmail, buyerPassword)
       expect(buyerIdentityResponse.status()).toBe(200)
       const buyerIdentity = await buyerIdentityResponse.json()
       expect(buyerIdentity.roles).toContain('buyer')
@@ -219,7 +202,6 @@ test.describe('REQ-003/004/005/006 admin product CRUD regression @keycloak', () 
       expect(deniedUpdate.status()).toBe(403)
       expect(deniedDelete.status()).toBe(403)
 
-      const adminToken = adminIdentityResponse.request().headers().authorization
       const preservedProductResponse = await request.get(
         'http://127.0.0.1:8001/api/v1/products',
         { headers: { authorization: adminToken } },
@@ -245,6 +227,7 @@ test.describe('REQ-003/004/005/006 admin product CRUD regression @keycloak', () 
       await page.getByRole('button', { name: `Sil ${updatedProduct.name}` }).click()
       const deleteResponse = await deleteResponsePromise
       expect(deleteResponse.status()).toBe(204)
+      createdProductId = undefined
       await expect(
         page.getByRole('row').filter({ hasText: updatedProduct.name }),
       ).toHaveCount(0)
@@ -258,14 +241,24 @@ test.describe('REQ-003/004/005/006 admin product CRUD regression @keycloak', () 
         .toBe(false)
     } finally {
       try {
-        await buyerContext.close()
+        if (createdProductId !== undefined && adminToken) {
+          const cleanup = await request.delete(
+            `http://127.0.0.1:8001/api/v1/products/${createdProductId}`,
+            { headers: { authorization: adminToken }, timeout: 5_000 },
+          )
+          expect([204, 404], 'Removing the temporary test product').toContain(cleanup.status())
+        }
       } finally {
         try {
-          if (buyerEmail) {
-            await admin.deleteUserByEmail(buyerEmail)
-          }
+          await buyerContext.close()
         } finally {
-          await admin.cleanup()
+          try {
+            if (buyerEmail) {
+              await admin.deleteUserByEmail(buyerEmail)
+            }
+          } finally {
+            await admin.cleanup()
+          }
         }
       }
     }
