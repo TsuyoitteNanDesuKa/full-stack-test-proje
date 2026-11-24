@@ -36,6 +36,7 @@ from shop_api.models import (
     PaymentWebhookEvent,
     Product,
     ProductReturn,
+    ProductReview,
 )
 from shop_api.payment_expiry import expire_due_payments
 from shop_api.payment_providers import sign_webhook_body
@@ -180,6 +181,88 @@ def test_postgres_favorite_reports_product_deleted_before_insert(
     assert response.status_code == 404
     with Session(postgres_engine) as session:
         assert session.scalar(select(func.count()).select_from(Favorite)) == 0
+
+
+def test_postgres_review_concurrent_creation_and_product_cascade(
+    postgres_engine: Engine, postgres_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from test_admin_orders import create_order
+
+    buyer = _auth_headers(postgres_client, "reviews-postgres-buyer")
+    order_id, product_id, _ = create_order(postgres_client, buyer, start_payment=True)
+    admin = _auth_headers(postgres_client, "reviews-postgres-admin", ["admin"])
+    for next_status in ("processing", "shipped", "delivered"):
+        assert (
+            postgres_client.patch(
+                f"/api/v1/admin/orders/{order_id}/status",
+                headers=admin,
+                json={"status": next_status},
+            ).status_code
+            == 200
+        )
+    barrier = Barrier(2)
+    commit = Session.commit
+
+    def synchronized_commit(session: Session) -> None:
+        if any(isinstance(item, ProductReview) for item in session.new):
+            barrier.wait(timeout=10)
+        commit(session)
+
+    monkeypatch.setattr(Session, "commit", synchronized_commit)
+
+    def save(_: int) -> int:
+        with _client_for_engine(postgres_engine) as client:
+            return client.put(
+                f"/api/v1/products/{product_id}/reviews/me",
+                headers=buyer,
+                json={"rating": 5, "comment": "Teslim edilen ürün iyi."},
+            ).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert sorted(pool.map(save, range(2))) == [200, 409]
+    with Session(postgres_engine) as session:
+        assert session.scalar(select(func.count()).select_from(ProductReview)) == 1
+    assert (
+        postgres_client.delete(f"/api/v1/products/{product_id}", headers=admin).status_code == 204
+    )
+    with Session(postgres_engine) as session:
+        assert session.scalar(select(func.count()).select_from(ProductReview)) == 0
+
+
+def test_postgres_review_product_deleted_before_insert(
+    postgres_engine: Engine, postgres_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from test_admin_orders import create_order
+
+    buyer = _auth_headers(postgres_client, "reviews-postgres-delete")
+    order_id, product_id, _ = create_order(postgres_client, buyer, start_payment=True)
+    admin = _auth_headers(postgres_client, "reviews-postgres-admin", ["admin"])
+    for next_status in ("processing", "shipped", "delivered"):
+        assert (
+            postgres_client.patch(
+                f"/api/v1/admin/orders/{order_id}/status",
+                headers=admin,
+                json={"status": next_status},
+            ).status_code
+            == 200
+        )
+    commit = Session.commit
+
+    def delete_before_commit(session: Session) -> None:
+        if any(isinstance(item, ProductReview) for item in session.new):
+            with postgres_engine.begin() as connection:
+                connection.execute(Product.__table__.delete().where(Product.id == product_id))
+        commit(session)
+
+    monkeypatch.setattr(Session, "commit", delete_before_commit)
+    response = postgres_client.put(
+        f"/api/v1/products/{product_id}/reviews/me",
+        headers=buyer,
+        json={"rating": 5, "comment": "Teslim edilen ürün iyi."},
+    )
+    assert response.status_code == 404
+    with Session(postgres_engine) as session:
+        assert session.scalar(select(func.count()).select_from(ProductReview)) == 0
 
 
 def _checkout_request(client: TestClient, headers: dict[str, str]) -> dict[str, object]:

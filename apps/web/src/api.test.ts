@@ -11,6 +11,7 @@ import {
   createSellerApplication,
   deleteCartItem,
   deleteProduct,
+  deleteReview,
   getCurrentUser,
   getAdminOrders,
   getHome,
@@ -21,9 +22,11 @@ import {
   getMyOrders,
   getMySellerApplication,
   getProducts,
+  getReviews,
   getSellerApplications,
   getSellerOrders,
   reviewSellerApplication,
+  saveReview,
   refundAdminOrder,
   removeFavorite,
   submitMySellerApplication,
@@ -118,6 +121,22 @@ describe('identity API client', () => {
 describe('storefront API client', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn())
+  })
+
+  it('lists, saves and deletes product reviews', async () => {
+    const page = { items: [], my_review: null, can_review: true, limit: 20, offset: 0, has_more: false }
+    const review = { id: 1, rating: 5, comment: 'Great product', created_at: 'now', updated_at: 'now', is_mine: true }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(page)).mockResolvedValueOnce(jsonResponse(review))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    await expect(getReviews('token', 42)).resolves.toEqual(page)
+    await expect(saveReview('token', 42, { rating: 5, comment: 'Great product' })).resolves.toEqual(review)
+    await expect(deleteReview('token', 42)).resolves.toBeUndefined()
+    expect(fetch).toHaveBeenNthCalledWith(1, '/api/v1/products/42/reviews?limit=20&offset=0',
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer token' }) }))
+    expect(fetch).toHaveBeenNthCalledWith(2, '/api/v1/products/42/reviews/me',
+      expect.objectContaining({ method: 'PUT', body: JSON.stringify({ rating: 5, comment: 'Great product' }) }))
+    expect(fetch).toHaveBeenNthCalledWith(3, '/api/v1/products/42/reviews/me',
+      expect.objectContaining({ method: 'DELETE' }))
   })
 
   it('lists, adds and removes favorites with bearer authentication', async () => {

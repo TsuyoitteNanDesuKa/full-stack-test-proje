@@ -1220,3 +1220,23 @@ Kategoriler örtüşebilir. PostgreSQL testleri `integration` ve `postgres`; Pla
 - **Sözleşme/component:** OpenAPI snapshot ve istemci kontrolü; ekleme, liste, sayfalama, silme, boş/yükleme/hata durumları.
 - **E2E:** Deterministik buyer ürün detayından ekler, favori listesini yenileyerek kalıcılığı doğrular ve ürünü kaldırır.
 - **Kapsam dışı:** Favori paylaşımı, bildirimler ve gerçek ödeme/kargo entegrasyonu.
+
+## REQ-022 — Ürün değerlendirmeleri
+
+**Kullanıcı hikâyesi:** Alıcı olarak teslim aldığım bir ürüne puan ve yorum vermek, diğer kullanıcıların değerlendirmelerini görmek istiyorum.
+
+### Kabul kriterleri
+
+1. Değerlendirmeler oturum açmış herkes tarafından ürün detayında görülür. Yazarın kimliği veya e-postası açıklanmaz; yalnız kendi değerlendirmesi işaretlenir.
+2. Yazma yalnız `buyer` rolüne ve aynı alıcıya ait, ilgili ürün kaleminin paket durumu `delivered` olan, iptal edilmemiş bir siparişe bağlıdır. Diğer paketlerin teslimi beklenmez. Ödenmemiş, kargolanmış veya iptal edilmiş sipariş yeterli değildir. İade ve sonradan satıcı değişikliği değerlendirme hakkını veya mevcut değerlendirmeyi kaldırmaz.
+3. Alıcı ürün başına bir değerlendirme oluşturur; aynı işlem daha sonra uygunluğu sürüyorsa kendi değerlendirmesini günceller. Alıcı, uygunluk sonradan kaybolsa da kendi değerlendirmesini silebilir; başka kullanıcının değerlendirmesi değiştirilemez veya silinemez. Eşzamanlı ilk oluşturmalarda tek kayıt korunur ve çakışma `409` ile bildirilir.
+4. Puan tam sayı olarak 1–5, kırpılmış yorum 10–1000 Unicode kod noktasıdır; yazdırılamayan karakterler (satır sonu ve tab hariç) ve geçersiz değerler `422` döner. Uygun olmayan alıcı `403`, bulunmayan/silinmiş ürün `404` döner. Ürün silinince değerlendirmeleri de silinir.
+5. `GET /api/v1/products/{id}/reviews` en yeni oluşturulan önce olacak şekilde `items`, `my_review`, `can_review`, `limit`, `offset`, `has_more` döndürür; varsayılan limit 20, aralık 1–100, offset aralığı 0–2147483647'dir. `PUT /api/v1/products/{id}/reviews/me` oluşturur veya günceller, `DELETE` aynı yolda yalnız kendi kaydını kaldırır (yoksa `204`). Kimliksiz erişim `401` döner.
+6. Ürün detayından değerlendirme listesi açılır, sayfalanır; yetkili alıcı yorumunu gönderir, düzenler veya siler. Boş, yükleme, başarısızlık ve başarı durumları görünürdür. Uygun olmayan alıcıya koşul açıklanır.
+
+### Test planı ve izlenebilirlik
+
+- **API/veritabanı:** Rol ve oturum sınırları, teslimat ve sahiplik, iade/satıcı değişikliği, giriş sınırları, benzersizlik, sayfalama, silinmiş ürün, migration ve eşzamanlı oluşturma.
+- **Sözleşme/component:** OpenAPI ve istemci uyumu; listeleme, yetki, form, güncelleme/silme, yükleme ve hata durumları.
+- **E2E:** Teslim öncesi buyer formu göremez ve admin yazamaz; API ile teslim edilen siparişin buyer'ı ürün detayında değerlendirme oluşturur, yeniler, düzenler ve siler. Deterministik kimlik, geçici SQLite ve test ödeme sağlayıcısı kullanılır.
+- **Kapsam dışı:** Moderasyon, değerlendirme yanıtları, medya yükleme, dış ödeme veya kargo entegrasyonu.

@@ -35,6 +35,29 @@ export interface FavoritePage {
   has_more: boolean
 }
 
+export interface ProductReview {
+  id: number
+  rating: number
+  comment: string
+  created_at: string
+  updated_at: string
+  is_mine: boolean
+}
+
+export interface ProductReviewPage {
+  items: ProductReview[]
+  my_review: ProductReview | null
+  can_review: boolean
+  limit: number
+  offset: number
+  has_more: boolean
+}
+
+export interface ProductReviewRequest {
+  rating: number
+  comment: string
+}
+
 export interface ProductSearchParams {
   search?: string
   category?: string
@@ -354,6 +377,32 @@ export function getProducts(
 
 export function getProduct(token: string, productId: number): Promise<Product> {
   return request<Product>(`/api/v1/products/${productId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function getReviews(
+  token: string, productId: number, limit = 20, offset = 0,
+): Promise<ProductReviewPage> {
+  const query = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+  return request<ProductReviewPage>(`/api/v1/products/${productId}/reviews?${query}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function saveReview(
+  token: string, productId: number, review: ProductReviewRequest,
+): Promise<ProductReview> {
+  return request<ProductReview>(`/api/v1/products/${productId}/reviews/me`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(review),
+  })
+}
+
+export function deleteReview(token: string, productId: number): Promise<void> {
+  return request<void>(`/api/v1/products/${productId}/reviews/me`, {
+    method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   })
 }

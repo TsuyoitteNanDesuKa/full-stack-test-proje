@@ -2,13 +2,14 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ProductDetailPanel from './ProductDetailPanel'
-import { addFavorite, ApiError, getProduct } from './api'
+import { addFavorite, ApiError, getProduct, getReviews } from './api'
 import type { Product } from './api'
 
 vi.mock('./api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./api')>()),
   getProduct: vi.fn(),
   addFavorite: vi.fn(),
+  getReviews: vi.fn(),
 }))
 
 const product: Product = {
@@ -169,5 +170,20 @@ describe('ProductDetailPanel', () => {
     renderDetail({ isBuyer: false })
     await screen.findByRole('heading', { name: 'Sample product' })
     expect(screen.queryByRole('button', { name: 'Favorilere ekle' })).not.toBeInTheDocument()
+  })
+
+  it('loads reviews only when opened and closes them on request', async () => {
+    vi.mocked(getProduct).mockResolvedValue(product)
+    vi.mocked(getReviews).mockResolvedValue({
+      items: [], my_review: null, can_review: false, limit: 20, offset: 0, has_more: false,
+    })
+    const user = userEvent.setup()
+    renderDetail()
+    const button = await screen.findByRole('button', { name: 'Değerlendirmeleri göster' })
+    expect(getReviews).not.toHaveBeenCalled()
+    await user.click(button)
+    expect(await screen.findByText('Henüz değerlendirme yok.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Değerlendirmeleri kapat' }))
+    expect(screen.queryByRole('region', { name: 'Ürün değerlendirmeleri' })).not.toBeInTheDocument()
   })
 })

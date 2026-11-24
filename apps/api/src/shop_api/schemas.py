@@ -105,6 +105,44 @@ class FavoritePageResponse(BaseModel):
     has_more: bool
 
 
+class ProductReviewRequest(BaseModel):
+    rating: int = Field(ge=1, le=5, strict=True)
+    comment: str = Field(min_length=10, max_length=1000, strict=True)
+
+    @field_validator("comment", mode="before")
+    @classmethod
+    def normalize_comment(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip()
+        if any(not char.isprintable() and char not in "\n\t" for char in normalized):
+            raise ValueError("Yorum yazdırılamayan karakter içeremez.")
+        return normalized
+
+
+class ProductReviewResponse(BaseModel):
+    id: int
+    rating: int
+    comment: str
+    created_at: datetime
+    updated_at: datetime
+    is_mine: bool
+
+    @field_validator("created_at", "updated_at")
+    @classmethod
+    def normalize_time_to_utc(cls, value: datetime) -> datetime:
+        return value.replace(tzinfo=UTC) if value.tzinfo is None else value
+
+
+class ProductReviewPageResponse(BaseModel):
+    items: list[ProductReviewResponse]
+    my_review: ProductReviewResponse | None
+    can_review: bool
+    limit: int
+    offset: int
+    has_more: bool
+
+
 class SellerApplicantType(StrEnum):
     INDIVIDUAL = "individual"
     SOLE_PROPRIETOR = "sole_proprietor"

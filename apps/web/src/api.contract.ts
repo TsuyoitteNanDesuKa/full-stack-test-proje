@@ -11,6 +11,8 @@ export type ResponseContracts = [
   Assert<Assignable<Schema.ProductResponse, Client.Product>>,
   Assert<Assignable<Schema.ProductListResponse, Client.ProductListResponse>>,
   Assert<Assignable<Schema.FavoritePageResponse, Client.FavoritePage>>,
+  Assert<Assignable<Schema.ProductReviewResponse, Client.ProductReview>>,
+  Assert<Assignable<Schema.ProductReviewPageResponse, Client.ProductReviewPage>>,
   Assert<Assignable<Schema.CartResponse, Client.CartResponse>>,
   Assert<Assignable<Schema.AddressResponse, Client.CustomerAddress>>,
   Assert<Assignable<Schema.OrderResponse, Client.CustomerOrder>>,
@@ -24,6 +26,7 @@ export type ResponseContracts = [
 ]
 
 export type RequestContracts = [
+  Assert<Assignable<Client.ProductReviewRequest, Schema.ProductReviewRequest>>,
   Assert<Assignable<Client.ProductCreateRequest, Schema.ProductCreateRequest>>,
   Assert<Assignable<Client.CartAddItemRequest, Schema.CartAddItemRequest>>,
   Assert<Assignable<Client.CartUpdateItemRequest, Schema.CartUpdateItemRequest>>,

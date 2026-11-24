@@ -95,7 +95,7 @@ def test_order_and_payment_migrations_create_tables_and_downgrade(
             )
             assert (
                 connection.scalar(text("SELECT version_num FROM alembic_version"))
-                == "0014_favorites"
+                == "0015_product_reviews"
             )
             table_names = set(
                 connection.scalars(

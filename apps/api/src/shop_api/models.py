@@ -84,6 +84,25 @@ class Favorite(Base):
     )
 
 
+class ProductReview(Base):
+    __tablename__ = "product_reviews"
+    __table_args__ = (
+        CheckConstraint("rating BETWEEN 1 AND 5", name="ck_product_reviews_rating"),
+        CheckConstraint("length(comment) BETWEEN 10 AND 1000", name="ck_product_reviews_comment"),
+        UniqueConstraint("product_id", "owner_subject", name="uq_product_reviews_product_owner"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_id: Mapped[int] = mapped_column(
+        ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    owner_subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    rating: Mapped[int] = mapped_column(nullable=False)
+    comment: Mapped[str] = mapped_column(String(1000), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class SellerApplication(Base):
     __tablename__ = "seller_applications"
     __table_args__ = (

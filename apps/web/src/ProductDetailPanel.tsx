@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { addFavorite, ApiError, getProduct } from './api'
 import type { Product } from './api'
+import ReviewsPanel from './ReviewsPanel'
 
 interface ProductDetailPanelProps {
   token: string
@@ -29,6 +30,7 @@ export default function ProductDetailPanel({
   const [status, setStatus] = useState<'loading' | 'ready' | 'not-found' | 'error'>('loading')
   const [retryCount, setRetryCount] = useState(0)
   const [favoriteStatus, setFavoriteStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const [reviewsOpen, setReviewsOpen] = useState(false)
 
   async function handleFavorite() {
     setFavoriteStatus('loading')
@@ -126,6 +128,15 @@ export default function ProductDetailPanel({
           ) : (
             <p className="products-status" role="status">Bu ürün şu anda stokta yok.</p>
           )}
+          <button
+            aria-expanded={reviewsOpen}
+            className="retry-button"
+            onClick={() => setReviewsOpen((open) => !open)}
+            type="button"
+          >
+            {reviewsOpen ? 'Değerlendirmeleri kapat' : 'Değerlendirmeleri göster'}
+          </button>
+          {reviewsOpen && <ReviewsPanel token={token} productId={productId} isBuyer={isBuyer} />}
         </article>
       )}
     </main>
