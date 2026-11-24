@@ -54,3 +54,15 @@ Yaklaşık 15–18 saniyede bir alınan örneklerden, 60–240. saniye aralığ�
 [SQL analizinde](./performance-sql-analysis-2026-11-14.md) 1.000 buyer sipariği için sorgu sayısı 6.001'den 13'e düşmüştü. Yük altında p95 belirgin iyileşti ancak 500 ms hedefi sağlanmadı; yanıt hâlâ sayfalanmamış yaklaşık 1 MB ve API CPU örnekleri bir çekirdeğe yakın. Toplu sorgu, ORM/serileştirme ve yanıt maliyetini profillemek; sınırlı sayfalamanın API/UI uyumluluğunu ayrıca tasarlamak sonraki işlerdir. Nedeni bu ölçüm tek başına kesinleştirmez.
 
 12 koşunun ham k6 verileri, özet/işlenmiş raporları, kaynak örnekleri, ortam ve kaynak hash'leri ölçüm oturumunun `qa026-optimization-load-2026-11-15-raw.zip` arşivindedir. Arşiv, ölçülen kayıtlı olmayan backend değişikliklerini de içerir; token veya fixture içermez. Koşuların geçerliliği, p95 değerlerinin k6 özetleriyle uyumu ve eşik kararları doğrulandı. Tekrar adımları [performans notlarındadır](../performance/README.md).
+
+## QA-043 — Satıcı yükünün temiz commit tekrarı (24 Kasım 2026)
+
+Temiz `8209a3116b1eb18067b934f16355d141a5020624` üzerinde `seller` profili üç kez tekrarlandı. Her koşu yeni PostgreSQL 17 container'ı, migration, aynı 1.110 fulfillment'lı seed ve yeniden başlatılan API/JWKS kullandı. Profil öncekiyle aynıdır: 60 sn ramp-up, 180 sn 10 VU ve 30 sn ramp-down; satıcı ilk 50 kaydı alır. Windows, Intel i5-10300H, Python 3.13.15, Docker 29.9.2 ve k6 2.4.0; API/k6 host üzerinde, PostgreSQL Docker'dadır.
+
+| Koşu | İstek | Hata oranı | p50 ms | p95 ms | p99 ms | Yanıt p50 bayt | p95 ≤ 500 ms |
+|---|---:|---:|---:|---:|---:|---:|---|
+| 1 | 1.766 | %0 | 16,90 | 24,86 | 55,27 | 27.901 | Geçti |
+| 2 | 1.769 | %0 | 16,58 | 23,03 | 35,18 | 27.901 | Geçti |
+| 3 | 1.765 | %0 | 17,72 | 25,69 | 52,27 | 27.901 | Geçti |
+
+Üç koşu geçerli; her birinde p95 ve <%1 hata hedefi sağlandı. Önceki 529,4 ms sonuç toplu yükleme öncesi baseline'dır; mevcut kodun 15 Kasım sonrası üç koşusu da hedefteydi. Yeni koşular mevcut yerel profilin tekrarını gösterir, üretim SLA'sı veya farklı veri dağılımlarına ilişkin garanti değildir. [SQL tanısı ve geçici indeks karşılaştırması](./performance-sql-analysis-2026-11-14.md#qa-043--satıcı-sorgusu-ve-indeks-değerlendirmesi-24-kasım-2026) ayrı yürütüldü; yeni indeks yük altında ölçülmedi. Ham sonuçlar oturum kanıtlarında tutuldu, test token'ları silindi.

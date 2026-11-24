@@ -84,3 +84,18 @@ uv run --directory apps\api python ..\..\performance\measure-sql.py --repo (Get-
 ```
 
 Araç URL'yi yerel `15432` portu ve `shop_perf_test` adıyla sınırlar, ancak bu kontrol izolasyonu tek başına garanti etmez. Yalnız işlem için oluşturulan container kullanılmalı; iş bitince yalnız o container durdurulmalıdır. Araç API'nin test yardımcılarına ve geliştirme bağımlılıklarına ihtiyaç duyar.
+
+## QA-043 — Satıcı sorgusu ve indeks değerlendirmesi (24 Kasım 2026)
+
+Temiz `8209a3116b1eb18067b934f16355d141a5020624` commit'inde, izole PostgreSQL 17 ve aynı sentetik seed ile `performance/measure-sql.py` tekrar çalıştırıldı. 1.110 fulfillment'ın tamamı aynı satıcıya aittir; her birinde iki kalem ve bir olay vardır. Gerçek endpoint'e salt okunur, süreç içi tekil isteklerde limit 10, 50 ve 100 ile offset 1.000 için sorgu sayısı **5** idi. Limit 50/offset 0 yanıtı 50 kayıt ve 27.901 bayttı.
+
+Toplu yükleme zaten uygulanmıştır: yukarıdaki 15 Kasım karşılaştırmasında aynı limit 50 profili 103 sorgudan 5 sorguya inmişti; bu tekrar mevcut 5 sorguyu doğrular, aynı ortamda yeni bir toplu yükleme deneyini veya tek başına nedensel p95 farkını göstermez.
+
+İndeks etkisi ayrıca aynı izole veritabanında, `ANALYZE` sonrası `seller_subject` filtresi ve `created_at DESC, id DESC LIMIT 50` sorgusunda incelendi. Geçici `(seller_subject, created_at DESC, id DESC)` indeksi yalnız tanı için oluşturulup kaldırıldı:
+
+| Durum | Plan | PostgreSQL yürütme süresi | Shared hit / read |
+|---|---|---:|---:|
+| Mevcut indeksler | Seq Scan → top-N heapsort → Limit | 0,446 ms | 19 / 0 |
+| Geçici birleşik indeks | Index Scan → Limit | 0,087 ms | 1 / 2 |
+
+Bunlar farklı cache durumlarında alınan tekil plan örnekleri; tüm HTTP yanıtı veya yük altı p95 değildir. Mevcut seed tek satıcılı ve küçüktür; indeksin yazma maliyeti, farklı satıcı dağılımları ve derin offset etkisi ölçülmemiştir. Üç ayrı yük koşusunda mevcut uygulama zaten 500 ms hedefini sağladığından ([sonuçlar](./performance-load-after-sql-2026-11-15.md#qa-043--satıcı-yükünün-temiz-commit-tekrarı-24-kasım-2026)), tekil plan farkı yeni migration/indeks eklemek için yeterli kanıt sayılmadı. Büyük ve çok satıcılı veriyle ayrıca ölçüm gerektiğinde karar yeniden değerlendirilmeli.

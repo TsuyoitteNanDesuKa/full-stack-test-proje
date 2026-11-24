@@ -43,7 +43,7 @@ Hata oranı: tüm koşularda %0,00 (hedef < %1 tutuldu).
 
 - **Kanıt:** p95 ortanca 529,4 ms (hedef 500 ms). Üç koşunun tamamı 500 ms'in üzerinde değil; ortanca hedef dışı.
 - **Neden (kısmen kanıtlı):** SQL analizinde seller sorgusu sıralamada `Seq Scan → top-N heapsort` kullanıyor (taranan 1.110 satır; 50 satır döndürülüyor) ve fulfillment kalem/olayları için N+1 sorguları çalışıyor. Bu, 529 ms ortancasının bir kısmını açıklayabilir; tam ayrıştırma ölçülmedi.
-- **Durum:** Küçük fark. Sonraki adım: indeks ve toplu yükleme etkisinin ölçümle ayrıştırılması.
+- **Güncel durum:** Bu 529,4 ms ölçümü toplu yükleme öncesine aittir. Toplu yükleme sonrasında önceki üç koşu hedefteydi; [QA-043 temiz commit tekrarında](./performance-load-after-sql-2026-11-15.md#qa-043--satıcı-yükünün-temiz-commit-tekrarı-24-kasım-2026) p95 24,86/23,03/25,69 ms ve hata oranı %0 ölçüldü. [Ayrı tekil indeks planı](./performance-sql-analysis-2026-11-14.md#qa-043--satıcı-sorgusu-ve-indeks-değerlendirmesi-24-kasım-2026) HTTP p95 kazancını kanıtlamaz; yeni indeks eklenmedi.
 
 ### 3.3 Sipariş 10 kayıt (orders_10) — marjinal
 
@@ -59,7 +59,7 @@ Hata oranı: tüm koşularda %0,00 (hedef < %1 tutuldu).
 
 1. Deprecated eski tam sipariş listesi kullanan istemcilerin geçişini değerlendirmek; kaldırma veya sınırlama için ayrı uyumluluk ve sürüm kararı almak. Eski yol korunurken performans sorunu çözülmüş sayılmaz.
 2. Gerektiğinde derin sayfa ve tüm geçmişi sayfalarla dolaşma maliyetini ayrı ölçmek; temiz commit üzerinde ilk sayfa tekrarı tamamlandı.
-3. Satıcı listesinin `EXPLAIN` analizi ve hedef farkının kapatılması.
+3. Daha büyük ve farklı satıcı dağılımlarında gerektiğinde indeks ve derin offset maliyetini yeniden ölçmek; mevcut tek satıcılı profilde hedef sağlandı.
 4. Frontend ilk yük için kök neden ölçümü (QA-027, duraklatıldı).
 
 ## 6. Kabul özeti
