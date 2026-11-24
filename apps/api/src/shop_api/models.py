@@ -71,6 +71,19 @@ class Product(Base):
     )
 
 
+class Favorite(Base):
+    __tablename__ = "favorites"
+    __table_args__ = (
+        UniqueConstraint("owner_subject", "product_id", name="uq_favorites_owner_product"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_subject: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    product_id: Mapped[int] = mapped_column(
+        ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+
 class SellerApplication(Base):
     __tablename__ = "seller_applications"
     __table_args__ = (

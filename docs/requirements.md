@@ -1201,3 +1201,22 @@ Kategoriler örtüşebilir. PostgreSQL testleri `integration` ve `postgres`; Pla
 - **Regresyon:** Katalog listeleme/filtreleme (REQ-013), admin/seller CRUD (REQ-003–005, REQ-016) ve sepet/checkout (REQ-009–010) değişmeden geçer.
 
 **Çıkış ölçütü:** Detay uç noktası ve sayfası erişilebilir; fiyat/stok ve sepet sonucu katalogla tutarlı; sözleşme, API, component ve deterministik E2E kapıları geçer.
+
+## REQ-021 — Alıcı favorileri
+
+**Kullanıcı hikâyesi:** Alıcı olarak ürünleri favorilerime eklemek, daha sonra listelemek ve çıkarmak istiyorum.
+
+### Kabul kriterleri
+
+1. Favoriler doğrulanmış `buyer` rolüne özeldir; buyer ve seller rolünü birlikte taşıyan hesaplar da kullanabilir. Oturum yoksa `401`, buyer rolü yoksa `403` döner. Her kullanıcı yalnız kendi kayıtlarını görür ve değiştirir.
+2. `PUT /api/v1/favorites/{product_id}` mevcut ürünü favorilere ekler; tekrar veya eşzamanlı ekleme tek kayıtla sonuçlanır ve `204` döner. Var olmayan veya silinen ürün `404`; 1–2147483647 dışında veya sayı olmayan kimlik `422` döner. Stok sıfır olması eklemeyi engellemez.
+3. `DELETE /api/v1/favorites/{product_id}` yalnız kullanıcının kaydını kaldırır; kayıt veya ürün zaten yoksa da `204` döner. Geçersiz kimlik `422` döner.
+4. `GET /api/v1/favorites` en son eklenen önce olacak şekilde güncel ürün bilgilerini döndürür; `limit` varsayılan 20 ve 1–100 arası, `offset` varsayılan 0 ve 0–2147483647 arasıdır. Yanıt `items`, `limit`, `offset`, `has_more` içerir. Ürün silindiğinde tüm favori kayıtları kaldırılır.
+5. Buyer ürün detayından, stok olmasa da, favoriye ekleyebilir; sonuç ve hata görünürdür. Ana sayfadaki favoriler listesi boş, yükleme ve hata durumlarını gösterir; sayfalanır, ürüne gider ve kaldırır. Son sayfadaki son kayıt kaldırılırsa önceki sayfa gösterilir.
+
+### Test planı ve izlenebilirlik
+
+- **API/veritabanı:** Kimlik, rol, sahiplik, idempotent işlemler, sınırlar, güncel ürün bilgisi, silme ve migration; PostgreSQL üzerinde eşzamanlı benzersizlik ve cascade.
+- **Sözleşme/component:** OpenAPI snapshot ve istemci kontrolü; ekleme, liste, sayfalama, silme, boş/yükleme/hata durumları.
+- **E2E:** Deterministik buyer ürün detayından ekler, favori listesini yenileyerek kalıcılığı doğrular ve ürünü kaldırır.
+- **Kapsam dışı:** Favori paylaşımı, bildirimler ve gerçek ödeme/kargo entegrasyonu.

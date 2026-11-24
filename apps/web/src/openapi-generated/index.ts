@@ -18,6 +18,7 @@ export type { CartResponse } from './models/CartResponse';
 export type { CartUpdateItemRequest } from './models/CartUpdateItemRequest';
 export type { CurrentUserResponse } from './models/CurrentUserResponse';
 export type { DeliveryMethod } from './models/DeliveryMethod';
+export type { FavoritePageResponse } from './models/FavoritePageResponse';
 export type { HomeResponse } from './models/HomeResponse';
 export type { HTTPValidationError } from './models/HTTPValidationError';
 export type { MockPaymentResultRequest } from './models/MockPaymentResultRequest';

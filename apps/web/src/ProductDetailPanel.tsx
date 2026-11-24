@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { ApiError, getProduct } from './api'
+import { addFavorite, ApiError, getProduct } from './api'
 import type { Product } from './api'
 
 interface ProductDetailPanelProps {
   token: string
   productId: number
+  isBuyer: boolean
   addedToCart: boolean
   cartMessage: string
   isAdding: boolean
@@ -17,6 +18,7 @@ const formatter = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 
 export default function ProductDetailPanel({
   token,
   productId,
+  isBuyer,
   addedToCart,
   cartMessage,
   isAdding,
@@ -26,6 +28,17 @@ export default function ProductDetailPanel({
   const [product, setProduct] = useState<Product | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'not-found' | 'error'>('loading')
   const [retryCount, setRetryCount] = useState(0)
+  const [favoriteStatus, setFavoriteStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+
+  async function handleFavorite() {
+    setFavoriteStatus('loading')
+    try {
+      await addFavorite(token, productId)
+      setFavoriteStatus('success')
+    } catch {
+      setFavoriteStatus('error')
+    }
+  }
 
   useEffect(() => {
     let active = true
@@ -74,6 +87,24 @@ export default function ProductDetailPanel({
           <h1 id="product-detail-name">{product.name}</h1>
           <p>{product.description}</p>
           <p className="product-price">{formatter.format(Number(product.price))}</p>
+          {isBuyer && (
+            <div>
+              <button
+                className="retry-button"
+                disabled={favoriteStatus === 'loading'}
+                onClick={() => void handleFavorite()}
+                type="button"
+              >
+                {favoriteStatus === 'loading' ? 'Favorilere ekleniyor...' : 'Favorilere ekle'}
+              </button>
+              {favoriteStatus === 'success' && (
+                <p className="application-notice" role="status">Ürün favorilerine eklendi.</p>
+              )}
+              {favoriteStatus === 'error' && (
+                <p className="products-error" role="alert">Ürün favorilere eklenemedi. Lütfen tekrar dene.</p>
+              )}
+            </div>
+          )}
           {product.stock > 0 ? (
             <>
               <p className="products-count">Stok: {product.stock}</p>

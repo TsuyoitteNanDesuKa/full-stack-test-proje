@@ -2,12 +2,13 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ProductDetailPanel from './ProductDetailPanel'
-import { ApiError, getProduct } from './api'
+import { addFavorite, ApiError, getProduct } from './api'
 import type { Product } from './api'
 
 vi.mock('./api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./api')>()),
   getProduct: vi.fn(),
+  addFavorite: vi.fn(),
 }))
 
 const product: Product = {
@@ -26,6 +27,7 @@ function renderDetail(overrides: Partial<Parameters<typeof ProductDetailPanel>[0
   const props = {
     token: 'buyer-token',
     productId: 12,
+    isBuyer: true,
     addedToCart: false,
     cartMessage: '',
     isAdding: false,
@@ -137,5 +139,35 @@ describe('ProductDetailPanel', () => {
     await user.click(await screen.findByRole('button', { name: 'Kataloğa dön' }))
 
     expect(props.onBack).toHaveBeenCalledTimes(1)
+  })
+
+  it('lets buyers add an out-of-stock product and reports success or failure', async () => {
+    vi.mocked(getProduct).mockResolvedValue({ ...product, stock: 0 })
+    vi.mocked(addFavorite).mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce()
+    const user = userEvent.setup()
+    renderDetail()
+
+    await user.click(await screen.findByRole('button', { name: 'Favorilere ekle' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Ürün favorilere eklenemedi')
+    await user.click(screen.getByRole('button', { name: 'Favorilere ekle' }))
+    expect(await screen.findByText('Ürün favorilerine eklendi.')).toBeInTheDocument()
+    expect(addFavorite).toHaveBeenCalledWith('buyer-token', 12)
+  })
+
+  it('disables adding while the request is pending and hides the action for non-buyers', async () => {
+    vi.mocked(getProduct).mockResolvedValue(product)
+    vi.mocked(addFavorite).mockReturnValue(new Promise(() => {}))
+    const user = userEvent.setup()
+    const props = renderDetail()
+    await user.click(await screen.findByRole('button', { name: 'Favorilere ekle' }))
+    expect(screen.getByRole('button', { name: 'Favorilere ekleniyor...' })).toBeDisabled()
+    expect(props.isBuyer).toBe(true)
+  })
+
+  it('does not offer favorites to non-buyers', async () => {
+    vi.mocked(getProduct).mockResolvedValue(product)
+    renderDetail({ isBuyer: false })
+    await screen.findByRole('heading', { name: 'Sample product' })
+    expect(screen.queryByRole('button', { name: 'Favorilere ekle' })).not.toBeInTheDocument()
   })
 })

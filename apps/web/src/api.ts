@@ -28,6 +28,13 @@ export interface ProductListResponse {
   offset: number
 }
 
+export interface FavoritePage {
+  items: Product[]
+  limit: number
+  offset: number
+  has_more: boolean
+}
+
 export interface ProductSearchParams {
   search?: string
   category?: string
@@ -347,6 +354,27 @@ export function getProducts(
 
 export function getProduct(token: string, productId: number): Promise<Product> {
   return request<Product>(`/api/v1/products/${productId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function getFavorites(token: string, limit = 20, offset = 0): Promise<FavoritePage> {
+  const query = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+  return request<FavoritePage>(`/api/v1/favorites?${query}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function addFavorite(token: string, productId: number): Promise<void> {
+  return request<void>(`/api/v1/favorites/${productId}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function removeFavorite(token: string, productId: number): Promise<void> {
+  return request<void>(`/api/v1/favorites/${productId}`, {
+    method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   })
 }

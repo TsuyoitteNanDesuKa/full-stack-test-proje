@@ -33,6 +33,7 @@ import SellerApplicationPanel from './SellerApplicationPanel'
 
 const AdminOrdersPanel = lazy(() => import('./AdminOrdersPanel'))
 const ProductDetailPanel = lazy(() => import('./ProductDetailPanel'))
+const FavoritesPanel = lazy(() => import('./FavoritesPanel'))
 const AdminSellerApplicationsPanel = lazy(() => import('./AdminSellerApplicationsPanel'))
 const AddressBookPanel = lazy(() => import('./AddressBookPanel'))
 const CartPanel = lazy(() => import('./CartPanel'))
@@ -212,6 +213,7 @@ function HomePage({
   const [cartLoadError, setCartLoadError] = useState('')
   const [cartRetryCount, setCartRetryCount] = useState(0)
   const [isCartOpen, setIsCartOpen] = useState(false)
+  const [isFavoritesOpen, setIsFavoritesOpen] = useState(false)
   const [isCartMutating, setIsCartMutating] = useState(false)
   const [cartError, setCartError] = useState('')
   const [lastAddedProductId, setLastAddedProductId] = useState<number | null>(null)
@@ -474,6 +476,7 @@ function HomePage({
           key={productDetailId}
           cartMessage={cartError || cartLoadError}
           isAdding={addingProductId === productDetailId}
+          isBuyer={isBuyer}
           onAddToCart={(product) => handleAddToCart(product)}
           onBack={() => {
             window.history.pushState({}, '', '/')
@@ -544,6 +547,27 @@ function HomePage({
       </header>
       {isBuyer && (
         <>
+          <div className="customer-address-toolbar">
+            <button
+              aria-expanded={isFavoritesOpen}
+              className="retry-button"
+              onClick={() => setIsFavoritesOpen((open) => !open)}
+              type="button"
+            >
+              {isFavoritesOpen ? 'Favorileri kapat' : 'Favorilerim'}
+            </button>
+          </div>
+          {isFavoritesOpen && (
+            <LazyPanel>
+              <FavoritesPanel
+                token={token}
+                onOpenProduct={(id) => {
+                  window.history.pushState({}, '', `/products/${id}`)
+                  setProductDetailId(id)
+                }}
+              />
+            </LazyPanel>
+          )}
           <div className="customer-address-toolbar">
             <button
               aria-expanded={isAddressBookOpen}

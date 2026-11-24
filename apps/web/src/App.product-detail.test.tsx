@@ -38,6 +38,9 @@ function stubBackend(productOverrides: Record<string, unknown> = {}) {
     if (path === '/api/v1/cart') return Response.json({ items: [], subtotal: '0.00' })
     if (path === '/api/v1/addresses') return Response.json([])
     if (path === '/api/v1/seller-applications/me') return Response.json(null)
+    if (path.startsWith('/api/v1/favorites?')) {
+      return Response.json({ items: [productRecord], limit: 20, offset: 0, has_more: false })
+    }
     if (path.startsWith('/api/v1/products?')) {
       return Response.json({ products: [{ ...productRecord, ...productOverrides }], total: 1, limit: 20, offset: 0 })
     }
@@ -164,4 +167,18 @@ it('shows the not-found message for a missing product URL', async () => {
   render(<App />)
 
   expect(await screen.findByRole('alert')).toHaveTextContent('Ürün bulunamadı.')
+})
+
+it('opens and closes favorites and navigates to a favorite product', async () => {
+  vi.mocked(getCurrentSession).mockResolvedValue({ accessToken: 'buyer-token', email: 'buyer@example.com' })
+  stubBackend()
+  render(<App />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Favorilerim' }))
+  const favorite = await screen.findByRole('button', { name: 'Detail product' })
+  fireEvent.click(screen.getByRole('button', { name: 'Favorileri kapat' }))
+  expect(favorite).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Favorilerim' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Detail product' }))
+  expect(await screen.findByRole('heading', { name: 'Detail product', level: 1 })).toBeInTheDocument()
+  expect(window.location.pathname).toBe('/products/42')
 })

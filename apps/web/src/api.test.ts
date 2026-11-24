@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   addCartItem,
+  addFavorite,
   ApiError,
   createProduct,
   createOrder,
@@ -13,6 +14,7 @@ import {
   getCurrentUser,
   getAdminOrders,
   getHome,
+  getFavorites,
   getMyCart,
   getMyAddresses,
   getMyOrder,
@@ -23,6 +25,7 @@ import {
   getSellerOrders,
   reviewSellerApplication,
   refundAdminOrder,
+  removeFavorite,
   submitMySellerApplication,
   updateCartItem,
   updateAddress,
@@ -115,6 +118,22 @@ describe('identity API client', () => {
 describe('storefront API client', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn())
+  })
+
+  it('lists, adds and removes favorites with bearer authentication', async () => {
+    const page = { items: [], limit: 20, offset: 0, has_more: false }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(page))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    await expect(getFavorites('token')).resolves.toEqual(page)
+    await expect(addFavorite('token', 42)).resolves.toBeUndefined()
+    await expect(removeFavorite('token', 42)).resolves.toBeUndefined()
+    expect(fetch).toHaveBeenNthCalledWith(1, '/api/v1/favorites?limit=20&offset=0',
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer token' }) }))
+    expect(fetch).toHaveBeenNthCalledWith(2, '/api/v1/favorites/42',
+      expect.objectContaining({ method: 'PUT' }))
+    expect(fetch).toHaveBeenNthCalledWith(3, '/api/v1/favorites/42',
+      expect.objectContaining({ method: 'DELETE' }))
   })
 
   it('sends the bearer token to the protected home endpoint', async () => {

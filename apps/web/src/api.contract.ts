@@ -10,6 +10,7 @@ export type ResponseContracts = [
   Assert<Assignable<Schema.HomeResponse, Client.HomeResponse>>,
   Assert<Assignable<Schema.ProductResponse, Client.Product>>,
   Assert<Assignable<Schema.ProductListResponse, Client.ProductListResponse>>,
+  Assert<Assignable<Schema.FavoritePageResponse, Client.FavoritePage>>,
   Assert<Assignable<Schema.CartResponse, Client.CartResponse>>,
   Assert<Assignable<Schema.AddressResponse, Client.CustomerAddress>>,
   Assert<Assignable<Schema.OrderResponse, Client.CustomerOrder>>,

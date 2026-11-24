@@ -98,6 +98,13 @@ class ProductResponse(BaseModel):
         return value
 
 
+class FavoritePageResponse(BaseModel):
+    items: list[ProductResponse]
+    limit: int
+    offset: int
+    has_more: bool
+
+
 class SellerApplicantType(StrEnum):
     INDIVIDUAL = "individual"
     SOLE_PROPRIETOR = "sole_proprietor"

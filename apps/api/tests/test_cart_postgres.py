@@ -29,6 +29,7 @@ from shop_api.models import (
     Cart,
     CartItem,
     CustomerOrder,
+    Favorite,
     OrderItem,
     OrderStatusEvent,
     Payment,
@@ -126,6 +127,59 @@ def _create_product(client: TestClient, *, stock: int, price: str | None = None)
     )
     assert response.status_code == 201
     return response.json()["id"]
+
+
+def test_postgres_favorites_concurrent_insert_and_cascade(
+    postgres_engine: Engine, postgres_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    product_id = _create_product(postgres_client, stock=0)
+    headers = _auth_headers(postgres_client, "favorites-buyer")
+    barrier = Barrier(2)
+    commit = Session.commit
+
+    def synchronized_commit(session: Session) -> None:
+        if any(isinstance(item, Favorite) for item in session.new):
+            barrier.wait(timeout=10)
+        commit(session)
+
+    monkeypatch.setattr(Session, "commit", synchronized_commit)
+
+    def add(_: int) -> int:
+        with _client_for_engine(postgres_engine) as client:
+            return client.put(f"/api/v1/favorites/{product_id}", headers=headers).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert list(pool.map(add, range(2))) == [204, 204]
+    with Session(postgres_engine) as session:
+        assert session.scalar(select(func.count()).select_from(Favorite)) == 1
+    admin = _auth_headers(postgres_client, "favorites-admin", ["admin"])
+    assert (
+        postgres_client.delete(f"/api/v1/products/{product_id}", headers=admin).status_code == 204
+    )
+    with Session(postgres_engine) as session:
+        assert session.scalar(select(func.count()).select_from(Favorite)) == 0
+
+
+def test_postgres_favorite_reports_product_deleted_before_insert(
+    postgres_engine: Engine, postgres_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    product_id = _create_product(postgres_client, stock=0)
+    commit = Session.commit
+
+    def delete_before_commit(session: Session) -> None:
+        if any(isinstance(item, Favorite) for item in session.new):
+            with postgres_engine.begin() as connection:
+                connection.execute(Product.__table__.delete().where(Product.id == product_id))
+        commit(session)
+
+    monkeypatch.setattr(Session, "commit", delete_before_commit)
+    response = postgres_client.put(
+        f"/api/v1/favorites/{product_id}",
+        headers=_auth_headers(postgres_client, "favorites-deletion-race"),
+    )
+    assert response.status_code == 404
+    with Session(postgres_engine) as session:
+        assert session.scalar(select(func.count()).select_from(Favorite)) == 0
 
 
 def _checkout_request(client: TestClient, headers: dict[str, str]) -> dict[str, object]:
