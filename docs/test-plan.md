@@ -104,6 +104,6 @@ Tüm kimlik bilgileri yalnızca yerel veya CI ortamı değişkenlerindedir; kayn
 ## 8. Bilinen sınırlar
 
 - Kullanıcı kabulü (UAT) ve gerçek kullanıcılarla test yapılmamıştır.
-- QA-044'te yerel OWASP ZAP pasif pilotu çalıştırıldı; workflow dosyası henüz uzak depoda olmadığından ilk uzak DAST koşusu/artefaktı yoktur. Kimlikli tarama için E2E'nin geçici JWKS ve sentetik token yaklaşımı yeniden kullanılabilir, ancak DAST ağına ayrı bir JWKS servisi ve yalnız GET'e izin veren doğrulanmış rol kapsamı eklenmeden çalıştırılmamalıdır. Aktif/üretim taraması yoktur; anonim korumalı uçlar çoğunlukla `401` döndürür ve geçici statik sunucu başlıkları üretimi temsil etmez. DAST, bağımlılık taraması ve uygulama içi negatif testlerin yerine geçmez.
+- QA-044'te yerel OWASP ZAP pasif pilotu çalıştırıldı ve workflow `ccef861` ile yayımlandı; ilk uzak DAST koşusu/artefaktı henüz yoktur. Kimlikli tarama için E2E'nin geçici JWKS ve sentetik token yaklaşımı yeniden kullanılabilir, ancak DAST ağına ayrı bir JWKS servisi ve yalnız GET'e izin veren doğrulanmış rol kapsamı eklenmeden çalıştırılmamalıdır. Aktif/üretim taraması yoktur; anonim korumalı uçlar çoğunlukla `401` döndürür ve geçici statik sunucu başlıkları üretimi temsil etmez. DAST, bağımlılık taraması ve uygulama içi negatif testlerin yerine geçmez.
 - Performans hedefleri karşılanmamıştır (QA-036).
 - Manuel erişilebilirlik incelemesi yapılmamıştır (QA-037).
