@@ -99,6 +99,7 @@ cases = [
     ("buyer10", "/api/v1/orders", 10),
     ("buyer100", "/api/v1/orders", 100),
     ("buyer1000", "/api/v1/orders", 1000),
+    ("buyer1000", "/api/v1/orders/page?limit=20&offset=0", 20),
     ("seller", "/api/v1/seller/orders?limit=10&offset=0", 10),
     ("seller", "/api/v1/seller/orders?limit=50&offset=0", 50),
     ("seller", "/api/v1/seller/orders?limit=100&offset=0", 100),
@@ -133,7 +134,19 @@ for name, path, expected in cases:
         event.remove(engine, "after_cursor_execute", after)
     if response.status_code != 200:
         raise RuntimeError(f"{path} returned HTTP {response.status_code}")
-    returned = len(response.json())
+    body = response.json()
+    if path == "/api/v1/orders/page?limit=20&offset=0":
+        if (
+            not isinstance(body, dict)
+            or body.get("limit") != 20
+            or body.get("offset") != 0
+            or body.get("has_more") is not True
+            or not isinstance(body.get("items"), list)
+        ):
+            raise RuntimeError(f"{path} returned an invalid page response.")
+        returned = len(body["items"])
+    else:
+        returned = len(body)
     if returned != expected:
         raise RuntimeError(f"{path} returned {returned}; expected {expected}")
     plans = []

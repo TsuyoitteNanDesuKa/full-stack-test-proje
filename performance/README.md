@@ -44,6 +44,8 @@ Bu araçlar yalnız yerel, izole test içindir; canlı veya mevcut geliştirme v
 
 Ölçülecek varyantlar: `catalog`, `catalog_search`, `orders_10`, `orders_100`, `orders_1000`, `orders_page_1000`, `seller`, `checkout`. `orders_page_1000`, 1.000 siparişli buyer'ın `limit=20&offset=0` ile ilk sayfasını ölçer ve 20 sonuç ile `has_more=true` doğrular; sınırsız `orders_1000` ile farklı yanıt kapsamıdır. Seed: 1.000 ürün, 10/100/1.000 siparişli ayrı buyer, onaylı seller, sipariş başına iki kalem ve bir sipariş/bir fulfillment olayı. Checkout için ayrı buyer, adres ve ürünle 10 VU hazırlanır.
 
+`measure-sql.py` aynı profilde hem eski tam-geçmiş buyer yanıtlarını hem `orders/page?limit=20&offset=0` ilk sayfasını tanılar. Sayfalı yanıt için 20 öğe, ilk sayfa konumu ve `has_more=true` doğrulanır; her ikisinin sorgu sayısı ve gövde boyutu ayrı kaydedilir. Bu süreç içi tek istek tanısı yük altındaki sorgu maliyetini veya p95'i göstermez.
+
 ## Tek koşu hazırlığı (Windows PowerShell)
 
 Depo kökünden çalıştırın. Portlar 15432, 18001 ve 18082 boş olmalıdır; zaten çalışan servisleri durdurmayın. Geçici dizinin erişimi yalnız mevcut kullanıcıya açık olmalıdır; `fixtures.json` dört saat geçerli test token'ları içerir. Dizin ve token'ları repoya, CI artefaktına veya paylaşımlı ortama koymayın.
