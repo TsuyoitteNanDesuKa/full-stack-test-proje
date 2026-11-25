@@ -38,6 +38,24 @@ Bu çalışma ilk sayfayı ölçer; sonraki veya derin offset'ler, eş zamanlı 
 
 Her koşu 20 kayıt ve `has_more=true` doğruladı; 500 ms hedefi ve <%1 hata hedefi üçünde de sağlandı. Üç p95 değerinin ortancası 32,13 ms'dir; birleşik isteklerin p95'i değildir. İlk ortamda ayrı, salt okunur ve süreç içi bir tanıda 7 SQL sorgusu ve 20.729 bayt yanıt gözlendi; bu tek tanı yük altındaki sorgu maliyeti değildir. Yalnız ilk sayfa ölçülmüştür; sınırsız eski yanıt veya derin sayfalar için performans sonucu çıkarılamaz. Ham ölçüm ve raporlar yerel oturum kanıtlarında tutuldu, geçici test token'ları silindi.
 
+## QA-042 — Temiz güncel commit üzerinde tekrar (25 Kasım 2026)
+
+`d970b0563184ac71870abf30bc2de958212c8739` temiz çalışma ağacında aynı `orders_page_1000` profili üç bağımsız kez tekrarlandı. Her koşu kendi yeni PostgreSQL 17 Alpine container'ı, schema migration'ı, sentetik seed'i, JWKS anahtarı ve tek worker'lı API'siyle başladı; geçici DB, API ve JWKS her koşudan sonra kapatıldı. Test verisi her yanıtta 20 öğe, ilk sayfa metadata'sı ve `has_more=true` ile doğrulandı. Profil 60 sn ramp-up, 180 sn 10 VU sabit yük ve 30 sn ramp-down; yalnız sabit faz istekleri rapora alındı.
+
+Ortam: Windows 11 Education, Intel i5-10300H, 15,84 GiB RAM, Python 3.13.15, Docker 29.9.2, PostgreSQL 17 Alpine ve k6 2.4.0. API ve k6 hostta, PostgreSQL Docker'da çalıştı.
+
+| Koşu | İstek | Hata | p50 ms | p95 ms | p99 ms | RPS | Yanıt p50 bayt | p95 ≤ 500 ms |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| 1 | 1.759 | 0 | 20,57 | 30,53 | 66,88 | 9,77 | 20.729 | Geçti |
+| 2 | 1.759 | 0 | 19,99 | 38,37 | 66,52 | 9,77 | 20.729 | Geçti |
+| 3 | 1.761 | 0 | 18,36 | 28,31 | 52,46 | 9,78 | 20.729 | Geçti |
+
+Her koşuda hata oranı %0 ve p95 ≤ 500 ms hedefi sağlandı. Üç p95'in ortancası 30,53 ms'dir; bu birleşik isteklerin p95'i değildir. Bu sonuç ilk sayfaya aittir; derin offset veya tüm geçmişi sayfalarla dolaşma süresi ölçülmedi.
+
+Güncellenen salt-okunur SQL tanısı aynı 1.000 siparişli profilde eski tam liste için 13 sorgu ve 1.030.665 bayt; yeni ilk sayfa için 7 sorgu ve 20.729 bayt ölçtü. Bu ayrı birer süreç içi tanı isteğidir, yük testi veya p95 ölçümü değildir. Farklı yanıt kapsamları nedeniyle eski endpoint'in geçmiş tam-liste p95'iyle sayfalı ilk sayfa p95'i doğrudan karşılaştırılamaz.
+
+Çalışma ağacında eski GET'in frontend çalışma zamanı tarafından kullanılmadığı; eski davranışı korumak için API/response testlerinde ve performans araçlarında kaldığı doğrulandı. Depo dışındaki tüketiciler bilinmiyor; bu nedenle kaldırma/sınırlama tarihi veya sözleşme kırılması kararı çıkarılamaz. Başarılı sayfalı benchmark bu tüketici geçişi engelini kapatmaz.
+
 ## Kaynak gözlemleri ve kanıt
 
 Yaklaşık 16–17 saniyede bir alınan noktasal örneklerden, üç koşunun 60–240. saniyelerindeki toplam 33 örnek kullanıldı. API CPU ardışık örnekler arasındaki CPU zamanı farkıdır (%100 bir mantıksal çekirdek); bellek working set'tir. PostgreSQL CPU ve bellek Docker noktasal ölçümleridir. CPU ve bellek değerleri tüm sistem yükünü veya darboğaz nedenini göstermez.
