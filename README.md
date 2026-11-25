@@ -270,6 +270,16 @@ Aşağıdaki tablo `.github/workflows/ci.yml` ile birebir eşleşir. Pull reques
 | Playwright `@smoke` (deterministik, Keycloak gerektirmez) | `e2e` | Evet | Evet |
 | Playwright `@keycloak` (gerçek Keycloak + Mailpit) | `keycloak-e2e` | Hayır | Evet |
 
+DAST pilotu ayrı [workflow](.github/workflows/dast.yml) içinde yalnız gece (02:30 UTC) veya elle çalışır; PR kapısı değildir. İzole Docker ağında statik web build'i ve geçici SQLite kullanan API, ZAP Baseline ve yalnız GET içeren OpenAPI tanımıyla pasif taranır. Bulgular raporlanır; tarayıcı/ortam hatası job'ı başarısız kılar. HTML/JSON raporları 14 gün saklanır. Kimlik doğrulanmış, aktif veya üretim taraması yapılmaz.
+
+Yerelde Docker çalışırken boş bir çıktı diziniyle:
+
+```powershell
+python security\dast\run.py --output-dir apps\web\test-results\dast
+```
+
+Komut mevcut raporların üzerine yazmayı reddeder ve kendi oluşturduğu container/ağı temizler. Web HTTP başlıkları geçici Python statik sunucusuna aittir; bulgular gerçek dağıtım yapılandırmasını kanıtlamaz. API taraması anonimdir ve korunan uçlarda çoğunlukla `401` görür. ZAP'ın API çıktısında aktif kurallar için görülebilen `PASS` satırları, güvenli modda bu kuralların çalıştırıldığı anlamına gelmez.
+
 #### Gerçek Keycloak senaryoları
 
 Her satır bir Playwright testidir. Push/PR sütunu `e2e` job'ının `@smoke` seçimini, gece/elle sütunu `keycloak-e2e` job'ının `@keycloak` seçimini gösterir. Job'lar önceki kurulum adımları başarısız olursa testleri çalıştırmaz. Gerçek Keycloak regresyonu PR'ı bloke etmez; gece ve elle tetiklenen koşular için zorunludur.

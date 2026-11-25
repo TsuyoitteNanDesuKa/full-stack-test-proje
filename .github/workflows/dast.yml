@@ -1,0 +1,38 @@
+name: DAST pilot
+
+on:
+  schedule:
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  passive-dast:
+    name: Isolated passive DAST
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Python
+        uses: astral-sh/setup-uv@v10.4.0
+        with:
+          python-version: "3.13"
+
+      - name: Test DAST safety checks
+        run: python -m unittest discover -s security/dast -p 'test_*.py'
+
+      - name: Run passive DAST
+        run: python security/dast/run.py --output-dir apps/web/test-results/dast
+
+      - name: Upload DAST reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: dast-reports
+          path: apps/web/test-results/dast/
+          if-no-files-found: warn
+          retention-days: 14

@@ -18,7 +18,7 @@ Bu katmanlar, ROADMAP QA-016 ve QA-022 maddelerinde kapatılmıştır.
 ## Pact'in çözdüğü, bizim çözmediğimiz problem
 
 Pact, **tüketici (istemci) beklentilerinin ayrı bir sözleşme dosyası olarak yazılıp sağlayıcıya (API) doğrulanmasını** sağlar. Bizde:
-- Tek tüketici var (`apps/web`), tek sağlayıcı var (`apps/api`), ikisi aynı monorepo içinde ve aynı PR'da değişir.
+- Depo içinde bilinen uygulama tüketicisi `apps/web`, sağlayıcı `apps/api`'dir; ikisi aynı monorepo içinde ve aynı PR'da değişir. Depo dışındaki tüketicilerin durumu doğrulanmamıştır.
 - İstemci tipleri OpenAPI snapshot'tan üretilir; yani "tüketici beklentisi" zaten sağlayıcı şemasından türetilmiş.
 
 Bu yüzden Pact'in temel değeri (bağımsız dağıtılan, farklı ekiplerin tükettiği servisler arasında kırılma yakalama) bu projede henüz yok.
@@ -27,7 +27,7 @@ Bu yüzden Pact'in temel değeri (bağımsız dağıtılan, farklı ekiplerin t�
 
 1. **Maliyet/fayda:** Pact broker, sağlayıcı durum (provider state) kurulumu ve iki ayrı sözleşme deposu bakım yükü getirir. Tek sahipli bir öğrenme projesinde bu yük, yakalayacağı hatalardan büyük olur.
 2. **Çift kaynak riski:** OpenAPI ve Pact aynı davranışı iki yerde tanımlamaya başlar; bu, katman 1–4'te zaten var olan tek-doğruluk kaynağı ilkesini bozar.
-3. **Kapsam:** Projede mock ödeme ve yerel akışlar var; dış tüketici yok.
+3. **Kapsam:** Belgelenen proje kapsamı mock ödeme ve yerel akışlardır; depoda bağımsız bir dış tüketici tanımlanmamıştır. Bu, dağıtılmış dış istemcilerin bulunmadığının kanıtı değildir.
 
 ## Yeniden değerlendirme tetikleyicileri
 
