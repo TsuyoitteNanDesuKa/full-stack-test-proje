@@ -41,8 +41,6 @@ markers = [
     "integration: tests crossing application and infrastructure boundaries",
     "security: authentication, authorization, and security behavior",
     "postgres: integration tests requiring a dedicated PostgreSQL test database",
-    "keycloak: tests requiring a live Keycloak realm",
-    "performance: load or performance checks, not part of the pull-request gate",
 ]
 
 [tool.coverage.run]

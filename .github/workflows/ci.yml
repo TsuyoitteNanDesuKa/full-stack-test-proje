@@ -282,12 +282,20 @@ jobs:
         working-directory: apps/web
         run: npx playwright install --with-deps chromium
 
+      - name: Generate and mask Keycloak admin password
+        id: keycloak-password
+        if: ${{ !cancelled() && steps.browser.outcome == 'success' }}
+        shell: bash
+        run: |
+          password="$(openssl rand -hex 32)"
+          echo "::add-mask::$password"
+          printf 'KEYCLOAK_ADMIN_PASSWORD=%s\nE2E_KEYCLOAK_ADMIN_PASSWORD=%s\n' "$password" "$password" >> "$GITHUB_ENV"
+
       - name: Start isolated Keycloak test realm
         id: keycloak-service
-        if: ${{ !cancelled() && steps.browser.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.keycloak-password.outcome == 'success' }}
         env:
           KEYCLOAK_ADMIN_USERNAME: admin
-          KEYCLOAK_ADMIN_PASSWORD: qa-020-ephemeral-ci-only
         run: |
           docker compose up -d keycloak
           for attempt in {1..60}; do
@@ -308,7 +316,6 @@ jobs:
         working-directory: apps/web
         env:
           E2E_KEYCLOAK_ADMIN_USERNAME: admin
-          E2E_KEYCLOAK_ADMIN_PASSWORD: qa-020-ephemeral-ci-only
         run: node e2e/configure-ci-keycloak.mjs
 
       - name: Run Keycloak browser tests
@@ -318,7 +325,6 @@ jobs:
           CI: "true"
           E2E_KEYCLOAK_E2E: "1"
           E2E_KEYCLOAK_ADMIN_USERNAME: admin
-          E2E_KEYCLOAK_ADMIN_PASSWORD: qa-020-ephemeral-ci-only
         run: npm run test:e2e:keycloak
 
       - name: Upload Keycloak E2E report and traces

@@ -2,6 +2,7 @@ import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
+import pytest
 from conftest import create_checkout_request, create_test_token
 from factories import product_payload
 from fastapi.testclient import TestClient
@@ -318,6 +319,89 @@ def test_expired_payment_restores_stock_exactly_once(client: TestClient, engine)
         ).json()["status"]
         == "expired"
     )
+
+
+@pytest.mark.parametrize("result", ["failed", "cancelled", "expired"])
+def test_terminal_payment_requires_new_order_for_another_attempt(
+    client: TestClient, engine, result: str
+) -> None:
+    headers = auth_headers(client, f"payment-new-order-{result}")
+    order_id, product_id = create_order(client, headers)
+    payment = start_payment(client, headers, order_id).json()
+
+    if result == "expired":
+        with Session(engine) as session:
+            stored_payment = session.get(Payment, payment["id"])
+            assert stored_payment is not None
+            stored_payment.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+            session.commit()
+        with Session(engine) as session:
+            assert expire_due_payments(session) == 1
+    else:
+        assert (
+            send_webhook(client, payment, event_id=f"terminal-{result}", result=result).status_code
+            == 200
+        )
+
+    replay = start_payment(client, headers, order_id)
+    assert replay.status_code == 200
+    assert replay.json()["id"] == payment["id"]
+    assert replay.json()["status"] == result
+    assert replay.json()["checkout_url"] is None
+    assert start_payment(client, headers, order_id, "new-payment-key").status_code == 409
+    assert client.get(f"/api/v1/orders/{order_id}", headers=headers).json()["status"] == "cancelled"
+    with Session(engine) as session:
+        assert session.get(Product, product_id).stock == 5
+
+    assert (
+        client.post(
+            "/api/v1/cart/items",
+            json={"product_id": product_id, "quantity": 2},
+            headers=headers,
+        ).status_code
+        == 200
+    )
+    with Session(engine) as session:
+        product = session.get(Product, product_id)
+        assert product is not None
+        product.stock = 1
+        product.price = Decimal("15.75")
+        session.commit()
+    checkout_request = create_checkout_request(client, headers)
+    assert (
+        client.post(
+            "/api/v1/orders",
+            json=checkout_request,
+            headers={**headers, "Idempotency-Key": "new-order-key"},
+        ).status_code
+        == 409
+    )
+    assert client.get("/api/v1/cart", headers=headers).json()["items"][0]["quantity"] == 2
+    with Session(engine) as session:
+        product = session.get(Product, product_id)
+        assert product is not None
+        product.stock = 5
+        session.commit()
+    new_order = client.post(
+        "/api/v1/orders",
+        json=checkout_request,
+        headers={**headers, "Idempotency-Key": "new-order-key"},
+    )
+    assert new_order.status_code == 201
+    new_order_id = new_order.json()["id"]
+    assert new_order_id != order_id
+    assert new_order.json()["items"][0]["unit_price"] == "15.75"
+    assert (
+        client.get(f"/api/v1/orders/{order_id}", headers=headers).json()["items"][0]["unit_price"]
+        == "12.50"
+    )
+    assert start_payment(client, headers, new_order_id, "payment-key").status_code == 409
+    new_payment = start_payment(client, headers, new_order_id, "new-payment-key")
+    assert new_payment.status_code == 201
+    assert new_payment.json()["status"] == "pending"
+    with Session(engine) as session:
+        assert session.get(Product, product_id).stock == 3
+        assert session.scalar(select(func.count()).select_from(Payment)) == 2
 
 
 def test_expiry_stock_capacity_failure_rolls_back_and_returns_conflict(

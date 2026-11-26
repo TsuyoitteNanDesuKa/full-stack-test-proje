@@ -635,12 +635,12 @@ Keycloak erişim/rol atama hatasında işlem başarı gibi raporlanmaz; başvuru
 - **Expiry hata izolasyonu:** Stok üst sınırına takılan ödeme ve sipariş değişmeden kalır, hata ödeme kimliğiyle loglanır ve sonraki taramada yeniden denenir. Diğer expiry kayıtları işlenir; ödeme API'si yalnızca ilgili ödemenin expiry hatasını `409` olarak bildirir.
 - **Durum kararı:** Sipariş `pending_payment` iken ödeme başlatılabilir; doğrulanmış başarı siparişi `paid`, kesin başarısızlık/iptal/zaman aşımı siparişi `cancelled` yapar. Son durumdan gelen yinelenen veya ters sıradaki bildirim sipariş/stok durumunu değiştirmez.
 - **Bildirim güvenliği:** Ödeme sonucu yalnızca doğrulanmış imzalı webhook veya sandbox adaptörünün eşdeğer güvenilir callback’i ile uygulanır. Webhook olay kimliği tekil/idempotent; tutar ve para birimi siparişle eşleşmelidir. Bilinmeyen/geçersiz imza reddedilir.
-- **Deneme sınırı:** Her sipariş için tek ödeme kaydı oluşturulur. Başarısız/iptal/süresi dolmuş sipariş için yeni ödeme denemesi bu dilimde desteklenmez; yeniden deneme politikası ayrıca kararlaştırılmalıdır.
+- **Yeniden deneme politikası (26 Kasım 2026):** Her sipariş için tek ödeme kaydı vardır; başarısız/iptal/süresi dolmuş ödeme siparişi iptal edip stoğu iade ettikten sonra aynı siparişe yeni ödeme başlatılamaz. Alıcı yeniden satın almak için ürünleri elle sepete ekleyip yeni checkout ve yeni sipariş oluşturur; eski sepet otomatik geri yüklenmez. Yeni checkout güncel ürün, fiyat ve stok kurallarına tabidir; önceki fiyat/stok garanti edilmez. Yeni sipariş ve ödeme için yeni idempotency anahtarları gerekir. Aynı ödeme anahtarıyla ağ hatası sonrası tekrar ise yeni deneme değildir: mevcut ödeme son durumda olsa bile `200` ile aynı kayıt, checkout URL'si olmadan döner. Başka bir anahtarla sonlanmış siparişe ödeme başlatma `409` döner. Bu politika mevcut mock davranışını korur; otomatik yeniden sipariş düğmesi veya gerçek tahsilat/mutabakat eklemez.
 - **Kapsam dışı:** Gerçek PSP entegrasyonu/canlı tahsilat, iade/chargeback, sipariş iptal politikası ve geç gelen başarı bildirimleri için finansal mutabakat REQ-012 veya sağlayıcı entegrasyonu dilimine bırakılır.
 
 ### Kabul kriterleri
 
-1. Yalnızca sipariş sahibi buyer ödeme başlatabilir; başka kullanıcının veya `pending_payment` olmayan siparişin ödemesi başlatılamaz.
+1. Yalnızca sipariş sahibi buyer ödeme başlatabilir; başka kullanıcının veya `pending_payment` olmayan siparişin yeni ödemesi başlatılamaz. Aynı anahtarın tekrarı son durumdaki mevcut ödeme kaydını döndürebilir, yeni ödeme yaratmaz.
 2. Ödeme başlatma idempotency anahtarı alır; aynı kullanıcı/anahtar tekrarı ikinci ödeme oturumu oluşturmaz.
 3. Sandbox hosted checkout'a yönlendirir; uygulama API’si kart/CVC alanı sunmaz ve kart verisi saklamaz.
 4. İmzalı sağlayıcı bildirimi ödeme sonucu ile sipariş tutarı/para birimini eşleştirir; doğrulanmamış bildirim kalıcı durumu değiştirmez.
@@ -649,6 +649,7 @@ Keycloak erişim/rol atama hatasında işlem başarı gibi raporlanmaz; başvuru
 7. Geçersiz imza, bilinmeyen ödeme, tutar uyuşmazlığı, yinelenen/ters sıradaki olay güvenli biçimde reddedilir veya etkisiz tekrar yanıtı verir; ikinci kez stok iadesi/ödeme geçişi olmaz.
 8. Buyer ödeme durumunu yalnızca kendi siparişleri için görebilir. Dışarıya sağlayıcı gizli anahtarı, webhook anahtarı veya kart verisi dönmez.
 9. 2 dakikalık ödeme süresi dolan bekleyen siparişler sona erdirilir ve stokları bir kez serbest bırakılır; expiry işleyişi yinelenen çalışanlara karşı güvenlidir.
+10. Başarısız, iptal veya süresi dolmuş ödemede aynı anahtar mevcut son durumdaki kaydı checkout URL'siz döndürür; farklı anahtarla aynı siparişte yeni ödeme `409` alır. Alıcı ürünleri yeniden sepete ekleyip yeni checkout ve yeni anahtarlarla ayrı sipariş/ödeme oluşturabilir; stok ve fiyat yeniden doğrulanır.
 
 ### API sözleşmesi ve test planı
 
@@ -657,6 +658,7 @@ Keycloak erişim/rol atama hatasında işlem başarı gibi raporlanmaz; başvuru
 - `POST /api/v1/payments/webhook` — sağlayıcı event ID, payment reference, durum, tutar/para birimi ve sağlayıcı imzası; kart verisi payload şemasında bulunmaz.
 - `/api/v1/payments/mock-checkout/{payment_id}/{token}` — mock adaptörün sentetik sonuç seçimi için hosted sandbox sayfası; gerçek ödeme veya kart girişi yoktur.
 - **Tamamlanan doğrulama:** Backend SQLite/PostgreSQL 249 test ve %97,46 coverage; web 144 test ve %100 coverage; Keycloak E2E 8/8; frontend build/lint, Ruff ve `git diff --check` başarılı.
+- **Yeniden deneme politikası regresyonu (26 Kasım 2026):** `apps/api/tests/test_payments.py` başarısız, iptal ve expiry sonrasında aynı/farklı ödeme anahtarlarını, yetersiz stokta sepetin korunmasını, güncel fiyatı ve yeni checkout ile ayrı sipariş/ödeme oluşmasını doğrular. Ödeme ve sipariş testleri 34/34, Ruff lint/format geçti.
 - **Kapsam dışı:** Gerçek PSP seçimi, sağlayıcı sandbox sözleşme testleri ve canlı para tahsilatı/iadesi yapılmayacaktır; ödeme davranışı mock adapter ile doğrulanır.
 
 **Mock sandbox çıkış ölçütü (tamamlandı):** Yetkili, tutarı doğrulanmış mock ödeme sonucu sipariş durumuna bir kez yansır; başarısız veya süresi dolmuş sipariş stoku bir kez iade eder; hassas ödeme verisi uygulamaya hiç girmez. Gerçek PSP entegrasyonu kapsam dışıdır.

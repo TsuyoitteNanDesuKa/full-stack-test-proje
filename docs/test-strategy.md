@@ -1,6 +1,6 @@
 # Test etiketleri ve gerekçeleri
 
-Bu belge, pytest işaretçilerinin (`apps/api/pyproject.toml`) ve Playwright etiketlerinin (`describe` başlıkları) hangi testi neden o etikete aldığını tanımlar. Her etiket için tek cümlelik kabul kriteri verilir. Etiket dağılımı, dosya taraması ile doğrulanmıştır (22 Kasım 2026).
+Bu belge, pytest işaretçilerinin (`apps/api/pyproject.toml`) ve Playwright etiketlerinin (`describe` başlıkları) hangi testi neden o etikete aldığını tanımlar. Her etiket için tek cümlelik kabul kriteri verilir. Etiket dağılımı, dosya taraması ile doğrulanmıştır (26 Kasım 2026).
 
 ## Pytest işaretçileri (`apps/api`)
 
@@ -11,10 +11,6 @@ Bu belge, pytest işaretçilerinin (`apps/api/pyproject.toml`) ve Playwright eti
 | `integration` | Uygulama ile altyapı sınırını (DB, dış servis) aşan test. | 2 | PR (`backend`) |
 | `security` | Kimlik doğrulama, yetkilendirme veya güvenli loglama davranışını sınayan test. | 3 | PR (`backend`) |
 | `postgres` | Dedicated PostgreSQL test veritabanı gerektiren test (`SHOP_TEST_DATABASE_URL`). | 1 | PR (`postgres`, ayrı job) |
-| `keycloak` | Canlı Keycloak realm'i gerektiren test. | **0** | Tanımlı, kullanılmıyor |
-| `performance` | Yük veya performans ölçümü; PR kapısı dışında. | **0** | Tanımlı, kullanılmıyor |
-
-**Bulgu:** `keycloak` ve `performance` işaretçileri `pyproject.toml`'da tanımlı ancak hiçbir pytest testinde kullanılmıyor. Canlı Keycloak testleri Playwright tarafında (`@keycloak`) yapılır. `performance` ölçümleri ise `performance/` klasöründeki betiklerle yapılır. Bu iki işaretçi kaldırılabilir ya da ilgili testlere bağlanabilir (açık iş).
 
 ## Playwright etiketleri (`apps/web/e2e`)
 
@@ -31,7 +27,7 @@ Bu belge, pytest işaretçilerinin (`apps/api/pyproject.toml`) ve Playwright eti
 - **Gerçek kimlik sağlayıcı pahalı ve kırılgan.** `@keycloak` yalnızca gece ve elle tetiklenir; PR'da flaky bir dış servis sinyali üretmez. Bu karar REQ-019 PR kapısı ölçümüyle (QA-032) yeniden değerlendirilecek.
 - **Performans PR kapısı değildir.** Ölçümler yavaş ve ortama duyarlıdır; sonuçlar `docs/performance-*.md` içinde raporlanır.
 
-## Açık işler
+## Kararlar
 
-1. `keycloak` ve `performance` pytest işaretçilerini ya kullanmak ya da kaldırmak.
-2. `@regression` ve `@security` Playwright etiketlerinin gerekip gerekmediğine karar vermek.
+- `keycloak` ve `performance` pytest işaretçileri kullanılmadığı için kaldırılmıştır. Canlı Keycloak senaryoları Playwright `@keycloak` etiketiyle; performans ölçümleri `performance/` araçlarıyla seçilir. İleride bu alanlarda pytest testi eklenirse işaretçi gerçek test ve CI seçimiyle birlikte yeniden tanımlanır.
+- Playwright'ta ayrı `@regression` ve `@security` etiketleri eklenmemiştir; mevcut `@smoke` ve `@keycloak` etiketlerinden farklı bir CI çalıştırma politikası tanımlamadıkları sürece yeni etiket gerekmez. Performans ölçümleri Playwright etiketleriyle değil ayrı araçlarla çalıştırılır.
