@@ -132,6 +132,14 @@ describe('ProductDetailPanel', () => {
     expect(await screen.findByRole('button', { name: 'Sepete ekleniyor...' })).toBeDisabled()
   })
 
+  it('disables the add action while another cart mutation is in progress', async () => {
+    vi.mocked(getProduct).mockResolvedValue(product)
+
+    renderDetail({ isCartBusy: true })
+
+    expect(await screen.findByRole('button', { name: 'Sepete ekle' })).toBeDisabled()
+  })
+
   it('returns to the catalog through the back action', async () => {
     vi.mocked(getProduct).mockResolvedValue(product)
     const user = userEvent.setup()

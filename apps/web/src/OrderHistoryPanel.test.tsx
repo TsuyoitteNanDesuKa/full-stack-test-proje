@@ -96,6 +96,141 @@ describe('OrderHistoryPanel', () => {
     expect(getMyOrders).toHaveBeenCalledWith('buyer-token')
   })
 
+  it('reports per-item restore results and excludes prior successes on retry', async () => {
+    const cancelledOrder = {
+      ...sampleOrder,
+      status: 'cancelled' as const,
+      items: [
+        sampleOrder.items[0],
+        { ...sampleOrder.items[0], id: 32, product_id: 43, product_name: 'Silinmiş ürün' },
+      ],
+    }
+    vi.mocked(getMyOrdersPage).mockResolvedValueOnce({
+      items: [cancelledOrder], limit: 20, offset: 0, has_more: false,
+    })
+    const onRestoreCancelledOrder = vi.fn()
+      .mockResolvedValueOnce({
+        items: [
+          { item: sampleOrder.items[0], status: 'added' },
+          { item: cancelledOrder.items[1], status: 'deleted' },
+        ],
+        uncertain: false,
+        cancelled: false,
+      })
+      .mockResolvedValueOnce({
+        items: [{
+          item: cancelledOrder.items[1],
+          status: 'insufficient_stock',
+        }],
+        uncertain: false,
+        cancelled: false,
+      })
+    render(
+      <OrderHistoryPanel
+        latestOrder={null}
+        onRestoreCancelledOrder={onRestoreCancelledOrder}
+        refreshVersion={0}
+        token="buyer-token"
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Siparişlerim' }))
+    await screen.findByText('İptal edildi')
+    fireEvent.click(screen.getByRole('button', { name: 'İptal edilenleri sepete ekle' }))
+    expect(await screen.findByText(/Liva krem: Sepete eklendi/)).toBeInTheDocument()
+    expect(screen.getByText(/Silinmiş ürün: Ürün artık mevcut değil/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Eklenmeyen kalemleri tekrar dene' }))
+    await waitFor(() => expect(onRestoreCancelledOrder).toHaveBeenCalledTimes(2))
+    expect(onRestoreCancelledOrder).toHaveBeenNthCalledWith(2, 'buyer-token', [
+      expect.objectContaining({ id: 32, quantity: 2 }),
+    ])
+  })
+
+  it('requires refreshing after an uncertain result and never automatically retries that item', async () => {
+    const cancelledOrder = {
+      ...sampleOrder,
+      status: 'cancelled' as const,
+      items: [
+        sampleOrder.items[0],
+        { ...sampleOrder.items[0], id: 32, product_id: 43, product_name: 'Belirsiz ürün' },
+        { ...sampleOrder.items[0], id: 33, product_id: 44, product_name: 'Sonraki ürün' },
+      ],
+    }
+    vi.mocked(getMyOrdersPage).mockResolvedValueOnce({
+      items: [cancelledOrder], limit: 20, offset: 0, has_more: false,
+    })
+    const onRestoreCancelledOrder = vi.fn()
+      .mockResolvedValueOnce({
+        items: [
+          { item: cancelledOrder.items[0], status: 'added' },
+          { item: cancelledOrder.items[1], status: 'unknown' },
+        ],
+        uncertain: true,
+        cancelled: false,
+      })
+      .mockResolvedValueOnce({
+        items: [{ item: cancelledOrder.items[2], status: 'added' }],
+        uncertain: false,
+        cancelled: false,
+      })
+    const onRefreshCart = vi.fn().mockResolvedValue(true)
+    render(
+      <OrderHistoryPanel
+        latestOrder={null}
+        onRefreshCart={onRefreshCart}
+        onRestoreCancelledOrder={onRestoreCancelledOrder}
+        refreshVersion={0}
+        token="buyer-token"
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Siparişlerim' }))
+    await screen.findByText('İptal edildi')
+    fireEvent.click(screen.getByRole('button', { name: 'İptal edilenleri sepete ekle' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('sonucu bilinmiyor')
+    expect(screen.getByRole('button', { name: 'Eklenmeyen kalemleri tekrar dene' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Sepeti yenile ve kontrol et' }))
+    await waitFor(() => expect(onRefreshCart).toHaveBeenCalledWith('buyer-token'))
+    fireEvent.click(screen.getByRole('button', { name: 'Eklenmeyen kalemleri tekrar dene' }))
+    await waitFor(() => expect(onRestoreCancelledOrder).toHaveBeenCalledTimes(2))
+    expect(onRestoreCancelledOrder).toHaveBeenNthCalledWith(2, 'buyer-token', [
+      expect.objectContaining({ id: 33 }),
+    ])
+  })
+
+  it('does not expose another token’s cancelled order to the cart restore action', async () => {
+    vi.mocked(getMyOrdersPage).mockResolvedValueOnce({
+      items: [{ ...sampleOrder, status: 'cancelled' }], limit: 20, offset: 0, has_more: false,
+    })
+    const onRestoreCancelledOrder = vi.fn()
+    const { rerender } = render(
+      <OrderHistoryPanel
+        latestOrder={null}
+        onRestoreCancelledOrder={onRestoreCancelledOrder}
+        refreshVersion={0}
+        token="first-buyer-token"
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Siparişlerim' }))
+    await screen.findByRole('button', { name: 'İptal edilenleri sepete ekle' })
+
+    rerender(
+      <OrderHistoryPanel
+        latestOrder={null}
+        onRestoreCancelledOrder={onRestoreCancelledOrder}
+        refreshVersion={0}
+        token="second-buyer-token"
+      />,
+    )
+
+    await waitFor(() => expect(getMyOrdersPage).toHaveBeenLastCalledWith(
+      'second-buyer-token',
+      20,
+      0,
+    ))
+    expect(screen.queryByRole('button', { name: 'İptal edilenleri sepete ekle' }))
+      .not.toBeInTheDocument()
+    expect(onRestoreCancelledOrder).not.toHaveBeenCalled()
+  })
+
   it('navigates between pages and refreshes the first page', async () => {
     vi.mocked(getMyOrdersPage)
       .mockResolvedValueOnce({

@@ -899,6 +899,92 @@ describe('Keycloak authentication and storefront', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Sunucuya bağlanılamadı.')
   })
 
+  it('keeps a newer cart mutation when an older initial cart load resolves late', async () => {
+    const product = createTestProduct({ stock: 5, price: '12.50' })
+    setupApi({ products: [product] })
+    const staleCart = deferred<Response>()
+    const fetchMock = vi.mocked(fetch)
+    const originalFetch = fetchMock.getMockImplementation()
+    if (!originalFetch) throw new Error('Expected the storefront API mock to be configured.')
+    let cartLoads = 0
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input) === '/api/v1/cart' && init?.method !== 'POST') {
+        cartLoads += 1
+        if (cartLoads === 1) return staleCart.promise
+      }
+      return originalFetch(input, init)
+    })
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: `Sepete ekle ${product.name}` }))
+    expect(await screen.findByText('Sepet (1)')).toBeInTheDocument()
+    await act(async () => {
+      staleCart.resolve(jsonResponse({ items: [], subtotal: '0.00' }))
+      await staleCart.promise
+    })
+
+    expect(screen.getByText('Sepet (1)')).toBeInTheDocument()
+  })
+
+  it('disables catalog add controls while a cart mutation is in progress', async () => {
+    const product = createTestProduct({ stock: 5 })
+    setupApi({ products: [product] })
+    const pendingAdd = deferred<Response>()
+    const fetchMock = vi.mocked(fetch)
+    const originalFetch = fetchMock.getMockImplementation()
+    if (!originalFetch) throw new Error('Expected the storefront API mock to be configured.')
+    fetchMock.mockImplementation((input, init) => (
+      String(input) === '/api/v1/cart/items' && init?.method === 'POST'
+        ? pendingAdd.promise
+        : originalFetch(input, init)
+    ))
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: `Sepete ekle ${product.name}` }))
+
+    expect(screen.getByRole('button', { name: `Sepete ekle ${product.name}` })).toBeDisabled()
+    await act(async () => {
+      pendingAdd.resolve(jsonResponse({ detail: 'failed' }, 409))
+      await pendingAdd.promise
+    })
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: `Sepete ekle ${product.name}` })).toBeEnabled(),
+    )
+  })
+
+  it('opens the cart when refreshing after an unknown cancelled-order restore', async () => {
+    const product = createTestProduct({ id: 77, stock: 5 })
+    const cancelledOrder = {
+      id: 31,
+      status: 'cancelled',
+      item_subtotal: '25.00',
+      total_amount: '74.90',
+      shipping_address: null,
+      delivery_method: 'standard',
+      delivery_fee: '49.90',
+      created_at: '2026-11-04T20:00:00Z',
+      fulfillments: [],
+      history: [],
+      items: [{
+        id: 5, product_id: 77, product_name: product.name,
+        unit_price: '12.50', quantity: 2, line_total: '25.00',
+      }],
+    } as unknown as CustomerOrder
+    setupApi({ products: [product], orders: [cancelledOrder] })
+    failCartRequest('/api/v1/cart/items', new TypeError('Network unavailable'))
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Siparişlerim' }))
+    expect(await screen.findByRole('note')).toHaveTextContent('tekrar eklenebilir')
+    await user.click(await screen.findByRole('button', { name: 'İptal edilenleri sepete ekle' }))
+    await user.click(await screen.findByRole('button', { name: 'Sepeti yenile ve kontrol et' }))
+
+    expect(await screen.findByRole('heading', { name: 'Sepetim' })).toBeInTheDocument()
+  })
+
   it('retries after the cart request fails', async () => {
     setupApi()
     let shouldFail = true

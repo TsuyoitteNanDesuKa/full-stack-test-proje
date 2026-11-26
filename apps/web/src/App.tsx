@@ -1,4 +1,4 @@
-import { lazy, useEffect, useRef, useState } from 'react'
+import { lazy, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
 import {
@@ -18,9 +18,12 @@ import type {
   CustomerAddress,
   CustomerOrder,
   DeliveryMethod,
+  OrderItem,
   Product,
   ProductSearchParams,
 } from './api'
+import { addCancelledOrderItemsToCart } from './cancelledOrderCart'
+import type { CancelledOrderCartResult } from './cancelledOrderCart'
 import {
   beginLogin,
   beginPasswordReset,
@@ -159,10 +162,11 @@ function LoginPage({
   )
 }
 
-function HomePage({
+export function HomePage({
   email,
   message,
   token,
+  subject,
   isAdmin,
   roles = [],
   onLogout,
@@ -171,6 +175,7 @@ function HomePage({
   email: string
   message: string
   token: string
+  subject?: string
   isAdmin: boolean
   roles: string[]
   onLogout: () => void
@@ -211,6 +216,7 @@ function HomePage({
   const [isAddressBookOpen, setIsAddressBookOpen] = useState(false)
   const [isCartLoading, setIsCartLoading] = useState(true)
   const [cartLoadError, setCartLoadError] = useState('')
+  const [cartOwnerToken, setCartOwnerToken] = useState(token)
   const [cartRetryCount, setCartRetryCount] = useState(0)
   const [isCartOpen, setIsCartOpen] = useState(false)
   const [isFavoritesOpen, setIsFavoritesOpen] = useState(false)
@@ -220,10 +226,40 @@ function HomePage({
   const [addingProductId, setAddingProductId] = useState<number | null>(null)
   const [isCheckingOut, setIsCheckingOut] = useState(false)
   const [latestOrder, setLatestOrder] = useState<CustomerOrder | null>(null)
+  const [latestOrderOwnerToken, setLatestOrderOwnerToken] = useState(token)
   const [orderHistoryRefreshVersion, setOrderHistoryRefreshVersion] = useState(0)
   const checkoutIdempotencyKey = useRef<string | null>(null)
+  const cartMutationLocks = useRef(new Set<string>())
+  const cartEpoch = useRef(0)
+  const cartReloadNeeded = useRef(false)
+  const currentToken = useRef(token)
+  const previousToken = useRef(token)
+  const currentSubject = useRef(subject)
   const canCreateProducts = isAdmin || roles.includes('seller')
   const isBuyer = roles.includes('buyer')
+
+  useLayoutEffect(() => {
+    currentToken.current = token
+    cartEpoch.current += 1
+    // Order idempotency is scoped by subject, so only a different buyer discards the key.
+    if (currentSubject.current !== subject) checkoutIdempotencyKey.current = null
+    currentSubject.current = subject
+    if (previousToken.current !== token) {
+      previousToken.current = token
+      cartReloadNeeded.current = false
+      setCart(null)
+      setCartOwnerToken(token)
+      setCartLoadError('')
+      setIsCartLoading(true)
+      setAddingProductId(null)
+      setLastAddedProductId(null)
+      setIsCheckingOut(false)
+    }
+    setIsCartMutating(cartMutationLocks.current.has(token))
+    setLatestOrder(null)
+    setLatestOrderOwnerToken(token)
+    setCartError('')
+  }, [token, subject])
 
   function applyProductFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -280,19 +316,37 @@ function HomePage({
     }
 
     let active = true
+    const epoch = cartEpoch.current
+    const isStale = () => cartEpoch.current !== epoch
+    function requestStaleReload() {
+      // A running mutation reloads when it ends; otherwise reload now so loading cannot stall.
+      if (cartMutationLocks.current.has(token)) {
+        cartReloadNeeded.current = true
+      } else {
+        setCartRetryCount((count) => count + 1)
+      }
+    }
     getMyCart(token)
       .then((response) => {
-        if (active) {
+        if (active && isStale()) {
+          requestStaleReload()
+        } else if (active) {
           setCart(response)
+          setCartOwnerToken(token)
+          setCartLoadError('')
         }
       })
       .catch(() => {
-        if (active) {
+        if (active && isStale()) {
+          requestStaleReload()
+        } else if (active) {
+          setCart(null)
+          setCartOwnerToken(token)
           setCartLoadError('Sepet yüklenemedi. Lütfen bağlantını kontrol edip tekrar dene.')
         }
       })
       .finally(() => {
-        if (active) {
+        if (active && !isStale()) {
           setIsCartLoading(false)
         }
       })
@@ -359,72 +413,173 @@ function HomePage({
     return 'Sepet işlemi tamamlanamadı. Lütfen tekrar dene.'
   }
 
+  function beginCartMutation(operationToken = token): boolean {
+    if (cartMutationLocks.current.has(operationToken)) return false
+    cartMutationLocks.current.add(operationToken)
+    cartEpoch.current += 1
+    if (currentToken.current === operationToken) setIsCartMutating(true)
+    return true
+  }
+
+  function endCartMutation(operationToken = token) {
+    cartMutationLocks.current.delete(operationToken)
+    cartEpoch.current += 1
+    setIsCartMutating(cartMutationLocks.current.has(currentToken.current))
+    if (cartReloadNeeded.current && currentToken.current === operationToken) {
+      cartReloadNeeded.current = false
+      setCartRetryCount((count) => count + 1)
+    }
+  }
+
+  function commitCart(updatedCart: CartResponse, operationToken: string) {
+    if (currentToken.current !== operationToken) return
+    cartEpoch.current += 1
+    setCart(updatedCart)
+    setCartOwnerToken(operationToken)
+    setCartLoadError('')
+  }
+
   async function handleAddToCart(product: Product) {
+    if (!beginCartMutation()) return
     setAddingProductId(product.id)
     setCartError('')
     try {
       const updatedCart = await addCartItem(token, { product_id: product.id, quantity: 1 })
-      setCart(updatedCart)
-      setCartLoadError('')
-      setLastAddedProductId(product.id)
-      setIsCartOpen(true)
+      if (currentToken.current === token) {
+        commitCart(updatedCart, token)
+        setLastAddedProductId(product.id)
+        setIsCartOpen(true)
+      }
     } catch (error) {
-      setCartError(getCartErrorMessage(error))
-      setIsCartOpen(true)
+      if (currentToken.current === token) {
+        setCartError(getCartErrorMessage(error))
+        setIsCartOpen(true)
+      }
     } finally {
       setAddingProductId(null)
+      endCartMutation()
     }
   }
 
   async function handleCartUpdate(itemId: number, quantity: number) {
-    setIsCartMutating(true)
+    if (!beginCartMutation()) return
     setCartError('')
     try {
-      setCart(await updateCartItem(token, itemId, { quantity }))
+      const updatedCart = await updateCartItem(token, itemId, { quantity })
+      commitCart(updatedCart, token)
     } catch (error) {
-      setCartError(getCartErrorMessage(error))
+      if (currentToken.current === token) setCartError(getCartErrorMessage(error))
     } finally {
-      setIsCartMutating(false)
+      endCartMutation()
     }
   }
 
   async function handleCartRemove(itemId: number) {
-    setIsCartMutating(true)
+    if (!beginCartMutation()) return
     setCartError('')
     try {
       await deleteCartItem(token, itemId)
-      setCart(await getMyCart(token))
+      const updatedCart = await getMyCart(token)
+      commitCart(updatedCart, token)
     } catch (error) {
-      setCartError(getCartErrorMessage(error))
+      if (currentToken.current === token) setCartError(getCartErrorMessage(error))
     } finally {
-      setIsCartMutating(false)
+      endCartMutation()
+    }
+  }
+
+  async function handleRestoreCancelledOrder(
+    operationToken: string,
+    items: OrderItem[],
+  ): Promise<CancelledOrderCartResult | null> {
+    if (!beginCartMutation(operationToken)) return null
+    if (currentToken.current !== operationToken) {
+      endCartMutation(operationToken)
+      return null
+    }
+    setCartError('')
+    try {
+      const result = await addCancelledOrderItemsToCart(operationToken, items, {
+        isCurrentToken: () => currentToken.current === operationToken,
+        onCartUpdated: (updatedCart) => commitCart(updatedCart, operationToken),
+      })
+      if (result.uncertain && currentToken.current === operationToken) {
+        try {
+          const refreshedCart = await getMyCart(operationToken)
+          commitCart(refreshedCart, operationToken)
+        } catch {
+          if (currentToken.current === operationToken) {
+            setCartLoadError('Sepet sonucu belirsiz. Sepetini yenilemeden tekrar deneme.')
+            cartReloadNeeded.current = true
+          }
+        }
+      }
+      return result
+    } finally {
+      endCartMutation(operationToken)
+    }
+  }
+
+  async function handleRefreshCart(operationToken: string): Promise<boolean> {
+    if (currentToken.current !== operationToken || cartMutationLocks.current.has(operationToken)) {
+      return false
+    }
+    const epoch = cartEpoch.current
+    try {
+      const refreshedCart = await getMyCart(operationToken)
+      if (currentToken.current !== operationToken || cartEpoch.current !== epoch) return false
+      commitCart(refreshedCart, operationToken)
+      setCartError('')
+      setIsCartOpen(true)
+      return true
+    } catch {
+      if (currentToken.current === operationToken) {
+        setCartLoadError('Sepet yenilenemedi. Lütfen tekrar dene.')
+        setIsCartOpen(true)
+      }
+      return false
     }
   }
 
   async function handleCheckout() {
+    if (!beginCartMutation()) return
     if (selectedAddressId === null) {
       setCartError('Sipariş oluşturmak için önce bir teslimat adresi ekle veya seç.')
+      endCartMutation()
       return
     }
     setIsCheckingOut(true)
     setCartError('')
     checkoutIdempotencyKey.current ??= globalThis.crypto.randomUUID()
+    const idempotencyKey = checkoutIdempotencyKey.current
+    const checkoutSubject = currentSubject.current
+    const clearKeyForSameBuyer = () => {
+      if (
+        currentSubject.current === checkoutSubject &&
+        checkoutIdempotencyKey.current === idempotencyKey
+      ) {
+        checkoutIdempotencyKey.current = null
+      }
+    }
     try {
-      const order = await createOrder(token, checkoutIdempotencyKey.current, {
+      const order = await createOrder(token, idempotencyKey, {
         address_id: selectedAddressId,
         delivery_method: deliveryMethod,
       })
-      checkoutIdempotencyKey.current = null
+      clearKeyForSameBuyer()
+      if (currentToken.current !== token) return
       setLatestOrder(order)
-      setCart({ items: [], subtotal: '0.00' })
+      setLatestOrderOwnerToken(token)
+      commitCart({ items: [], subtotal: '0.00' }, token)
       setOrderHistoryRefreshVersion((version) => version + 1)
     } catch (error) {
+      if (currentToken.current !== token) return
       if (error instanceof TypeError) {
         setCartError('Sunucuya bağlanılamadı. Aynı istekle tekrar deneyebilirsin.')
       } else if (error instanceof Error && 'status' in error && error.status === 409) {
         setCartError('Sepetindeki ürün veya stok değişti. Sepetini kontrol edip tekrar dene.')
         try {
-          setCart(await getMyCart(token))
+          commitCart(await getMyCart(token), token)
         } catch (refreshError) {
           setCartError(
             `Sepetindeki ürün veya stok değişti. ${getCartErrorMessage(refreshError)}`,
@@ -439,7 +594,8 @@ function HomePage({
         setCartError('Sipariş oluşturulamadı. Lütfen aynı isteği tekrar dene.')
       }
     } finally {
-      setIsCheckingOut(false)
+      if (currentToken.current === token) setIsCheckingOut(false)
+      endCartMutation()
     }
   }
 
@@ -476,6 +632,7 @@ function HomePage({
           key={productDetailId}
           cartMessage={cartError || cartLoadError}
           isAdding={addingProductId === productDetailId}
+          isCartBusy={isCartMutating}
           isBuyer={isBuyer}
           onAddToCart={(product) => handleAddToCart(product)}
           onBack={() => {
@@ -604,18 +761,21 @@ function HomePage({
               onClick={() => setIsCartOpen((open) => !open)}
               type="button"
             >
-              Sepet ({cart?.items.reduce((count, item) => count + item.quantity, 0) ?? 0})
+              Sepet ({(cartOwnerToken === token ? cart : null)?.items.reduce(
+                (count, item) => count + item.quantity,
+                0,
+              ) ?? 0})
             </button>
             {isCartOpen && (
               <LazyPanel>
                 <CartPanel
                   addresses={addresses}
-                  cart={cart}
-                  error={cartError || cartLoadError}
+                  cart={cartOwnerToken === token ? cart : null}
+                  error={cartOwnerToken === token ? cartError || cartLoadError : ''}
                   deliveryMethod={deliveryMethod}
                   isCheckingOut={isCheckingOut}
                   isAddressLoading={isAddressLoading}
-                  isLoading={isCartLoading}
+                  isLoading={isCartLoading || cartOwnerToken !== token}
                   isMutating={isCartMutating}
                   onCheckout={handleCheckout}
                   onManageAddresses={() => setIsAddressBookOpen(true)}
@@ -635,7 +795,10 @@ function HomePage({
           </section>
           <LazyPanel>
             <OrderHistoryPanel
-              latestOrder={latestOrder}
+              isCartMutating={isCartMutating}
+              latestOrder={latestOrderOwnerToken === token ? latestOrder : null}
+              onRefreshCart={handleRefreshCart}
+              onRestoreCancelledOrder={handleRestoreCancelledOrder}
               refreshVersion={orderHistoryRefreshVersion}
               token={token}
             />
@@ -838,7 +1001,7 @@ function HomePage({
                         <button
                           aria-label={`Sepete ekle ${product.name}`}
                           className="add-cart-item-button"
-                          disabled={product.stock < 1 || addingProductId === product.id}
+                          disabled={product.stock < 1 || isCartMutating}
                           onClick={() => void handleAddToCart(product)}
                           type="button"
                         >
@@ -892,6 +1055,7 @@ function App() {
     email: string
     message: string
     token: string
+    subject: string
     isAdmin: boolean
     roles: string[]
   } | null>(null)
@@ -926,6 +1090,7 @@ function App() {
             email: identity.email || session.email || 'Hesabın',
             message: homeResponse.message,
             token: session.accessToken,
+            subject: identity.subject,
             isAdmin: identity.is_admin,
             roles: identity.roles,
           })
@@ -961,6 +1126,7 @@ function App() {
           })
         }}
         token={home.token}
+        subject={home.subject}
       />
     )
   }

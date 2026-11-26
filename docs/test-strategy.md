@@ -16,7 +16,7 @@ Bu belge, pytest işaretçilerinin (`apps/api/pyproject.toml`) ve Playwright eti
 
 | Etiket | Kriter | Dosyalar | Nerede koşar |
 |---|---|---|---|
-| `@smoke` | Deterministik (Keycloak gerektirmeyen), kritik kullanıcı akışı; PR'da koşar. | `accessibility` (QA-017, P2, QA-023), `order-cancellation` (REQ-018), `order-pagination`, `product-detail` (REQ-020), `qa-019-deterministic` | PR (`e2e`) |
+| `@smoke` | Deterministik (Keycloak gerektirmeyen), kritik kullanıcı akışı; PR'da koşar. | `accessibility` (QA-017, P2, QA-023), `order-cancellation` (REQ-018), `cancelled-order-cart` (REQ-023), `order-pagination`, `product-detail` (REQ-020), `qa-019-deterministic` | PR (`e2e`) |
 | `@keycloak` | Canlı Keycloak ve/veya Mailpit gerektiren, gerçek kimlik sağlayıcı davranışı. | `login`, `admin-access`, `admin-crud`, `cart` (REQ-009/010/012), `seller-applications`, `seller-orders`, `email-verification-reset` | Gece ve elle (`keycloak-e2e`) |
 
 **Bilinen durum:** `@regression`, `@security` ve `@performance` Playwright etiketleri kullanılmıyor; regresyon ve güvenlik davranışı `@keycloak` ve `@smoke` içinde yer alır.

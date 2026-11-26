@@ -16,7 +16,7 @@ from shop_api.main import create_app
 from shop_api.models import Base, User
 
 TEST_PRIVATE_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-TEST_CATEGORIES = ("smoke", "regression", "integration", "security", "keycloak", "performance")
+TEST_CATEGORIES = ("smoke", "regression", "integration", "security")
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:

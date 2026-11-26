@@ -10,6 +10,7 @@ interface ProductDetailPanelProps {
   addedToCart: boolean
   cartMessage: string
   isAdding: boolean
+  isCartBusy?: boolean
   onAddToCart: (product: Product) => void | Promise<void>
   onBack: () => void
 }
@@ -23,6 +24,7 @@ export default function ProductDetailPanel({
   addedToCart,
   cartMessage,
   isAdding,
+  isCartBusy = false,
   onAddToCart,
   onBack,
 }: ProductDetailPanelProps) {
@@ -112,7 +114,7 @@ export default function ProductDetailPanel({
               <p className="products-count">Stok: {product.stock}</p>
               <button
                 className="checkout-button"
-                disabled={isAdding}
+                disabled={isAdding || isCartBusy}
                 onClick={() => void onAddToCart(product)}
                 type="button"
               >

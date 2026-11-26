@@ -626,17 +626,17 @@ Keycloak erişim/rol atama hatasında işlem başarı gibi raporlanmaz; başvuru
 ## REQ-011 — Ödeme entegrasyonu
 
 - **Öncelik:** P1
-- **Durum:** Mock sandbox dilimi tamamlandı ve doğrulandı: son backend varsayılan test koşusunda 239 test geçti, PostgreSQL için ayrılmış 10 test `SHOP_TEST_DATABASE_URL` ayarlı olmadığından atlandı; coverage %97,19 (eşik %95). Web 144 test/%100 coverage ve Keycloak E2E 8/8 önceki tam doğrulamada geçti; frontend build/lint, Ruff ve `git diff --check` başarılı. Gerçek PSP adapter'ı ve sandbox hesabı sağlayıcı seçimine kadar beklemede.
+- **Durum:** Mock sandbox dilimi tamamlandı ve doğrulandı: önceki backend varsayılan test koşusunda 239 test geçti, PostgreSQL için ayrılmış 10 test `SHOP_TEST_DATABASE_URL` ayarlı olmadığından atlandı; coverage %97,19 (eşik %95). Web 144 test/%100 coverage ve Keycloak E2E 8/8 önceki tam doğrulamada geçti; frontend build/lint, Ruff ve `git diff --check` başarılı. Gerçek PSP adapter'ı ve sağlayıcı sandbox hesabı proje kapsamı dışındadır.
 - **Kullanıcı hikâyesi:** Giriş yapmış bir alıcı olarak siparişimin ödemesini güvenli hosted checkout akışıyla tamamlayıp sonucunu görebilmek istiyorum.
-- **Sağlayıcı kararı:** İlk dilimde gerçek sağlayıcı hesabı/kimlik bilgisi gerektirmeyen mock sandbox adaptörü kullanıldı. Gerçek PSP seçimi ve sandbox hesabı sağlandığında ilgili adapter ve sağlayıcı sözleşme testleri ayrı iş olarak eklenecek. Mock adaptör gerçek tahsilat yapmaz ve canlı sağlayıcı olarak kullanılamaz.
+- **Sağlayıcı kararı:** Gerçek sağlayıcı hesabı/kimlik bilgisi gerektirmeyen mock sandbox adaptörü kullanıldı. Gerçek PSP seçimi, adapter ve sağlayıcı sözleşme testleri proje kapsamı dışındadır. Mock adaptör gerçek tahsilat yapmaz ve canlı sağlayıcı olarak kullanılamaz.
 - **Kart verisi:** Kart numarası, CVC veya benzeri hassas ödeme bilgisi web/API uygulamasına gönderilmez, kaydedilmez veya loglanmaz. Ödeme bilgisi hosted checkout sağlayıcısının alanında girilir.
 - **Ödeme penceresi:** Ödeme başlatıldıktan sonra sipariş için 2 dakikalık süre tanınır. Süre içinde kesin başarı gelmezse sipariş sona ermiş sayılır.
 - **Stok iadesi:** REQ-010 checkout’ta düşülen stok, ödeme başarısız/iptal/zaman aşımına uğradığında aynı DB transaction’ında ve yalnızca bir kez geri eklenir. Başarılı ödeme stoku iade etmez.
 - **Expiry hata izolasyonu:** Stok üst sınırına takılan ödeme ve sipariş değişmeden kalır, hata ödeme kimliğiyle loglanır ve sonraki taramada yeniden denenir. Diğer expiry kayıtları işlenir; ödeme API'si yalnızca ilgili ödemenin expiry hatasını `409` olarak bildirir.
 - **Durum kararı:** Sipariş `pending_payment` iken ödeme başlatılabilir; doğrulanmış başarı siparişi `paid`, kesin başarısızlık/iptal/zaman aşımı siparişi `cancelled` yapar. Son durumdan gelen yinelenen veya ters sıradaki bildirim sipariş/stok durumunu değiştirmez.
 - **Bildirim güvenliği:** Ödeme sonucu yalnızca doğrulanmış imzalı webhook veya sandbox adaptörünün eşdeğer güvenilir callback’i ile uygulanır. Webhook olay kimliği tekil/idempotent; tutar ve para birimi siparişle eşleşmelidir. Bilinmeyen/geçersiz imza reddedilir.
-- **Yeniden deneme politikası (26 Kasım 2026):** Her sipariş için tek ödeme kaydı vardır; başarısız/iptal/süresi dolmuş ödeme siparişi iptal edip stoğu iade ettikten sonra aynı siparişe yeni ödeme başlatılamaz. Alıcı yeniden satın almak için ürünleri elle sepete ekleyip yeni checkout ve yeni sipariş oluşturur; eski sepet otomatik geri yüklenmez. Yeni checkout güncel ürün, fiyat ve stok kurallarına tabidir; önceki fiyat/stok garanti edilmez. Yeni sipariş ve ödeme için yeni idempotency anahtarları gerekir. Aynı ödeme anahtarıyla ağ hatası sonrası tekrar ise yeni deneme değildir: mevcut ödeme son durumda olsa bile `200` ile aynı kayıt, checkout URL'si olmadan döner. Başka bir anahtarla sonlanmış siparişe ödeme başlatma `409` döner. Bu politika mevcut mock davranışını korur; otomatik yeniden sipariş düğmesi veya gerçek tahsilat/mutabakat eklemez.
-- **Kapsam dışı:** Gerçek PSP entegrasyonu/canlı tahsilat, iade/chargeback, sipariş iptal politikası ve geç gelen başarı bildirimleri için finansal mutabakat REQ-012 veya sağlayıcı entegrasyonu dilimine bırakılır.
+- **Yeniden deneme politikası (26 Kasım 2026):** Her sipariş için tek ödeme kaydı vardır; başarısız/iptal/süresi dolmuş ödeme siparişi iptal edip stoğu iade ettikten sonra aynı siparişe yeni ödeme başlatılamaz. Alıcı ürünleri elle veya REQ-023'teki açık kullanıcı eylemiyle sepete ekleyip yeni checkout ve yeni sipariş oluşturur; eski sepet kendiliğinden geri yüklenmez. Yeni checkout güncel ürün, fiyat ve stok kurallarına tabidir; önceki fiyat/stok garanti edilmez. Yeni sipariş ve ödeme için yeni idempotency anahtarları gerekir. Aynı ödeme anahtarıyla ağ hatası sonrası tekrar ise yeni deneme değildir: mevcut ödeme son durumda olsa bile `200` ile aynı kayıt, checkout URL'si olmadan döner. Başka bir anahtarla sonlanmış siparişe ödeme başlatma `409` döner. Gerçek tahsilat/mutabakat kapsam dışıdır.
+- **Kapsam dışı:** Gerçek PSP entegrasyonu/canlı tahsilat, gerçek iade/chargeback ve geç gelen başarı bildirimleri için finansal mutabakat. Yerel iptal ve iade kuralları REQ-012, REQ-014 ve REQ-018'de tanımlıdır.
 
 ### Kabul kriterleri
 
@@ -702,7 +702,7 @@ Keycloak erişim/rol atama hatasında işlem başarı gibi raporlanmaz; başvuru
 
 ## İleri gereksinim adayları
 
-Gerçek ödeme/PSP, kargo/taşıyıcı ve KYC/KYB entegrasyonları öğrenme projesinin kapsamı dışındadır; iş akışları yerel/mock davranışlarla doğrulanır. Önerilen sonraki sıra:
+Gerçek ödeme/PSP, kargo/taşıyıcı ve KYC/KYB entegrasyonları öğrenme projesinin kapsamı dışındadır; iş akışları yerel/mock davranışlarla doğrulanır. Aşağıdaki sıra tarihsel planı gösterir; güncel açık işler ROADMAP'te izlenir:
 
 1. **REQ-013 — Katalog arama, filtreleme ve sıralama:** Tamamlandı.
 2. **REQ-014 — Teslimat sonrası yerel ürün iadesi:** Sipariş/kalem durum makinesi, gerekçeli karar, audit, stok ve idempotency kuralları için ayrı kabul kriterleri oluşturulacak; gerçek para iadesi yapılmayacak.
@@ -720,11 +720,11 @@ Gerçek ödeme/PSP, kargo/taşıyıcı ve KYC/KYB entegrasyonları öğrenme pro
 14. **REQ-016 — Satıcı onayı ve marketplace yetkileri:** Manuel onayın uygulama içindeki anlamı, onaylı satıcıların ilan ve mock marketplace yetkileri ile rol sınırları netleştirilir; KYC/yasal uygunluk iddiası yoktur.
 15. **REQ-017 — Marketplace satıcı sipariş operasyonları:** Satıcıya ait satışların ve manuel sipariş operasyonlarının güvenli yönetimi; satıcılar arası veri izolasyonu ve admin gözetimi.
 16. **REQ-018 — Alıcının sipariş iptali:** Alıcının kendi uygun siparişini iptali; mock ödeme/iade, stok, transaction ve idempotency kuralları.
-17. **QA-026 — Performans başlangıç çizgisi (en son):** Sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor.
+17. **QA-026 — Performans başlangıç çizgisi (tamamlandı):** Sınırlı yük profili, ölçülebilir eşikler ve tekrarlanabilir rapor; hedefleri tutmayan sonuçlar ayrıca izlenir.
 
-REQ-013–017 ve QA-016–QA-025 tamamlanmıştır. REQ-018'in kabul kriterleri aşağıdadır; QA-026 bu gereksinimden sonra başlatılacaktır.
+REQ-013–REQ-018 ve QA-016–QA-026 tamamlanmıştır. Güncel açık işler ROADMAP'te izlenir.
 
-Kapsam dışı: gerçek PSP/para transferi, KYC/KYB ve gerçek kargo sağlayıcısı. E-posta/parola yaşam döngüsü özellikleri bu yol haritasında yer almıyor.
+Kapsam dışı: gerçek PSP/para transferi, KYC/KYB ve gerçek kargo sağlayıcısı. Yerel e-posta doğrulama ve parola sıfırlama REQ-019'da tanımlıdır.
 
 ## REQ-018 — Alıcının sipariş iptali
 
@@ -965,12 +965,12 @@ Kapsam dışı: gerçek PSP/para transferi, KYC/KYB ve gerçek kargo sağlayıc�
 | `smoke` | Hızlı, kritik davranış/alışveriş yolu | Her PR; yerelde seçilebilir |
 | `regression` | Olağan backend/frontend regresyonu | Her PR; Pytest kategorisi belirtilmeyen testlere varsayılan |
 | `integration` | Uygulama ile DB/altyapı sınırları | Her PR; PostgreSQL ayrı job |
-| `e2e` | Browser üzerinden tam kullanıcı yolu | Smoke E2E her PR; kapsamlı paket ayrıca |
+| Playwright `@smoke` | Browser üzerinden deterministik kritik kullanıcı yolu | Her PR |
 | `security` | Kimlik doğrulama, yetkilendirme ve güvenlik kuralları | Her PR'da ilgili regression; ileride kapsamlı taramalar ayrıca |
-| `keycloak` | Gerçek Keycloak realm/OIDC/rol entegrasyonu | Nightly (02:00 UTC) ve elle `workflow_dispatch`; PR'da çalışmaz |
-| `performance` | Yük/performans ölçümleri | QA-026'da tanımlanacak; PR kapısı değildir |
+| `postgres` | Dedicated PostgreSQL veritabanı gerektiren Pytest entegrasyonu | Her PR'da ayrı job |
+| Playwright `@keycloak` | Gerçek Keycloak realm/OIDC/rol entegrasyonu | Nightly (02:00 UTC) ve elle `workflow_dispatch`; PR'da çalışmaz |
 
-Kategoriler örtüşebilir. PostgreSQL testleri `integration` ve `postgres`; Playwright smoke senaryosu hem `e2e` hem `@smoke`'tır. Pytest'te strict marker kontrolü açıktır; `smoke`, `integration`, `security`, `keycloak` veya `performance` almamış yeni testler otomatik `regression` sınıfına girer.
+Kategoriler örtüşebilir. PostgreSQL testleri `integration` ve `postgres` olarak işaretlenir. Pytest'te strict marker kontrolü açıktır; `smoke`, `regression`, `integration` veya `security` almamış yeni testler otomatik `regression` sınıfına girer. `keycloak` ve `performance` Pytest marker'ları kaldırılmıştır; gerçek Keycloak Playwright ile, performans ayrı araçlarla sınanır.
 
 ### Kabul kriterleri
 
@@ -1175,7 +1175,7 @@ Kategoriler örtüşebilir. PostgreSQL testleri `integration` ve `postgres`; Pla
 
 ## REQ-020 — Alıcı ürün detay sayfası
 
-- **Öncelik:** P5 (ROADMAP sıradaki planlı iş)
+- **Öncelik:** P5 (tamamlandı)
 - **Durum:** Tamamlandı. Backend ürün/sözleşme testleri geçti; web 305/305 test geçti, `App.tsx`/`api.ts`/`ProductCreatePage.tsx` %100 kapısı korundu; deterministik Playwright `product-detail.spec.ts` 3/3 geçti (katalog → detay → sepete ekle, doğrudan URL, bulunamadı). Sepete ekleme sonucu detay sayfasında satır içi bildirilir.
 - **Kullanıcı hikâyesi:** Alıcı olarak katalogdaki bir ürünü açıp güncel fiyat ve stok bilgisini görmek, ürünü sepete ekleyip sonucunu görmek istiyorum; böylece satın alma kararını ürün bazında verebilirim.
 - **Kapsam:** Kimliği doğrulanmış kullanıcılar için tekil ürün okuma uç noktası ve buna bağlı istemci sayfası. Ürün görseli yükleme/depolama, varyant, puan/yorum, kampanya ve gerçek ödeme/kargo entegrasyonu kapsam dışıdır. İlk dilimde ürünlerde görsel alanı olmadığından görsel gösterimi yapılmaz.
@@ -1242,3 +1242,20 @@ Kategoriler örtüşebilir. PostgreSQL testleri `integration` ve `postgres`; Pla
 - **Sözleşme/component:** OpenAPI ve istemci uyumu; listeleme, yetki, form, güncelleme/silme, yükleme ve hata durumları.
 - **E2E:** Teslim öncesi buyer formu göremez ve admin yazamaz; API ile teslim edilen siparişin buyer'ı ürün detayında değerlendirme oluşturur, yeniler, düzenler ve siler. Deterministik kimlik, geçici SQLite ve test ödeme sağlayıcısı kullanılır.
 - **Kapsam dışı:** Moderasyon, değerlendirme yanıtları, medya yükleme, dış ödeme veya kargo entegrasyonu.
+
+## REQ-023 — İptal edilen siparişten sepete ekleme
+
+**Kullanıcı hikâyesi:** Alıcı olarak iptal edilmiş siparişimdeki ürünleri güncel koşullarla sepetime ekleyerek yeniden satın almaya hazırlanmak istiyorum.
+
+### Kabul kriterleri
+
+1. Eylem yalnız alıcının kendi iptal edilmiş sipariş geçmişinde sunulur; sipariş veya ödeme yeniden açılmaz, otomatik checkout yapılmaz.
+2. Ürünler eski sipariş miktarıyla mevcut sepete eklenir; önceki sepet korunur. Güncel fiyat ve mevcut miktarla birleşik stok sınırı mevcut sepet API'si tarafından doğrulanır; eski fiyat veya stok garanti edilmez.
+3. Silinmiş veya stok yetersizliği nedeniyle eklenemeyen ürünler ve başarıyla eklenenler kullanıcıya ayrı gösterilir; diğer uygun ürünler işlenebilir.
+4. Kimlik/yetki hatası veya sonucu belirsiz ağ/sunucu hatasında işlem durur ve hata görünür olur. Ekleme API'si idempotent olmadığından belirsiz işlem otomatik tekrarlanmaz; kullanıcıya sepetteki gerçek miktarları kontrol etmesi söylenir.
+5. İşlem sürerken yinelenen gönderim engellenir ve sepet görünümü güncellenir; aynı panel oturumunda başarısız satırların yeniden denenmesi başarılı satırları ikinci kez eklemez. Sayfa yeniden yüklendiğinde bu yerel koruma sıfırlanır; kullanıcıya tekrardan önce sepeti kontrol etmesi bildirilir.
+
+### Test planı ve sınırlar
+
+- **Component/E2E:** İptal edilmiş ve diğer sipariş durumları, mevcut sepetle birleşme, güncel fiyat, silinmiş ürün/stok çakışması, kısmi başarı ve sonucu belirsiz hata.
+- **Sınır:** Mevcut sepet API'si kalem bazında işlem yapar; tüm sipariş için atomiklik veya ağ hatasında tam olarak bir kez ekleme garantisi yoktur. Gerçek ödeme veya kargo entegrasyonu eklenmez.

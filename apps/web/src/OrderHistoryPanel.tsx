@@ -1,6 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
-import type { CustomerOrder, CustomerPayment } from './api'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { CustomerOrder, CustomerPayment, OrderItem } from './api'
 import { ApiError, cancelMyOrder, createPayment, createProductReturn, getMyOrdersPage } from './api'
+import type {
+  CancelledOrderCartItemResult,
+  CancelledOrderCartResult,
+} from './cancelledOrderCart'
 
 const ORDER_PAGE_SIZE = 20
 
@@ -8,6 +12,19 @@ interface OrderHistoryPanelProps {
   token: string
   refreshVersion: number
   latestOrder: CustomerOrder | null
+  isCartMutating?: boolean
+  onRefreshCart?: (token: string) => Promise<boolean>
+  onRestoreCancelledOrder?: (
+    token: string,
+    items: OrderItem[],
+  ) => Promise<CancelledOrderCartResult | null>
+}
+
+interface CancelledOrderRestoreReport {
+  items: Record<number, CancelledOrderCartItemResult>
+  uncertainItemId: number | null
+  needsInspection: boolean
+  message: string
 }
 
 function formatCurrency(value: string): string {
@@ -82,6 +99,9 @@ export default function OrderHistoryPanel({
   token,
   refreshVersion,
   latestOrder,
+  isCartMutating = false,
+  onRefreshCart = async () => false,
+  onRestoreCancelledOrder = async () => null,
 }: OrderHistoryPanelProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [orders, setOrders] = useState<CustomerOrder[]>([])
@@ -112,9 +132,42 @@ export default function OrderHistoryPanel({
   const [cancellingOrderId, setCancellingOrderId] = useState<number | null>(null)
   const [cancelError, setCancelError] = useState('')
   const [cancelNotice, setCancelNotice] = useState<{ orderId: number; text: string } | null>(null)
+  const [restoreState, setRestoreState] = useState<{
+    token: string
+    byOrder: Record<number, CancelledOrderRestoreReport>
+  }>({ token, byOrder: {} })
+  const [restoringOrderId, setRestoringOrderId] = useState<number | null>(null)
+  const [refreshingRestoreOrderId, setRefreshingRestoreOrderId] = useState<number | null>(null)
+  const restoreToken = useRef(token)
+  const restoreReports = restoreState.token === token ? restoreState.byOrder : {}
+
+  useLayoutEffect(() => {
+    if (restoreToken.current !== token) {
+      setRestoringOrderId(null)
+      setRefreshingRestoreOrderId(null)
+    }
+    restoreToken.current = token
+  }, [token])
 
   if (pageContext.token !== token || pageContext.refreshVersion !== refreshVersion) {
-    if (pageContext.token !== token) setCancelledOrderIds(new Set())
+    if (pageContext.token !== token) {
+      setOrders([])
+      setCancelledOrderIds(new Set())
+      setPaymentsByOrder({})
+      setPaymentErrors({})
+      setCancelFormOrderId(null)
+      setCancellingOrderId(null)
+      setCancelError('')
+      setCancelNotice(null)
+      setReturningItem(null)
+      setReturningOrderId(null)
+      setReturnError('')
+      setReturnNotice('')
+      setReturnNoticeOrderId(null)
+      setRestoreState({ token, byOrder: {} })
+      setRestoringOrderId(null)
+      setRefreshingRestoreOrderId(null)
+    }
     setPageContext({ token, refreshVersion })
     setOffset(0)
     if (isOpen) setIsLoading(true)
@@ -142,6 +195,123 @@ export default function OrderHistoryPanel({
         : 'Sipariş iptal edilemedi. Bağlantıyı kontrol edip tekrar dene.')
     } finally {
       setCancellingOrderId(null)
+    }
+  }
+
+  async function restoreCancelledOrder(order: CustomerOrder) {
+    const previous = restoreReports[order.id]
+    if (restoringOrderId !== null || isCartMutating || previous?.needsInspection) return
+    const remainingItems = order.items.filter((item) => {
+      const previousResult = previous?.items[item.id]
+      return previousResult?.status !== 'added' && previousResult?.status !== 'unknown'
+    })
+    if (remainingItems.length === 0) return
+
+    setRestoringOrderId(order.id)
+    try {
+      const result = await onRestoreCancelledOrder(token, remainingItems)
+      if (!result || restoreToken.current !== token || result.cancelled) return
+      setRestoreState((current) => {
+        const byOrder = current.token === token ? current.byOrder : {}
+        const previousReport = byOrder[order.id]
+        const itemResults = { ...previousReport?.items }
+        result.items.forEach((itemResult) => {
+          itemResults[itemResult.item.id] = itemResult
+        })
+        const uncertainItem = result.items.find((item) => item.status === 'unknown')
+        return {
+          token,
+          byOrder: {
+            ...byOrder,
+            [order.id]: {
+              items: itemResults,
+              uncertainItemId: uncertainItem?.item.id ??
+                previousReport?.uncertainItemId ?? null,
+              needsInspection: result.uncertain,
+              message: '',
+            },
+          },
+        }
+      })
+    } catch {
+      if (restoreToken.current === token) {
+        setRestoreState((current) => {
+          const byOrder = current.token === token ? current.byOrder : {}
+          return {
+            token,
+            byOrder: {
+              ...byOrder,
+              [order.id]: {
+                ...byOrder[order.id],
+                items: byOrder[order.id]?.items ?? {},
+                uncertainItemId: byOrder[order.id]?.uncertainItemId ?? null,
+                needsInspection: false,
+                message: 'Sepete ekleme tamamlanamadı. Mevcut sepeti kontrol et.',
+              },
+            },
+          }
+        })
+      }
+    } finally {
+      if (restoreToken.current === token) setRestoringOrderId(null)
+    }
+  }
+
+  async function refreshAfterUncertainRestore(orderId: number) {
+    setRefreshingRestoreOrderId(orderId)
+    let refreshed = false
+    try {
+      refreshed = await onRefreshCart(token)
+    } catch {
+      refreshed = false
+    }
+    if (restoreToken.current === token && refreshed) {
+      setRestoreState((current) => {
+        if (current.token !== token) return current
+        const report = current.byOrder[orderId]
+        if (!report) return current
+        return {
+          ...current,
+          byOrder: {
+            ...current.byOrder,
+            [orderId]: { ...report, needsInspection: false },
+          },
+        }
+      })
+    } else if (restoreToken.current === token) {
+      setRestoreState((current) => {
+        if (current.token !== token) return current
+        const report = current.byOrder[orderId]
+        if (!report) return current
+        return {
+          ...current,
+          byOrder: {
+            ...current.byOrder,
+            [orderId]: {
+              ...report,
+              message: 'Sepet yenilenemedi; sonucu belirsiz kalem için tekrar deneme.',
+            },
+          },
+        }
+      })
+    }
+    if (restoreToken.current === token) setRefreshingRestoreOrderId(null)
+  }
+
+  function restoreItemStatus(itemResult: CancelledOrderCartItemResult): string {
+    switch (itemResult.status) {
+      case 'added':
+        return `Sepete eklendi (${itemResult.item.quantity} adet, güncel fiyat ve stokla).`
+      case 'deleted':
+        return 'Ürün artık mevcut değil; eklenmedi.'
+      case 'insufficient_stock':
+        return 'Mevcut sepet miktarıyla birleştirildiğinde stok yetersiz; eklenmedi.'
+      case 'failed':
+        return `İstek reddedildi; işlem durduruldu.${itemResult.message ? ` ${itemResult.message}` : ''}`
+      case 'unknown':
+        return 'Sonuç bilinmiyor; ürün eklenmiş olabilir.'
+      case 'not_attempted':
+        return 'Önceki kalem nedeniyle gönderilmedi.'
     }
   }
 
@@ -442,6 +612,90 @@ export default function OrderHistoryPanel({
                       )
                     })}
                   </ul>
+                  {order.status === 'cancelled' && order.items.length > 0 && (() => {
+                    const report = restoreReports[order.id]
+                    const pendingItems = order.items.filter((item) => {
+                      const previousResult = report?.items[item.id]
+                      return previousResult?.status !== 'added' &&
+                        previousResult?.status !== 'unknown'
+                    })
+                    const uncertainItem = report?.uncertainItemId === null ||
+                      report?.uncertainItemId === undefined
+                      ? null
+                      : order.items.find((item) => item.id === report.uncertainItemId) ?? null
+                    return (
+                      <div className="order-return-action">
+                        <p>
+                          Ürünler mevcut sepetine, siparişteki miktarlarla eklenir. Güncel fiyat ve
+                          stok uygulanır; sipariş veya ödeme başlatılmaz.
+                        </p>
+                        <p role="note">
+                          Dikkat: Ekleme geçmişi yalnızca bu sayfa açıkken tutulur. Sayfayı
+                          yenilersen veya işlemi yeniden başlatırsan aynı miktarlar sepete tekrar
+                          eklenebilir. Tekrar denemeden önce sepetini kontrol et.
+                        </p>
+                        {report && Object.keys(report.items).length > 0 && (
+                          <ul aria-label={`Sipariş ${order.id} sepete ekleme sonuçları`} role="status">
+                            {Object.values(report.items).map((itemResult) => (
+                              <li key={itemResult.item.id}>
+                                {itemResult.item.product_name}: {restoreItemStatus(itemResult)}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {report?.message && <p role="alert">{report.message}</p>}
+                        {uncertainItem && (
+                          <div role="alert">
+                            <p>
+                              {uncertainItem.product_name} için isteğin sonucu bilinmiyor; ürün
+                              sepete eklenmiş olabilir. Sepeti yenileyip kontrol etmeden tekrar
+                              deneme. Bu kalem otomatik yeniden gönderilmeyecek; yenilenen sepette
+                              görünmüyorsa ürün sayfasından ekle.
+                            </p>
+                            {report.needsInspection ? (
+                              <button
+                                className="retry-button"
+                                disabled={refreshingRestoreOrderId === order.id || isCartMutating}
+                                onClick={() => void refreshAfterUncertainRestore(order.id)}
+                                type="button"
+                              >
+                                {refreshingRestoreOrderId === order.id
+                                  ? 'Sepet yenileniyor...'
+                                  : 'Sepeti yenile ve kontrol et'}
+                              </button>
+                            ) : (
+                              <p>Sepet yenilendi; belirsiz ürün yeniden gönderilmeyecek.</p>
+                            )}
+                          </div>
+                        )}
+                        {report && pendingItems.length > 0 && (
+                          <p>
+                            Önceki başarılı kalemler yeniden gönderilmez. Belirsiz kalem de
+                            otomatik olarak tekrar denenmez.
+                          </p>
+                        )}
+                        <button
+                          className="retry-button"
+                          disabled={
+                            pendingItems.length === 0 ||
+                            isCartMutating ||
+                            restoringOrderId !== null ||
+                            Boolean(report?.needsInspection)
+                          }
+                          onClick={() => void restoreCancelledOrder(order)}
+                          type="button"
+                        >
+                          {restoringOrderId === order.id
+                            ? 'Sepete ekleniyor...'
+                            : report
+                              ? pendingItems.length === 0
+                                ? 'Eklenebilecek kalem kalmadı'
+                                : 'Eklenmeyen kalemleri tekrar dene'
+                              : 'İptal edilenleri sepete ekle'}
+                        </button>
+                      </div>
+                    )
+                  })()}
                   {(order.returns ?? []).length > 0 && (
                     <ul aria-label={`Sipariş ${order.id} iadeleri`} className="order-return-list">
                       {(order.returns ?? []).map((productReturn) => (
