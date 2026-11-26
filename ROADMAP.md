@@ -790,7 +790,7 @@ Bu sıra, gece ölçümü bekleyen QA-032 ile paralel ilerler. Her dilimde aşa�
 
 ### P5 — REQ-020: Alıcı ürün detay sayfası
 
-- **Durum:** Önerildi; P4 sonrasında başlanacak.
+- **Durum:** Tamamlandı; uygulama ve doğrulama yukarıdaki Öncelik 6 kaydında ve [REQ-020 gereksiniminde](./docs/requirements.md#req-020--alıcı-ürün-detay-sayfası) belgelenmiştir.
 - **Kullanıcı hikâyesi:** Alıcı olarak katalogdaki bir ürünü açıp fiyat/stok bilgisini ve sepete ekleme sonucunu görmek istiyorum; böylece satın alma kararını ürün bazında verebilirim.
 - **Backend ve sözleşme:** Kimliği doğrulanmış kullanıcılar için `GET /api/v1/products/{product_id}` ekle; bulunmayan/silinmiş ürün `404` döndürsün. Yönetim yetkisi bilgisi mevcut owner/admin kurallarıyla tutarlı kalsın; OpenAPI snapshot ve istemci sözleşme kontrolleri güncellensin.
 - **Frontend:** Katalogdan detay sayfasına erişim; yükleniyor, API hatası, bulunamayan ürün ve stokta olmayan ürün durumları; güncel fiyat/stok; buyer'ın ürünü sepete eklemesi ve mevcut sepet davranışını koruması.
