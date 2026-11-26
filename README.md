@@ -138,7 +138,7 @@ Yapay zekâyla üretilen kodda asıl soru "kim yazdı" değil, "nasıl doğrulan
 | Playwright `@smoke` (Keycloak gerektirmez) | `e2e` | Evet | Evet |
 | Playwright `@keycloak` (gerçek Keycloak + Mailpit) | `keycloak-e2e` | Hayır | Evet |
 
-DAST pilotu ([dast.yml](./.github/workflows/dast.yml)) yalnız gece/elle çalışır, PR kapısı değildir; kimlik doğrulamasız ve pasif taramadır. Her koşunun **Unified test report** özeti sonuçları ve coverage'ı tek tabloda toplar.
+DAST pilotu ([dast.yml](./.github/workflows/dast.yml)) yalnız gece/elle çalışır, PR kapısı değildir; geçici hedefte anonim taramaya ek olarak sentetik buyer JWT'siyle allowlist'teki API GET uçlarını pasif tarar. Anahtar ve token yalnız koşu boyunca yaşar; rapora/loga yazılmaz. Aktif tarama ve gerçek Keycloak credential'ları kapsam dışıdır. Her koşunun **Unified test report** özeti sonuçları ve coverage'ı tek tabloda toplar.
 
 ## Sürüm
 

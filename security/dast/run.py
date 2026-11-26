@@ -1,12 +1,14 @@
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 import time
 import uuid
 from pathlib import Path
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 ZAP_IMAGE = (
@@ -14,6 +16,17 @@ ZAP_IMAGE = (
     "sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af"
 )
 TARGET = "http://dast-target:8000"
+BUYER_GET_PATHS = frozenset(
+    {
+        "/api/v1/auth/me",
+        "/api/v1/addresses",
+        "/api/v1/cart",
+        "/api/v1/favorites",
+        "/api/v1/home",
+        "/api/v1/orders/page",
+        "/api/v1/products",
+    }
+)
 
 
 def safe_openapi(schema: dict) -> dict:
@@ -44,6 +57,30 @@ def safe_openapi(schema: dict) -> dict:
     return {**schema, "servers": [{"url": TARGET}], "paths": paths}
 
 
+def buyer_openapi(schema: dict) -> dict:
+    safe_schema = safe_openapi(schema)
+    paths = {}
+    for path, operations in safe_schema["paths"].items():
+        if path not in BUYER_GET_PATHS:
+            continue
+        operation = operations["get"]
+        if not operation.get("security") and not safe_schema.get("security"):
+            continue
+        if path == "/api/v1/products":
+            operation = {
+                **operation,
+                "parameters": [
+                    parameter
+                    for parameter in operation.get("parameters", [])
+                    if parameter.get("name") not in {"min_price", "max_price"}
+                ],
+            }
+        paths[path] = {**operations, "get": operation}
+    if not paths:
+        raise ValueError("No allowlisted buyer-authenticated GET operations found.")
+    return {**safe_schema, "paths": paths}
+
+
 def validate_report(path: Path, expected_site: str):
     report = json.loads(path.read_text(encoding="utf-8"))
     sites = report.get("site")
@@ -53,8 +90,65 @@ def validate_report(path: Path, expected_site: str):
         raise ValueError(f"DAST report does not include expected site {expected_site}: {path}")
 
 
-def run(*args, **kwargs):
-    print("+", *args, flush=True)
+def validate_authenticated_report(path: Path):
+    report = json.loads(path.read_text(encoding="utf-8"))
+    validate_report(path, TARGET)
+    for site in report["site"]:
+        for alert in site.get("alerts", []):
+            for instance in alert.get("instances", []):
+                evidence = instance.get("evidence", "")
+                if instance.get("method") == "GET" and evidence.startswith(("4", "5")):
+                    raise ValueError(
+                        f"Authenticated DAST received non-success HTTP {evidence} for "
+                        f"{urlsplit(instance.get('uri', '')).path or 'an unknown path'}."
+                    )
+    insights = [insight for insight in report.get("insights", []) if insight.get("site") == TARGET]
+    success_rate = next(
+        (
+            insight.get("statistic")
+            for insight in insights
+            if insight.get("key") == "insight.code.2xx"
+        ),
+        None,
+    )
+    if success_rate != "100":
+        raise ValueError("Authenticated DAST did not return 2xx for every scanned API request.")
+    if any(
+        insight.get("key") in {"insight.code.4xx", "insight.code.5xx"}
+        and int(insight.get("statistic", "0")) > 0
+        for insight in insights
+    ):
+        raise ValueError("Authenticated DAST observed a client or server error response.")
+
+
+def redact_token(data: bytes, token: str) -> bytes:
+    if not token:
+        return data
+    redacted = data.replace(token.encode(), b"[REDACTED]")
+    if token.encode() in redacted:
+        raise RuntimeError("A DAST report contains the synthetic buyer token.")
+    return redacted
+
+
+def run(*args, redact=(), **kwargs):
+    displayed = " ".join(str(arg) for arg in args)
+    for secret in redact:
+        displayed = displayed.replace(secret, "[REDACTED]")
+    print("+", displayed, flush=True)
+    if redact:
+        result = subprocess.run(args, check=False, capture_output=True, text=True, **kwargs)
+        for secret in redact:
+            result.stdout = result.stdout.replace(secret, "[REDACTED]")
+            result.stderr = result.stderr.replace(secret, "[REDACTED]")
+        if result.stdout:
+            print(result.stdout, end="", flush=True)
+        if result.stderr:
+            print(result.stderr, end="", file=sys.stderr, flush=True)
+        if result.returncode:
+            raise RuntimeError(
+                f"DAST command failed with exit code {result.returncode}: {displayed}"
+            )
+        return
     subprocess.run(args, check=True, **kwargs)
 
 
@@ -62,7 +156,8 @@ def wait_for_target(container: str):
     code = (
         "import urllib.request; "
         "[urllib.request.urlopen(u, timeout=2).read(1) for u in "
-        "('http://127.0.0.1:8000/openapi.json', 'http://127.0.0.1:5174/')]"
+        "('http://127.0.0.1:8000/openapi.json', 'http://127.0.0.1:5174/', "
+        "'http://127.0.0.1:8082/realms/e2e/protocol/openid-connect/certs')]"
     )
     for _ in range(60):
         result = subprocess.run(
@@ -92,7 +187,7 @@ def main():
     args = parser.parse_args()
     output = args.output_dir.resolve()
     output.mkdir(parents=True, exist_ok=True)
-    filenames = ("web.html", "web.json", "api.html", "api.json")
+    filenames = ("web.html", "web.json", "api.html", "api.json", "api-auth.html", "api-auth.json")
     if any((output / name).exists() for name in filenames):
         raise FileExistsError("Refusing to overwrite an existing DAST report.")
 
@@ -104,6 +199,7 @@ def main():
     created_container = False
     built_image = False
     cleanup_errors = []
+    token = ""
     try:
         run("docker", "build", "-t", image, "-f", str(ROOT / "security/dast/Dockerfile"), str(ROOT))
         built_image = True
@@ -133,6 +229,10 @@ def main():
             os.chmod(work, 0o777)
             schema = json.loads((ROOT / "docs/openapi.json").read_text(encoding="utf-8"))
             (work / "get-only.json").write_text(json.dumps(safe_openapi(schema)), encoding="utf-8")
+            (work / "buyer-get-only.json").write_text(
+                json.dumps(buyer_openapi(schema)), encoding="utf-8"
+            )
+            shutil.copyfile(ROOT / "security/dast/auth_hook.py", work / "auth_hook.py")
             mount = f"{work}:/zap/wrk:rw"
             try:
                 run(
@@ -184,16 +284,62 @@ def main():
                     "-J",
                     "api.json",
                 )
+                buyer_token = work / "buyer-token"
+                run("docker", "cp", f"{container}:/tmp/dast-buyer-token", str(buyer_token))
+                buyer_token.chmod(0o644)
+                token = buyer_token.read_text(encoding="utf-8").strip()
+                if not token:
+                    raise RuntimeError("The isolated buyer token is empty.")
+                preflight = (
+                    "import json,urllib.request; "
+                    "token=open('/tmp/dast-buyer-token', encoding='utf-8').read().strip(); "
+                    "request=urllib.request.Request('http://127.0.0.1:8000/api/v1/auth/me', "
+                    "headers={'Authorization':'Bearer '+token}); "
+                    "response=json.load(urllib.request.urlopen(request, timeout=5)); "
+                    "assert 'buyer' in response['roles'], 'buyer role missing from auth preflight'"
+                )
+                run("docker", "exec", container, "python", "-c", preflight)
+                run(
+                    "docker",
+                    "run",
+                    "--rm",
+                    "--network",
+                    network,
+                    "--cap-drop=ALL",
+                    "--security-opt=no-new-privileges",
+                    "-v",
+                    mount,
+                    ZAP_IMAGE,
+                    "zap-api-scan.py",
+                    "-S",
+                    "-t",
+                    "/zap/wrk/buyer-get-only.json",
+                    "-f",
+                    "openapi",
+                    "-T",
+                    "5",
+                    "-I",
+                    "-r",
+                    "api-auth.html",
+                    "-J",
+                    "api-auth.json",
+                    "--hook=/zap/wrk/auth_hook.py",
+                    redact=(token,),
+                )
             finally:
                 for name in filenames:
                     report = work / name
                     if report.is_file() and report.stat().st_size:
-                        (output / name).write_bytes(report.read_bytes())
+                        report_data = redact_token(report.read_bytes(), token)
+                        (output / name).write_bytes(report_data)
+                if token:
+                    (work / "buyer-token").unlink(missing_ok=True)
             for name in filenames:
                 if not (output / name).is_file():
                     raise RuntimeError(f"Missing or empty DAST report: {name}")
             validate_report(output / "web.json", "http://dast-target:5174")
             validate_report(output / "api.json", TARGET)
+            validate_authenticated_report(output / "api-auth.json")
     finally:
         for enabled, command in (
             (created_container, ["docker", "rm", "-f", container]),

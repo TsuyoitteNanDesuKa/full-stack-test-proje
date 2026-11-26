@@ -24,5 +24,6 @@
 !security/dast/
 !security/dast/Dockerfile
 !security/dast/start.sh
+!security/dast/oidc.py
 **/__pycache__/
 **/*.pyc

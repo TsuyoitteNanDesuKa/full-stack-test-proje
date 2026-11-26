@@ -64,7 +64,7 @@ Olasılık ve etki 1–3 ölçeğinde (3 = yüksek). Risk puanı = olasılık ×
 | Frontend component | Vitest, Testing Library | Panel durumları, form doğrulama | PR (`frontend`) |
 | Build ve statik analiz | oxlint, TypeScript, Ruff, Vite | Tip, lint, format | PR |
 | Bağımlılık güvenliği | pip-audit, npm audit | Bilinen zafiyet | PR |
-| DAST pilotu | OWASP ZAP Baseline ve OpenAPI güvenli mod | İzole statik web, anonim GET API yanıtları; pasif tarama | Ayrı gece/elle workflow; bulgular raporlanır; ilk uzak DAST koşusu henüz yok |
+| DAST pilotu | OWASP ZAP Baseline ve OpenAPI güvenli mod | İzole web; anonim ve sentetik buyer kimlikli, allowlist GET API; pasif tarama | Ayrı gece/elle workflow; rapor artefaktları 14 gün tutulur |
 | Smoke E2E (deterministik) | Playwright, test JWKS, SQLite | Buyer checkout, REQ-018/020, sayfalama, erişilebilirlik | PR (`e2e`, `@smoke`) |
 | Keycloak E2E | Playwright, gerçek Keycloak, Mailpit | Kayıt, giriş, doğrulama, sıfırlama, rol akışları | Gece ve elle (`keycloak-e2e`, `@keycloak`) |
 | Erişilebilirlik | axe, klavye E2E | WCAG 2.1 A/AA otomatik kontrol | PR (`@smoke`), manuel NVDA planlanıyor |
@@ -104,6 +104,6 @@ Tüm kimlik bilgileri yalnızca yerel veya CI ortamı değişkenlerindedir; kayn
 ## 8. Bilinen sınırlar
 
 - Kullanıcı kabulü (UAT) ve gerçek kullanıcılarla test yapılmamıştır.
-- QA-044'te yerel OWASP ZAP pasif pilotu çalıştırıldı ve workflow `ccef861` ile yayımlandı; ilk uzak DAST koşusu/artefaktı henüz yoktur. Kimlikli tarama için E2E'nin geçici JWKS ve sentetik token yaklaşımı yeniden kullanılabilir, ancak DAST ağına ayrı bir JWKS servisi ve yalnız GET'e izin veren doğrulanmış rol kapsamı eklenmeden çalıştırılmamalıdır. Aktif/üretim taraması yoktur; anonim korumalı uçlar çoğunlukla `401` döndürür ve geçici statik sunucu başlıkları üretimi temsil etmez. DAST, bağımlılık taraması ve uygulama içi negatif testlerin yerine geçmez.
+- QA-044'te yerel OWASP ZAP pasif pilotu çalıştırıldı; ilk planlı uzak koşu #1 (`d15af6a`, 26 Kasım) başarılı oldu ve HTML/JSON rapor artefaktları yüklendi. Anonim API taraması 19 GET URL'sinde korumalı yollar için beklenen 401'leri verdi. Yerel prototip, geçici JWKS/sentetik buyer token'ı ve ZAP hook ile allowlist'teki 7 authenticated GET'i %100 2xx olarak taradı; raporda 4xx/5xx yok, token log/rapor dışı tutuldu. Bu prototip henüz uzak workflow'da doğrulanmadı. Aktif/üretim taraması yoktur; geçici web/API sunucu başlıkları üretimi temsil etmez. DAST, bağımlılık taraması ve uygulama içi negatif testlerin yerine geçmez.
 - Performans hedefleri karşılanmamıştır (QA-036).
 - Manuel erişilebilirlik incelemesi yapılmamıştır (QA-037).

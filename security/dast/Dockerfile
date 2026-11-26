@@ -18,8 +18,10 @@ COPY apps/api/migrations ./migrations
 RUN uv sync --locked --no-dev
 COPY --from=web /repo/apps/web/dist /app/web/dist
 COPY security/dast/start.sh /app/start.sh
+COPY security/dast/oidc.py /app/dast_oidc.py
 RUN sed -i 's/\r$//' /app/start.sh
 ENV SHOP_DATABASE_URL=sqlite:////tmp/dast.sqlite
 ENV SHOP_OIDC_ISSUER=http://127.0.0.1:8082/realms/e2e
+ENV SHOP_OIDC_JWKS_URL=http://dast-target:8082/realms/e2e/protocol/openid-connect/certs
 ENV SHOP_OIDC_AUDIENCE=shop-api
 CMD ["sh", "/app/start.sh"]
