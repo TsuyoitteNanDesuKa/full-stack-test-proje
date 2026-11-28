@@ -1171,7 +1171,8 @@ Kategoriler örtüşebilir. PostgreSQL testleri `integration` ve `postgres` olar
 - **Bağımlılıklar:** Gerçek Keycloak (`shop` realm) ve Mailpit. `docker compose up -d keycloak`, `mailpit` sağlıklı olana kadar bekler; dolayısıyla Mailpit de başlar. Ek CI değişikliği gerekmez.
 - **Ölçüm yöntemi:** Yerel koşularda 6 senaryo ≈ 2,2 dakika (senaryo başına 3–24 sn). Ölçüm, zaten günlük çalışan gece `keycloak-e2e` koşusundan alınır: her gün bir kez bakılır, manuel `workflow_dispatch` ve push tetiklemesi kullanılmaz. Kayıt: job süresi ve REQ-019 senaryolarının sonucu.
 - **Karar kriteri:** REQ-019 eklenmesinin PR süresini en fazla +4 dakika artırması ve ardışık 5 gece koşusunda flaky sonuç çıkmaması halinde REQ-019'un bir smoke alt kümesi (doğrulama + sıfırlama, her biri tek senaryo) `@smoke` olarak PR'a alınır. Aksi halde gece kapsamında kalır.
-- **Geçici karar:** Ölçüm tamamlanana kadar REQ-019 `@keycloak` olarak kalır; PR kapısına alınmaz.
+- **Ölçüm sonuçları:** 24–26 Kasım arasında üç ardışık gece `keycloak-e2e` başarılı (17/17, retry yok); tam job süresi ≈ 3 dk 01 sn – 3 dk 08 sn. Beş gece hedefi ve PR'a eklenecek smoke alt kümesinin ek süresi ölçülmedi.
+- **Nihai karar (28 Kasım 2026 — proje kapanışı):** REQ-019 `@keycloak` etiketli kalır, **PR kapısına alınmaz.** Gerekçe: PR'da gerçek Keycloak + Mailpit ayağa kaldırmak, tam job süresinin zaten ~3 dakika olması ve flaky dış servis bağımlılığı nedeniyle +4 dakikalık bütçeyi aşma riski taşır. Değerlendirme burada kapatılır; ileride iki gece daha ölçülüp smoke alt kümesi ayrıca kesilirse yeniden açılabilir.
 
 ## REQ-020 — Alıcı ürün detay sayfası
 

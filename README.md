@@ -124,7 +124,7 @@ Yapay zekâyla üretilen kodda asıl soru "kim yazdı" değil, "nasıl doğrulan
 - **Katmanlı CI kapıları:** PR'da hızlı/deterministik kontroller, gece gerçek Keycloak E2E ve DAST (aşağıdaki tablo).
 - **Erişilebilirlik:** axe WCAG 2.1 A/AA taraması ve klavye/odak testleri ([manuel plan](./docs/manual-accessibility-plan.md)).
 - **Kayıtlı hatalar:** Gerçek hata raporları ve kök nedenleri [docs/bug-reports](./docs/bug-reports).
-- **Bilinen sınırlar açık yazılı:** [v1.0.0 sürüm notları](./docs/release-notes-v1.0.0.md).
+- **Bilinen sınırlar açık yazılı:** [v1.1.0 sürüm notları](./docs/release-notes-v1.1.0.md), [v1.0.0 sürüm notları](./docs/release-notes-v1.0.0.md).
 
 ## Kalite kapıları
 
@@ -140,6 +140,16 @@ Yapay zekâyla üretilen kodda asıl soru "kim yazdı" değil, "nasıl doğrulan
 
 DAST pilotu ([dast.yml](./.github/workflows/dast.yml)) yalnız gece/elle çalışır, PR kapısı değildir; geçici hedefte anonim taramaya ek olarak sentetik buyer JWT'siyle allowlist'teki API GET uçlarını pasif tarar. Anahtar ve token yalnız koşu boyunca yaşar; rapora/loga yazılmaz. Aktif tarama ve gerçek Keycloak credential'ları kapsam dışıdır. Her koşunun **Unified test report** özeti sonuçları ve coverage'ı tek tabloda toplar.
 
-## Sürüm
+## Sürüm ve proje durumu
 
-Güncel etiket [`v1.0.0`](https://github.com/TsuyoitteNanDesuKa/full-stack-test-proje/releases/tag/v1.0.0). Yol haritası: [ROADMAP.md](./ROADMAP.md).
+Güncel sürüm: **v1.1.0** — [sürüm notları](./docs/release-notes-v1.1.0.md). Önceki: [`v1.0.0`](https://github.com/TsuyoitteNanDesuKa/full-stack-test-proje/releases/tag/v1.0.0). Yol haritası: [ROADMAP.md](./ROADMAP.md).
+
+**Durum (28 Kasım 2026):** Proje **kapsam donduruldu** ve kapatıldı. Yeni ürün işlevi eklenmez; gerçek ödeme/PSP, kargo, KYC/KYB, sosyal giriş, MFA ve üretim altyapısı kapsam dışıdır.
+
+Kapanışta karara bağlanan açık maddeler:
+
+- REQ-019 `@keycloak` gece kapsamında kalır (PR kapısına alınmadı) — [karar](./docs/requirements.md#pr-kapısı-kararı-qa-032).
+- Eski `GET /api/v1/orders` deprecated olarak korunur, kaldırılmaz (dış tüketici teyidi yok).
+- DAST bulgu triyajı ve istisna politikası — [docs/dast-findings.md](./docs/dast-findings.md).
+
+Bilinçli olarak açık bırakılan işler (sürüm notunda ayrıntılı): manuel NVDA koşusu ([plan](./docs/manual-accessibility-plan.md)), uzak DAST kimlikli aşama doğrulaması, CI credential maskeleme log teyidi, frontend ilk-yük optimizasyonu (QA-027, duraklatıldı).

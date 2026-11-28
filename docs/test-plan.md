@@ -83,7 +83,7 @@ Olasılık ve etki 1–3 ölçeğinde (3 = yüksek). Risk puanı = olasılık ×
 - Yeni kod yolu için coverage-policy sınıfı (A/B/C) belirtilmiş.
 - Keycloak etkisi varsa gece koşusu gözlemlenmiş.
 
-**Sürüm çıkış kapısı:** ROADMAP "v1.0 çıkış kapısı" ve `docs/release-notes-v1.0.0.md` içindeki kalite tablosu.
+**Sürüm çıkış kapısı:** ROADMAP "v1.0 çıkış kapısı", [v1.1.0 sürüm notları](./release-notes-v1.1.0.md) ve [v1.0.0 sürüm notları](./release-notes-v1.0.0.md) içindeki kalite tablosu.deki kalite tablosu.
 
 ## 6. Ortamlar
 
